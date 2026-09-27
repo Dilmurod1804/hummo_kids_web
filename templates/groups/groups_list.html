@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+
+{% block title %}Guruhlar Boshqaruvi — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+    <div>
+        <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">Guruhlar Boshqaruvi</h2>
+        <p style="font-size: 13px; color: var(--text-muted);">Bog'chadagi barcha yosh toifalari bo'yicha guruhlar ro'yxati</p>
+    </div>
+
+    {% if user.can_manage_all %}
+    <button onclick="document.getElementById('modalAddGroup').style.display='flex'" class="btn-glass btn-primary">
+        <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i>
+        <span>Yangi Guruh Ochish</span>
+    </button>
+    {% endif %}
+</div>
+
+<!-- Groups Cards Grid -->
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px;">
+    {% for group in groups %}
+    <div class="glass-card" style="display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+            <div>
+                <span class="badge badge-partial" style="font-size: 11px; margin-bottom: 6px;">{{ group.get_age_category_display }}</span>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 800; color: white;">{{ group.name }}</h3>
+                <p style="font-size: 12px; color: var(--text-dim);">Xona: {{ group.room_number|default:"Belgilanmagan" }}</p>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 16px; font-weight: 800; color: #34d399;">{{ group.monthly_fee|floatformat:0 }} UZS</div>
+                <div style="font-size: 11px; color: var(--text-dim);">oylik to'lov</div>
+            </div>
+        </div>
+
+        <!-- Capacity Progress Bar -->
+        <div style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;">
+                <span style="color: var(--text-muted);">Bandlik sig'imi:</span>
+                <span style="font-weight: 700; color: white;">{{ group.active_children }} / {{ group.capacity }} bola</span>
+            </div>
+            <div style="width: 100%; height: 8px; background: rgba(255, 255, 255, 0.08); border-radius: 4px; overflow: hidden;">
+                <div style="width: {% widthratio group.active_children group.capacity 100 %}%; height: 100%; background: var(--primary-gradient);"></div>
+            </div>
+        </div>
+
+        <!-- Teachers -->
+        <div style="font-size: 13px; color: var(--text-muted); display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; flex-grow: 1;">
+            <div>👩‍🏫 <strong>Asosiy Tarbiyachi:</strong> {{ group.primary_teacher.get_full_name|default:group.primary_teacher.username|default:"Biriktirilmagan" }}</div>
+            {% if group.assistant_teacher %}
+            <div>🤝 <strong>Yordamchi:</strong> {{ group.assistant_teacher.get_full_name|default:group.assistant_teacher.username }}</div>
+            {% endif %}
+            {% if group.description %}
+            <p style="font-size: 12px; color: var(--text-dim); margin-top: 4px; line-height: 1.4;">{{ group.description }}</p>
+            {% endif %}
+        </div>
+
+        <!-- Actions -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+            <a href="{% url 'children_list' %}?group={{ group.id }}" class="btn-glass btn-secondary" style="font-size: 12px; padding: 6px 14px;">
+                Bolalarni ko'rish &rarr;
+            </a>
+            {% if user.can_manage_all %}
+            <div style="display: flex; gap: 6px;">
+                <a href="{% url 'group_update' group.id %}" class="btn-glass btn-secondary" style="padding: 6px 10px;">
+                    <i data-lucide="edit" style="width: 14px; height: 14px;"></i>
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Add Group Modal -->
+{% if user.can_manage_all %}
+<div id="modalAddGroup" class="glass-modal-backdrop">
+    <div class="glass-modal">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white;">Yangi Guruh Yaratish</h3>
+            <button onclick="document.getElementById('modalAddGroup').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form method="POST" action="{% url 'group_create' %}">
+            {% csrf_token %}
+            <div class="form-group">
+                <label class="form-label">Guruh Nomi *</label>
+                {{ form.name }}
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Yosh Toifasi *</label>
+                    {{ form.age_category }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Xona Raqami</label>
+                    {{ form.room_number }}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Maksimal Sig'im *</label>
+                    {{ form.capacity }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Oylik To'lov Narxi (UZS) *</label>
+                    {{ form.monthly_fee }}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Asosiy Tarbiyachi</label>
+                    {{ form.primary_teacher }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Yordamchi Tarbiyachi</label>
+                    {{ form.assistant_teacher }}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Tavsif</label>
+                {{ form.description }}
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+                <button type="button" onclick="document.getElementById('modalAddGroup').style.display='none'" class="btn-glass btn-secondary">Bekor qilish</button>
+                <button type="submit" class="btn-glass btn-primary">Guruhni Saqlash</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ group.name }} — Tahrirlash{% endblock %}
+
+{% block content %}
+<div style="max-width: 700px; margin: 0 auto;">
+    <div class="glass-card" style="padding: 32px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <h2 style="font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 800; color: white;">Guruh Ma'lumotlarini Tahrirlash</h2>
+            <a href="{% url 'groups_list' %}" class="btn-glass btn-secondary" style="font-size: 12px;">&larr; Orqaga</a>
+        </div>
+
+        <form method="POST">
+            {% csrf_token %}
+            <div class="form-group">
+                <label class="form-label">Guruh Nomi *</label>
+                {{ form.name }}
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Yosh Toifasi *</label>
+                    {{ form.age_category }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Xona Raqami</label>
+                    {{ form.room_number }}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Maksimal Sig'im *</label>
+                    {{ form.capacity }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Oylik To'lov Narxi (UZS) *</label>
+                    {{ form.monthly_fee }}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Asosiy Tarbiyachi</label>
+                    {{ form.primary_teacher }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Yordamchi Tarbiyachi</label>
+                    {{ form.assistant_teacher }}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Tavsif</label>
+                {{ form.description }}
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 28px;">
+                <button type="button" onclick="if(confirm('Ushbu guruhni o‘chirmoqchimisiz?')) document.getElementById('deleteGroupForm').submit();" class="btn-glass btn-rose">
+                    <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                    <span>O'chirish</span>
+                </button>
+
+                <div style="display: flex; gap: 10px;">
+                    <a href="{% url 'groups_list' %}" class="btn-glass btn-secondary">Bekor qilish</a>
+                    <button type="submit" class="btn-glass btn-primary">Saqlash</button>
+                </div>
+            </div>
+        </form>
+
+        <form id="deleteGroupForm" method="POST" action="{% url 'group_delete' group.id %}" style="display: none;">
+            {% csrf_token %}
+        </form>
+    </div>
+</div>
+{% endblock %}

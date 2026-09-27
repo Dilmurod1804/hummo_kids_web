@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+
+{% block title %}Xodimlar Face ID & GPS Davomati — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    
+    <!-- Top Header -->
+    <div style="text-align: center; margin-bottom: 24px;">
+        <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">
+            Xodimlar Face ID & GPS Davomat Portali
+        </h2>
+        <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+            Bog'cha hududida (50m radius) kamera orqali yuzni skanerlang va davomatni qayd eting.
+        </p>
+    </div>
+
+    <!-- Scanner Container -->
+    <div class="glass-card" id="attendanceScannerContainer" 
+         data-k-lat="{{ settings.latitude }}" 
+         data-k-lng="{{ settings.longitude }}" 
+         data-k-radius="{{ settings.geofence_radius_meters }}"
+         style="padding: 28px; margin-bottom: 24px;">
+        
+        <!-- Live Camera Viewport with Face Guide & Scanning Laser -->
+        <div class="scanner-viewport">
+            <video id="cameraVideo" autoplay playsinline muted></video>
+            <div class="scanner-face-guide"></div>
+            <div class="scanner-laser"></div>
+        </div>
+
+        <!-- Scanner Status Message -->
+        <div id="scannerStatus" style="text-align: center; margin: 18px 0; font-size: 14px; min-height: 24px;">
+            <span style="color: var(--text-dim);">Kamera va GPS yuklanmoqda...</span>
+        </div>
+
+        <!-- Action Buttons -->
+        <div style="display: flex; justify-content: center; gap: 14px; flex-wrap: wrap;">
+            <button type="button" id="btnSubmitCheckIn" onclick="captureAndSubmitAttendance('check_in')" class="btn-glass btn-emerald" style="padding: 12px 24px; font-size: 15px;">
+                <i data-lucide="camera" style="width: 18px; height: 18px;"></i>
+                <span>Keldim (Check-In)</span>
+            </button>
+            <button type="button" id="btnSubmitCheckOut" onclick="captureAndSubmitAttendance('check_out')" class="btn-glass btn-secondary" style="padding: 12px 24px; font-size: 15px;">
+                <i data-lucide="log-out" style="width: 18px; height: 18px;"></i>
+                <span>Ketdim (Check-Out)</span>
+            </button>
+        </div>
+
+        <!-- GPS Geofence Radar Card -->
+        <div class="gps-radar-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; color: white;">
+                    <span id="gpsRadarDot" class="gps-pulse-dot out-range"></span>
+                    <span>GPS Geofencing Holati</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-muted);">
+                    Maksimal Radius: <strong style="color: white;">{{ settings.geofence_radius_meters }}m</strong>
+                </div>
+            </div>
+
+            <div style="font-size: 12px; color: var(--text-dim); display: flex; flex-direction: column; gap: 4px;">
+                <div id="gpsInfoText">Koordinatalar kutilmoqda...</div>
+                <div>Bog'chagacha masofa: <strong id="distancePreview" style="color: white;">Hisoblanmoqda...</strong></div>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">
+                    📍 Bog'cha koordinatalari: {{ settings.latitude }}, {{ settings.longitude }} ({{ settings.name }})
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- User Today's Log History -->
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <h3 class="glass-card-title">
+                <i data-lucide="history" style="color: #a855f7; width: 20px; height: 20px;"></i>
+                <span>Bugungi Qayd Qilingan Davomatingiz</span>
+            </h3>
+            <span style="font-size: 12px; color: var(--text-dim);">{{ today|date:"d.m.Y" }}</span>
+        </div>
+
+        <div class="glass-table-wrapper">
+            <table class="glass-table">
+                <thead>
+                    <tr>
+                        <th>Kelgan Vaqt</th>
+                        <th>Ketgan Vaqt</th>
+                        <th>Masofa</th>
+                        <th>Geofence</th>
+                        <th>Xulosa</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in user_today_logs %}
+                    <tr>
+                        <td><strong>{{ log.check_in_time|time:"H:i:s"|default:"—" }}</strong></td>
+                        <td><strong>{{ log.check_out_time|time:"H:i:s"|default:"—" }}</strong></td>
+                        <td>{{ log.distance_meters|default:0 }}m</td>
+                        <td>
+                            {% if log.is_within_geofence %}
+                            <span class="badge badge-present">✓ 50m ichida</span>
+                            {% else %}
+                            <span class="badge badge-unexcused">⚠️ Hududdan Tashqari</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ log.get_status_display }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--text-dim); padding: 20px;">
+                            Bugun hali davomat belgilanmagan. Yuqoridagi tugma orqali tasdiqlang.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="/static/js/face_attendance.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    initAttendanceScanner();
+});
+window.addEventListener("beforeunload", function() {
+    stopCameraStream();
+});
+</script>
+{% endblock %}

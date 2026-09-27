@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ child.full_name }} — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 14px;">
+    <div style="display: flex; align-items: center; gap: 14px;">
+        <a href="{% url 'children_list' %}" class="btn-glass btn-secondary" style="padding: 8px 12px;">
+            &larr; Orqaga
+        </a>
+        <div>
+            <h2 style="font-family: 'Outfit', sans-serif; font-size: 24px; font-weight: 800; color: white;">{{ child.full_name }}</h2>
+            <p style="font-size: 13px; color: var(--text-muted);">Guruh: {{ child.group.name }} · Qabul qilingan sana: {{ child.enrollment_date|date:"d.m.Y" }}</p>
+        </div>
+    </div>
+
+    {% if user.can_manage_all %}
+    <div style="display: flex; gap: 10px;">
+        <a href="{% url 'child_update' child.id %}" class="btn-glass btn-secondary">
+            <i data-lucide="edit" style="width: 16px; height: 16px;"></i>
+            <span>Tahrirlash</span>
+        </a>
+        <form method="POST" action="{% url 'child_delete' child.id %}" onsubmit="return confirm('Haqiqatdan ham ushbu bolani o‘chirmoqchimisiz?');" style="display: inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn-glass btn-rose">
+                <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                <span>O'chirish</span>
+            </button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Profile Info Card -->
+<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 24px; margin-bottom: 28px;">
+    <div class="glass-card">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div style="width: 80px; height: 80px; border-radius: 24px; background: linear-gradient(135deg, #ec4899, #8b5cf6); margin: 0 auto 12px auto; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 800; color: white;">
+                {{ child.first_name|slice:":1" }}{{ child.last_name|slice:":1" }}
+            </div>
+            <h3 style="font-size: 18px; font-weight: 700; color: white;">{{ child.full_name }}</h3>
+            <span class="badge badge-present" style="margin-top: 6px;">{{ child.group.name }}</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px; font-size: 13px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 16px;">
+            <div>🎂 <strong>Tug'ilgan sana:</strong> {{ child.birth_date|date:"d.m.Y" }} ({{ child.age }} yosh)</div>
+            <div>👫 <strong>Jinsi:</strong> {{ child.get_gender_display }}</div>
+            <div>👤 <strong>Ota-onasi:</strong> {{ child.parent_full_name }}</div>
+            <div>📞 <strong>Telefon:</strong> <a href="tel:{{ child.parent_phone }}" style="color: #60a5fa;">{{ child.parent_phone }}</a></div>
+            <div>🏠 <strong>Manzil:</strong> {{ child.address|default:"Kiritilmagan" }}</div>
+        </div>
+
+        {% if child.medical_notes %}
+        <div style="background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.4); border-radius: var(--radius-sm); padding: 14px; margin-top: 18px;">
+            <div style="font-weight: 700; color: #fb7185; font-size: 13px; margin-bottom: 4px;">⚠️ Tibbiy Eslatma & Allergiya:</div>
+            <p style="font-size: 13px; color: #fecdd3; line-height: 1.4;">{{ child.medical_notes }}</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Attendance & Invoices Tab -->
+    <div style="display: flex; flex-direction: column; gap: 24px;">
+        <!-- Recent Attendance -->
+        <div class="glass-card">
+            <div class="glass-card-header">
+                <h3 class="glass-card-title">
+                    <i data-lucide="calendar-check" style="color: #34d399; width: 20px; height: 20px;"></i>
+                    <span>Shu Oydagi Davomat Tarixi</span>
+                </h3>
+            </div>
+            
+            <div class="glass-table-wrapper">
+                <table class="glass-table">
+                    <thead>
+                        <tr>
+                            <th>Sana</th>
+                            <th>Holat</th>
+                            <th>Belgilagan</th>
+                            <th>Izoh</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for att in attendances %}
+                        <tr>
+                            <td>{{ att.date|date:"d.m.Y" }}</td>
+                            <td>
+                                {% if att.status == 'PRESENT' %}
+                                <span class="badge badge-present">Keldi</span>
+                                {% elif att.status == 'EXCUSED' %}
+                                <span class="badge badge-excused">Sababli</span>
+                                {% else %}
+                                <span class="badge badge-unexcused">Sababsiz</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ att.marked_by.get_full_name|default:att.marked_by.username|default:"Tizim" }}</td>
+                            <td>{{ att.notes|default:"—" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: var(--text-dim);">Bu oyda davomat yozuvlari mavjud emas</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Monthly Invoices & Recalculation (Перерасчет) -->
+        <div class="glass-card">
+            <div class="glass-card-header">
+                <h3 class="glass-card-title">
+                    <i data-lucide="receipt" style="color: #c084fc; width: 20px; height: 20px;"></i>
+                    <span>Oylik To'lovlar va Qayta Hisoblash</span>
+                </h3>
+            </div>
+
+            <div class="glass-table-wrapper">
+                <table class="glass-table">
+                    <thead>
+                        <tr>
+                            <th>Oy / Yil</th>
+                            <th>Asosiy To'lov</th>
+                            <th>Qayta Hisoblash (Chegirma)</th>
+                            <th>Jami To'lov</th>
+                            <th>To'langan</th>
+                            <th>Holati</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for inv in invoices %}
+                        <tr>
+                            <td><strong>{{ inv.month }}/{{ inv.year }}</strong></td>
+                            <td>{{ inv.base_fee|floatformat:0 }} UZS</td>
+                            <td>
+                                {% if inv.recalculation_amount > 0 %}
+                                <span style="color: #34d399; font-weight: 700;">-{{ inv.recalculation_amount|floatformat:0 }} UZS</span>
+                                <div style="font-size: 10px; color: var(--text-dim);">({{ inv.excused_days_count }} kun sababli)</div>
+                                {% else %}
+                                <span style="color: var(--text-dim);">0 UZS</span>
+                                {% endif %}
+                            </td>
+                            <td><strong>{{ inv.total_amount|floatformat:0 }} UZS</strong></td>
+                            <td>{{ inv.paid_amount|floatformat:0 }} UZS</td>
+                            <td>
+                                {% if inv.status == 'PAID' %}
+                                <span class="badge badge-paid">To'langan</span>
+                                {% elif inv.status == 'PARTIAL' %}
+                                <span class="badge badge-partial">Qisman</span>
+                                {% else %}
+                                <span class="badge badge-unexcused">Qarzdor</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-dim);">To'lov invoyslari mavjud emas</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+
+{% block title %}Bog'cha Sozlamalari — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    
+    <div style="margin-bottom: 24px;">
+        <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">Tizim va Bog'cha Sozlamalari</h2>
+        <p style="font-size: 13px; color: var(--text-muted);">GPS Geofencing koordinatalari, ovqatlanish stavkasi va umumiy ma'lumotlar</p>
+    </div>
+
+    <div class="glass-card" style="padding: 32px;">
+        <form method="POST">
+            {% csrf_token %}
+            
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; color: #c084fc; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="building-2" style="width: 20px; height: 20px;"></i>
+                <span>Muassasa Ma'lumotlari</span>
+            </h3>
+
+            <div class="form-group">
+                <label class="form-label">Bog'cha Nomi *</label>
+                {{ form.name }}
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Yuridik Manzil *</label>
+                {{ form.address }}
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">Aloqa Telefoni</label>
+                    {{ form.contact_phone }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Elektron Pochta</label>
+                    {{ form.contact_email }}
+                </div>
+            </div>
+
+            <!-- GPS Geofence Section -->
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; color: #34d399; margin: 28px 0 16px 0; display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="map-pin" style="width: 20px; height: 20px;"></i>
+                <span>GPS Geofencing (Staff Attendance) Sozlamalari</span>
+            </h3>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">Kenglik (Latitude) *</label>
+                    {{ form.latitude }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Uzunlik (Longitude) *</label>
+                    {{ form.longitude }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Ruxsat Radiusi (Metr) *</label>
+                    {{ form.geofence_radius_meters }}
+                </div>
+            </div>
+
+            <!-- Financial Rates Section -->
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; color: #fbbf24; margin: 28px 0 16px 0; display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="calculator" style="width: 20px; height: 20px;"></i>
+                <span>Moliya va Qayta Hisoblash Stavkalari</span>
+            </h3>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">Standart Oylik To'lov</label>
+                    {{ form.default_monthly_fee }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kunlik Ovqatlanish Normasi (Перерасчет)</label>
+                    {{ form.daily_meal_rate }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Valyuta</label>
+                    {{ form.currency_symbol }}
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; margin-top: 28px;">
+                <button type="submit" class="btn-glass btn-primary" style="padding: 12px 28px; font-size: 15px;">
+                    <i data-lucide="check" style="width: 18px; height: 18px;"></i>
+                    <span>Sozlamalarni Saqlash</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+</div>
+{% endblock %}

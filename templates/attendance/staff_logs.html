@@ -1,0 +1,113 @@
+{% extends 'base.html' %}
+
+{% block title %}Xodimlar Davomat Jurnali — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+    <div>
+        <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">Xodimlar Geofencing & Face ID Jurnali</h2>
+        <p style="font-size: 13px; color: var(--text-muted);">Tarbiyachilar va xodimlarning GPS koordinatalari hamda yuz tasvirlari monitoringi</p>
+    </div>
+
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <a href="{% url 'export_staff_attendance' %}" class="btn-glass btn-excel">
+            <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px;"></i>
+            <span>Excel Eksport</span>
+        </a>
+    </div>
+</div>
+
+<!-- Filters Bar -->
+<div class="glass-card" style="padding: 16px; margin-bottom: 24px;">
+    <form method="GET" style="display: flex; gap: 14px; flex-wrap: wrap; align-items: center;">
+        <div style="min-width: 180px;">
+            <label class="form-label" style="margin-bottom: 4px; font-size: 11px;">Sana bo'yicha:</label>
+            <input type="date" name="date" value="{{ date_filter }}" class="glass-input" onchange="this.form.submit()" style="padding: 8px 14px;">
+        </div>
+
+        <div style="min-width: 200px;">
+            <label class="form-label" style="margin-bottom: 4px; font-size: 11px;">Holat bo'yicha:</label>
+            <select name="status" class="glass-select" onchange="this.form.submit()" style="padding: 8px 14px;">
+                <option value="">Barcha Holatlar</option>
+                <option value="ON_TIME" {% if status_filter == 'ON_TIME' %}selected{% endif %}>Vaqtida Kelganlar</option>
+                <option value="LATE" {% if status_filter == 'LATE' %}selected{% endif %}>Kechikkanlar</option>
+                <option value="REJECTED_GEOFENCE" {% if status_filter == 'REJECTED_GEOFENCE' %}selected{% endif %}>Hududdan Tashqarida</option>
+            </select>
+        </div>
+
+        {% if date_filter or status_filter %}
+        <a href="{% url 'staff_attendance_logs' %}" class="btn-glass btn-secondary" style="margin-top: 20px; padding: 8px 14px; font-size: 12px;">
+            Tozalash
+        </a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Logs Table -->
+<div class="glass-card">
+    <div class="glass-card-header">
+        <h3 class="glass-card-title">
+            <i data-lucide="shield-check" style="color: #34d399; width: 20px; height: 20px;"></i>
+            <span>Davomat Qaydlari (Jami: {{ logs.count }})</span>
+        </h3>
+    </div>
+
+    <div class="glass-table-wrapper">
+        <table class="glass-table">
+            <thead>
+                <tr>
+                    <th>Xodim (Tarbiyachi)</th>
+                    <th>Sana</th>
+                    <th>Kelgan Vaqti</th>
+                    <th>Ketgan Vaqti</th>
+                    <th>Bog'chagacha Masofa</th>
+                    <th>GPS Koordinatalari</th>
+                    <th>Geofence</th>
+                    <th>Xulosa</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td>
+                        <div style="font-weight: 700; color: white;">{{ log.teacher.get_full_name|default:log.teacher.username }}</div>
+                        <div style="font-size: 11px; color: var(--text-dim);">{{ log.teacher.get_role_display }}</div>
+                    </td>
+                    <td>{{ log.date|date:"d.m.Y" }}</td>
+                    <td><strong style="color: white;">{{ log.check_in_time|time:"H:i:s"|default:"—" }}</strong></td>
+                    <td><strong style="color: white;">{{ log.check_out_time|time:"H:i:s"|default:"—" }}</strong></td>
+                    <td>
+                        <span style="font-weight: 700; color: {% if log.is_within_geofence %}#34d399{% else %}#fb7185{% endif %};">
+                            {{ log.distance_meters|default:0 }} metr
+                        </span>
+                    </td>
+                    <td>
+                        {% if log.latitude %}
+                        <div style="font-size: 12px; color: #94a3b8;">
+                            {{ log.latitude|floatformat:5 }}, {{ log.longitude|floatformat:5 }}
+                        </div>
+                        {% else %}
+                        <span style="color: var(--text-dim); font-size: 12px;">Mavjud emas</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if log.is_within_geofence %}
+                        <span class="badge badge-present">✓ Ruxsat etilgan (&le; 50m)</span>
+                        {% else %}
+                        <span class="badge badge-unexcused">❌ Tashqarida (&gt; 50m)</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ log.get_status_display }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 32px;">
+                        Davomat yozuvlari topilmadi.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

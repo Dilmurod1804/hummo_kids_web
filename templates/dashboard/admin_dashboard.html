@@ -1,0 +1,281 @@
+{% extends 'base.html' %}
+
+{% block title %}Boshqaruv Paneli — Humo Kids{% endblock %}
+
+{% block content %}
+<!-- Top Header / Quick Actions -->
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; flex-wrap: wrap; gap: 16px;">
+    <div>
+        <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">Boshqaruv Paneli</h2>
+        <p style="font-size: 13px; color: var(--text-muted);">Xush kelibsiz, {{ user.get_full_name|default:user.username }}! Bugungi sana: {{ today|date:"d F, Y" }}</p>
+    </div>
+
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <a href="{% url 'attendance_daily' %}" class="btn-glass btn-secondary">
+            <i data-lucide="calendar-check-2" style="width: 16px; height: 16px;"></i>
+            <span>Bugungi Davomat</span>
+        </a>
+        <a href="{% url 'export_children' %}" class="btn-glass btn-excel">
+            <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px;"></i>
+            <span>Excel Eksport</span>
+        </a>
+        <a href="{% url 'children_list' %}" class="btn-glass btn-primary">
+            <i data-lucide="user-plus" style="width: 16px; height: 16px;"></i>
+            <span>Yangi Bola Qo'shish</span>
+        </a>
+    </div>
+</div>
+
+<!-- KPI Stat Cards Grid -->
+<div class="stats-grid">
+    <!-- Total Children -->
+    <div class="stat-card">
+        <div>
+            <p class="stat-label">Jami Bolalar</p>
+            <h3 class="stat-value">{{ total_children }}</h3>
+            <p class="stat-subtext">{{ total_groups }} ta guruhda faol</p>
+        </div>
+        <div class="stat-icon-wrapper icon-purple">
+            <i data-lucide="smile" style="width: 24px; height: 24px;"></i>
+        </div>
+    </div>
+
+    <!-- Attendance Today -->
+    <div class="stat-card">
+        <div>
+            <p class="stat-label">Bugungi Davomat</p>
+            <h3 class="stat-value">{{ attendance_rate }}%</h3>
+            <p class="stat-subtext" style="color: #34d399;">{{ present_count }} keldi · {{ excused_count }} sababli</p>
+        </div>
+        <div class="stat-icon-wrapper icon-emerald">
+            <i data-lucide="check-circle" style="width: 24px; height: 24px;"></i>
+        </div>
+    </div>
+
+    <!-- Monthly Collected Revenue -->
+    <div class="stat-card">
+        <div>
+            <p class="stat-label">To'plangan To'lovlar</p>
+            <h3 class="stat-value" style="font-size: 20px;">{{ total_collected_revenue|floatformat:0 }} <span style="font-size: 13px; font-weight: 500;">UZS</span></h3>
+            <p class="stat-subtext">Qarzdorlik: {{ total_debt|floatformat:0 }} UZS</p>
+        </div>
+        <div class="stat-icon-wrapper icon-blue">
+            <i data-lucide="wallet" style="width: 24px; height: 24px;"></i>
+        </div>
+    </div>
+
+    <!-- Staff On Duty -->
+    <div class="stat-card">
+        <div>
+            <p class="stat-label">Ishdagi Xodimlar</p>
+            <h3 class="stat-value">{{ staff_on_duty_count }} <span style="font-size: 14px; color: var(--text-dim);">/ {{ total_staff }}</span></h3>
+            <p class="stat-subtext" style="color: #34d399;">Face ID & GPS orqali tasdiqlangan</p>
+        </div>
+        <div class="stat-icon-wrapper icon-amber">
+            <i data-lucide="shield-check" style="width: 24px; height: 24px;"></i>
+        </div>
+    </div>
+</div>
+
+<!-- Main Row: Charts & Groups Overview -->
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 28px;">
+    <!-- Attendance & Financial Analytics Charts -->
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <h3 class="glass-card-title">
+                <i data-lucide="bar-chart-3" style="color: #818cf8; width: 20px; height: 20px;"></i>
+                <span>Davomat va Moliya Dinamikasi</span>
+            </h3>
+            <div style="font-size: 12px; color: var(--text-dim);">Bugungi tahlil</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div style="height: 220px; position: relative;">
+                <canvas id="attendanceDonutChart"></canvas>
+            </div>
+            <div style="height: 220px; position: relative;">
+                <canvas id="financeBarChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Groups Quick Status -->
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <h3 class="glass-card-title">
+                <i data-lucide="users" style="color: #ec4899; width: 20px; height: 20px;"></i>
+                <span>Guruhlar Sig'imi</span>
+            </h3>
+            <a href="{% url 'groups_list' %}" style="color: #c084fc; font-size: 12px; text-decoration: none;">Barchasi &rarr;</a>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+            {% for g in groups %}
+            <div style="background: rgba(255, 255, 255, 0.03); padding: 12px 14px; border-radius: var(--radius-sm); border: 1px solid rgba(255, 255, 255, 0.06);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-weight: 700; font-size: 14px; color: white;">{{ g.name }}</span>
+                    <span style="font-size: 12px; color: var(--text-muted);">{{ g.active_children }} / {{ g.capacity }} bola</span>
+                </div>
+                <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 4px; overflow: hidden;">
+                    <div style="width: {% widthratio g.active_children g.capacity 100 %}%; height: 100%; background: var(--primary-gradient);"></div>
+                </div>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 6px;">
+                    Tarbiyachi: {{ g.primary_teacher.get_full_name|default:g.primary_teacher.username|default:"Biriktirilmagan" }}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Secondary Row: Staff Logs & Medical Alerts -->
+<div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px;">
+    <!-- Recent Staff GPS & Face ID Logs -->
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <h3 class="glass-card-title">
+                <i data-lucide="scan-face" style="color: #34d399; width: 20px; height: 20px;"></i>
+                <span>So'nggi Xodimlar Face ID & GPS Davomati</span>
+            </h3>
+            <a href="{% url 'staff_attendance_logs' %}" style="color: #34d399; font-size: 12px; text-decoration: none;">Jurnal &rarr;</a>
+        </div>
+
+        <div class="glass-table-wrapper">
+            <table class="glass-table">
+                <thead>
+                    <tr>
+                        <th>Xodim</th>
+                        <th>Vaqt</th>
+                        <th>Masofa</th>
+                        <th>Holati</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in recent_staff_logs %}
+                    <tr>
+                        <td>
+                            <div style="font-weight: 600; color: white;">{{ log.teacher.get_full_name|default:log.teacher.username }}</div>
+                            <div style="font-size: 11px; color: var(--text-dim);">{{ log.date|date:"d.m.Y" }}</div>
+                        </td>
+                        <td>{{ log.check_in_time|time:"H:i:s"|default:"—" }}</td>
+                        <td>
+                            <span style="font-weight: 600; color: {% if log.is_within_geofence %}#34d399{% else %}#fb7185{% endif %};">
+                                {{ log.distance_meters|default:0 }}m
+                            </span>
+                        </td>
+                        <td>
+                            {% if log.is_within_geofence %}
+                            <span class="badge badge-present">✓ Hududda (50m)</span>
+                            {% else %}
+                            <span class="badge badge-unexcused">⚠️ Hududdan Tashqari</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" style="text-align: center; color: var(--text-dim);">Hozircha yozuvlar mavjud emas</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Medical & Allergy Notes Card -->
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <h3 class="glass-card-title">
+                <i data-lucide="shield-alert" style="color: #fb7185; width: 20px; height: 20px;"></i>
+                <span>Tibbiy Eslatmalar & Allergiyalar</span>
+            </h3>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            {% for child in children_with_allergies %}
+            <div style="background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.2); border-radius: var(--radius-sm); padding: 12px 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <a href="{% url 'child_detail' child.id %}" style="font-weight: 700; color: #ffffff; text-decoration: none;">{{ child.full_name }}</a>
+                    <span style="font-size: 11px; color: #f472b6; font-weight: 600;">{{ child.group.name }}</span>
+                </div>
+                <p style="font-size: 12px; color: #fecdd3; line-height: 1.4;">
+                    ⚠️ {{ child.medical_notes }}
+                </p>
+            </div>
+            {% empty %}
+            <div style="text-align: center; padding: 20px; color: var(--text-dim); font-size: 13px;">
+                Allergiyasi bo'lgan bolalar qayd etilmagan.
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // 1. Attendance Doughnut Chart
+    const attCtx = document.getElementById('attendanceDonutChart').getContext('2d');
+    new Chart(attCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Keldi', 'Sababli', 'Sababsiz'],
+            datasets: [{
+                data: [{{ present_count }}, {{ excused_count }}, {{ unexcused_count }}],
+                backgroundColor: ['#10b981', '#f59e0b', '#f43f5e'],
+                borderWidth: 0,
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans', size: 11 } }
+                }
+            },
+            cutout: '70%'
+        }
+    });
+
+    // 2. Finance Bar Chart
+    const finCtx = document.getElementById('financeBarChart').getContext('2d');
+    new Chart(finCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Kutilgan', 'To\'langan', 'Qarz', 'Qayta Hisoblash'],
+            datasets: [{
+                label: 'Summa (UZS)',
+                data: [
+                    {{ total_expected_revenue }},
+                    {{ total_collected_revenue }},
+                    {{ total_debt }},
+                    {{ total_recalculated_discounts }}
+                ],
+                backgroundColor: ['#6366f1', '#10b981', '#f43f5e', '#a855f7'],
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    ticks: { color: '#64748b', font: { size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.05)' }
+                },
+                x: {
+                    ticks: { color: '#94a3b8', font: { size: 10 } },
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Humo Kids — Zamonaviy Bog'cha Boshqaruv Tizimi{% endblock %}</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Glassmorphism Stylesheet -->
+    <link rel="stylesheet" href="/static/css/glassmorphism.css">
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <!-- Ambient Background Blobs -->
+    <div class="bg-blob bg-blob-1"></div>
+    <div class="bg-blob bg-blob-2"></div>
+    <div class="bg-blob bg-blob-3"></div>
+
+    <div class="app-container">
+        {% if user.is_authenticated %}
+        <!-- Glass Sidebar -->
+        <aside class="glass-sidebar">
+            <div class="brand-header">
+                <div class="brand-icon">
+                    <i data-lucide="sparkles" style="color: white; width: 24px; height: 24px;"></i>
+                </div>
+                <div>
+                    <h1 class="brand-title">HUMO KIDS</h1>
+                    <p class="brand-subtitle">Smart Kindergarten</p>
+                </div>
+            </div>
+
+            <p class="nav-section-title">ASOSIY MENYU</p>
+            <ul class="nav-menu">
+                <li>
+                    <a href="{% url 'dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' or request.resolver_match.url_name == 'admin_dashboard' or request.resolver_match.url_name == 'teacher_dashboard' %}active{% endif %}">
+                        <i data-lucide="layout-dashboard" style="width: 18px; height: 18px;"></i>
+                        <span>Boshqaruv Paneli</span>
+                    </a>
+                </li>
+                
+                {% if user.can_manage_all %}
+                <li>
+                    <a href="{% url 'groups_list' %}" class="nav-link {% if 'groups' in request.path %}active{% endif %}">
+                        <i data-lucide="layers" style="width: 18px; height: 18px;"></i>
+                        <span>Guruhlar</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'staff_list' %}" class="nav-link {% if 'staff' in request.path and 'attendance' not in request.path %}active{% endif %}">
+                        <i data-lucide="users" style="width: 18px; height: 18px;"></i>
+                        <span>Xodimlar</span>
+                    </a>
+                </li>
+                {% endif %}
+
+                <li>
+                    <a href="{% url 'children_list' %}" class="nav-link {% if 'children' in request.path %}active{% endif %}">
+                        <i data-lucide="smile" style="width: 18px; height: 18px;"></i>
+                        <span>Bolalar Ro'yxati</span>
+                    </a>
+                </li>
+
+                <li>
+                    <a href="{% url 'attendance_daily' %}" class="nav-link {% if 'attendance/daily' in request.path %}active{% endif %}">
+                        <i data-lucide="calendar-check-2" style="width: 18px; height: 18px;"></i>
+                        <span>Kunlik Davomat</span>
+                    </a>
+                </li>
+
+                <li>
+                    <a href="{% url 'staff_attendance_portal' %}" class="nav-link {% if 'staff-portal' in request.path %}active{% endif %}">
+                        <i data-lucide="scan-face" style="width: 18px; height: 18px;"></i>
+                        <span>Face ID & GPS Davomat</span>
+                    </a>
+                </li>
+
+                {% if user.can_manage_all %}
+                <li>
+                    <a href="{% url 'staff_attendance_logs' %}" class="nav-link {% if 'staff-logs' in request.path %}active{% endif %}">
+                        <i data-lucide="map-pin" style="width: 18px; height: 18px;"></i>
+                        <span>Xodimlar Geofencing Jurnali</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'finance_dashboard' %}" class="nav-link {% if 'finance' in request.path %}active{% endif %}">
+                        <i data-lucide="credit-card" style="width: 18px; height: 18px;"></i>
+                        <span>Moliya & Qayta Hisoblash</span>
+                    </a>
+                </li>
+                {% endif %}
+
+                <p class="nav-section-title">ALOQA & TIZIM</p>
+                <li>
+                    <a href="{% url 'chat_view' %}" class="nav-link {% if 'chat' in request.path %}active{% endif %}">
+                        <i data-lucide="messages-square" style="width: 18px; height: 18px;"></i>
+                        <span>Ichki Chat</span>
+                        {% if unread_chat_count > 0 %}
+                        <span class="nav-badge">{{ unread_chat_count }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+
+                {% if user.is_director %}
+                <li>
+                    <a href="{% url 'settings' %}" class="nav-link {% if 'settings' in request.path %}active{% endif %}">
+                        <i data-lucide="sliders" style="width: 18px; height: 18px;"></i>
+                        <span>Bog'cha Sozlamalari</span>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+
+            <!-- Current User Card -->
+            <div class="user-profile-widget">
+                <div class="user-avatar">
+                    {{ user.first_name|slice:":1"|default:user.username|slice:":1"|upper }}
+                </div>
+                <div class="user-info">
+                    <p class="user-name">{{ user.get_full_name|default:user.username }}</p>
+                    <span class="user-role-badge role-{{ user.role|lower }}">{{ user.get_role_display }}</span>
+                </div>
+                <a href="{% url 'logout' %}" title="Chiqish" style="color: var(--text-dim); text-decoration: none; padding: 4px;">
+                    <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
+                </a>
+            </div>
+        </aside>
+        {% endif %}
+
+        <!-- Main Wrapper -->
+        <main class="main-wrapper">
+            {% if user.is_authenticated %}
+            <!-- Glass Top Bar -->
+            <header class="glass-header">
+                <div class="header-search">
+                    <i data-lucide="search" class="header-search-icon" style="width: 16px; height: 16px;"></i>
+                    <input type="text" placeholder="Bola, ota-ona yoki guruh qidirish..." id="globalSearchInput" onkeydown="if(event.key==='Enter') window.location.href='/children/?q='+this.value">
+                </div>
+
+                <div class="header-actions">
+                    <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 6px 12px; font-size: 13px; display: flex; align-items: center; gap: 8px; color: white;">
+                        <i data-lucide="users" style="width: 14px; height: 14px; color: #a855f7;"></i>
+                        <span>Bolalar: <strong style="color: #c084fc;">{{ total_active_children }}</strong></span>
+                    </div>
+                    <!-- Quick Demo Role Switcher -->
+                    <div class="role-switcher-dropdown" title="Rolni 1-bosishda sinab ko'rish">
+                        <span style="font-size: 11px; color: var(--text-dim); padding-left: 6px;">Rol:</span>
+                        <a href="{% url 'switch_role' 'director' %}" class="role-pill-btn {% if user.username == 'director' %}active{% endif %}">Direktor</a>
+                        <a href="{% url 'switch_role' 'manager' %}" class="role-pill-btn {% if user.username == 'manager' %}active{% endif %}">Menejer</a>
+                        <a href="{% url 'switch_role' 'teacher1' %}" class="role-pill-btn {% if user.username == 'teacher1' %}active{% endif %}">Tarbiyachi 1</a>
+                        <a href="{% url 'switch_role' 'teacher2' %}" class="role-pill-btn {% if user.username == 'teacher2' %}active{% endif %}">Tarbiyachi 2</a>
+                    </div>
+
+                    <!-- Geofence Info Badge -->
+                    <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 6px 12px; font-size: 12px; display: flex; align-items: center; gap: 6px; color: #34d399;">
+                        <span class="gps-pulse-dot in-range" style="width: 8px; height: 8px;"></span>
+                        <span>Geofence: 50m</span>
+                    </div>
+                </div>
+            </header>
+            {% endif %}
+
+            <!-- Page Body -->
+            <div class="page-content">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <!-- Global Toast Container -->
+    <div id="toast-container" style="position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;"></div>
+
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+    </script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

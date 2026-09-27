@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+
+{% block title %}Xodimlar Ro'yxati — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+    <div>
+        <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">Xodimlar Ro'yxati</h2>
+        <p style="font-size: 13px; color: var(--text-muted);">Jami: {{ staff.count }} ta xodim</p>
+    </div>
+
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        {% if user.can_manage_all %}
+        <button onclick="document.getElementById('modalAddStaff').style.display='flex'" class="btn-glass btn-primary">
+            <i data-lucide="user-plus" style="width: 16px; height: 16px;"></i>
+            <span>Yangi Xodim Qo'shish</span>
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="glass-card" style="padding: 20px;">
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; color: white; text-align: left;">
+            <thead>
+                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+                    <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Xodim</th>
+                    <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Telefon</th>
+                    <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Rol</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for st in staff %}
+                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                    <td style="padding: 12px; display: flex; align-items: center; gap: 12px;">
+                        <div style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                            {% if st.avatar %}
+                            <img src="{{ st.avatar.url }}" alt="avatar" style="width: 100%; height: 100%; object-fit: cover;">
+                            {% else %}
+                            <i data-lucide="user" style="width: 20px; height: 20px; color: var(--text-dim);"></i>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <strong style="display: block; font-family: 'Outfit', sans-serif;">{{ st.get_full_name|default:st.username }}</strong>
+                            <span style="font-size: 12px; color: var(--text-muted);">{{ st.username }}</span>
+                        </div>
+                    </td>
+                    <td style="padding: 12px; color: var(--text-dim);">
+                        {{ st.phone_number|default:"Kiritilmagan" }}
+                    </td>
+                    <td style="padding: 12px;">
+                        <span class="user-role-badge role-{{ st.role|lower }}">{{ st.get_role_display }}</span>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="3" style="padding: 24px; text-align: center; color: var(--text-muted);">Xodimlar topilmadi.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Staff Modal -->
+{% if user.can_manage_all %}
+<div id="modalAddStaff" class="glass-modal-backdrop" {% if show_modal %}style="display: flex;"{% endif %}>
+    <div class="glass-modal">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white;">Yangi Xodim Qo'shish</h3>
+            <button onclick="document.getElementById('modalAddStaff').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        {% if form.errors %}
+        <div style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 8px; padding: 12px; color: #fb7185; margin-bottom: 16px;">
+            Iltimos, xatoliklarni to'g'rilang.
+            {{ form.errors }}
+        </div>
+        {% endif %}
+
+        <!-- Enctype must be multipart/form-data for image upload -->
+        <form method="POST" action="{% url 'staff_create' %}" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Foydalanuvchi nomi (Login) *</label>
+                    {{ form.username }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Rol *</label>
+                    {{ form.role }}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Ism *</label>
+                    {{ form.first_name }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Familiya *</label>
+                    {{ form.last_name }}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Telefon *</label>
+                {{ form.phone_number }}
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Face ID Rasm (Avatar) *</label>
+                {{ form.avatar }}
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+                <button type="button" onclick="document.getElementById('modalAddStaff').style.display='none'" class="btn-glass btn-secondary">Bekor qilish</button>
+                <button type="submit" class="btn-glass btn-primary">Saqlash</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
