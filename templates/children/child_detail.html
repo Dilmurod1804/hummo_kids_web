@@ -92,7 +92,13 @@
                                 <span class="badge badge-unexcused">Sababsiz</span>
                                 {% endif %}
                             </td>
-                            <td>{{ att.marked_by.get_full_name|default:att.marked_by.username|default:"Tizim" }}</td>
+                            <td>
+                                {% if att.marked_by %}
+                                    {{ att.marked_by.get_full_name|default:att.marked_by.username }}
+                                {% else %}
+                                    Tizim
+                                {% endif %}
+                            </td>
                             <td>{{ att.notes|default:"—" }}</td>
                         </tr>
                         {% empty %}

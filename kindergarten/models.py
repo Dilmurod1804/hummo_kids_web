@@ -10,6 +10,7 @@ class User(AbstractUser):
         ('TEACHER', 'Teacher'),
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='TEACHER')
+    salary = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name="Oylik Maosh")
     phone_number = models.CharField(max_length=25, blank=True, null=True)
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -47,6 +48,8 @@ class KindergartenSettings(models.Model):
     currency_symbol = models.CharField(max_length=15, default=getattr(settings, 'CURRENCY_SYMBOL', "UZS"))
     contact_phone = models.CharField(max_length=25, default="+998 71 200 00 00")
     contact_email = models.EmailField(default="info@humokids.uz")
+    manager_username = models.CharField(max_length=150, default="manager", help_text="Shared manager login username")
+    manager_password = models.CharField(max_length=128, default="humomanager2026", help_text="Manager login password")
 
     class Meta:
         verbose_name = "Kindergarten Settings"
@@ -94,7 +97,7 @@ class Child(models.Model):
     last_name = models.CharField(max_length=60)
     birth_date = models.DateField()
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, default='M')
-    group = models.ForeignKey(Group, on_delete=models.PROTECT, related_name='children')
+    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name='children')
     parent_full_name = models.CharField(max_length=120)
     parent_phone = models.CharField(max_length=25)
     parent_email = models.EmailField(blank=True, null=True)

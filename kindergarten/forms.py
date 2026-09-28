@@ -74,31 +74,123 @@ class PaymentForm(forms.ModelForm):
 
 
 class SettingsForm(forms.ModelForm):
+    # Extra fields for changing manager credentials securely
+    new_manager_username = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'glass-input',
+            'placeholder': 'Yangi login (o\'zgartirmoqchi bo\'lsangiz kiriting)',
+            'autocomplete': 'off',
+        }),
+        label="Yangi Menejer Logini"
+    )
+    new_manager_password = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(attrs={
+            'class': 'glass-input',
+            'placeholder': 'Yangi parol (o\'zgartirmoqchi bo\'lsangiz kiriting)',
+            'autocomplete': 'new-password',
+        }),
+        label="Yangi Menejer Paroli"
+    )
+    confirm_manager_password = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(attrs={
+            'class': 'glass-input',
+            'placeholder': 'Yangi parolni tasdiqlang',
+            'autocomplete': 'new-password',
+        }),
+        label="Parolni Tasdiqlash"
+    )
+    latitude = forms.CharField(
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'glass-input',
+            'placeholder': '41.311081',
+            'inputmode': 'decimal',
+        }),
+        label="Kenglik (Latitude)"
+    )
+    longitude = forms.CharField(
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'glass-input',
+            'placeholder': '69.240562',
+            'inputmode': 'decimal',
+        }),
+        label="Uzunlik (Longitude)"
+    )
+
     class Meta:
         model = KindergartenSettings
-        fields = ['name', 'address', 'latitude', 'longitude', 'geofence_radius_meters', 'daily_meal_rate', 'default_monthly_fee', 'currency_symbol', 'contact_phone', 'contact_email']
+        fields = ['name', 'address', 'latitude', 'longitude', 'geofence_radius_meters',
+                  'daily_meal_rate', 'default_monthly_fee', 'currency_symbol',
+                  'contact_phone', 'contact_email', 'manager_username', 'manager_password']
         widgets = {
-            'name': forms.TextInput(attrs={'class': 'glass-input'}),
-            'address': forms.TextInput(attrs={'class': 'glass-input'}),
-            'latitude': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.000001'}),
-            'longitude': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.000001'}),
-            'geofence_radius_meters': forms.NumberInput(attrs={'class': 'glass-input', 'step': '1'}),
-            'daily_meal_rate': forms.NumberInput(attrs={'class': 'glass-input'}),
-            'default_monthly_fee': forms.NumberInput(attrs={'class': 'glass-input'}),
-            'currency_symbol': forms.TextInput(attrs={'class': 'glass-input'}),
-            'contact_phone': forms.TextInput(attrs={'class': 'glass-input'}),
-            'contact_email': forms.EmailInput(attrs={'class': 'glass-input'}),
+            'name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Bog\'cha nomi'}),
+            'address': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'To\'liq manzil'}),
+            'latitude': forms.TextInput(attrs={'class': 'glass-input', 'inputmode': 'decimal', 'placeholder': '41.311081'}),
+            'longitude': forms.TextInput(attrs={'class': 'glass-input', 'inputmode': 'decimal', 'placeholder': '69.240562'}),
+            'geofence_radius_meters': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any', 'placeholder': '50'}),
+            'daily_meal_rate': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any'}),
+            'default_monthly_fee': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any'}),
+            'currency_symbol': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'UZS'}),
+            'contact_phone': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': '+998 71 200 00 00'}),
+            'contact_email': forms.EmailInput(attrs={'class': 'glass-input', 'placeholder': 'info@humokids.uz'}),
+            # manager credentials are stored in DB but only changed via new_ fields
+            'manager_username': forms.HiddenInput(),
+            'manager_password': forms.HiddenInput(),
         }
+
+    def clean_latitude(self):
+        val = str(self.cleaned_data.get('latitude', '')).replace(',', '.').strip()
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            raise forms.ValidationError("To'g'ri koordinata kiriting (masalan: 41.311081)")
+
+    def clean_longitude(self):
+        val = str(self.cleaned_data.get('longitude', '')).replace(',', '.').strip()
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            raise forms.ValidationError("To'g'ri koordinata kiriting (masalan: 69.240562)")
+
+    def clean(self):
+        cleaned_data = super().clean()
+        new_uname = cleaned_data.get('new_manager_username', '').strip()
+        new_pw = cleaned_data.get('new_manager_password')
+        confirm_pw = cleaned_data.get('confirm_manager_password')
+
+        # Validate new username
+        if new_uname:
+            if len(new_uname) < 3:
+                self.add_error('new_manager_username', 'Login kamida 3 belgidan iborat bo\'lishi kerak.')
+            elif ' ' in new_uname:
+                self.add_error('new_manager_username', 'Login bo\'sh joy (space) o\'z ichiga olmasligi kerak.')
+            else:
+                cleaned_data['manager_username'] = new_uname
+
+        # Validate new password
+        if new_pw or confirm_pw:
+            if new_pw != confirm_pw:
+                self.add_error('confirm_manager_password', 'Parollar mos kelmadi. Iltimos qaytadan kiriting.')
+            elif len(new_pw) < 6:
+                self.add_error('new_manager_password', 'Parol kamida 6 belgidan iborat bo\'lishi kerak.')
+            else:
+                cleaned_data['manager_password'] = new_pw
+        return cleaned_data
 
 class StaffForm(forms.ModelForm):
     class Meta:
         model = User
-        fields = ['username', 'first_name', 'last_name', 'phone_number', 'role', 'avatar']
+        fields = ['username', 'first_name', 'last_name', 'phone_number', 'role', 'salary', 'avatar']
         widgets = {
             'username': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Login / Taxallus'}),
             'first_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Ism'}),
             'last_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Familiya'}),
             'phone_number': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Telefon raqam'}),
             'role': forms.Select(attrs={'class': 'glass-input'}),
+            'salary': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': 'Oylik maosh (UZS)'}),
             'avatar': forms.FileInput(attrs={'class': 'glass-input-file'}),
         }

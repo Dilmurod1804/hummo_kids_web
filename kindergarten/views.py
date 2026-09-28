@@ -4,6 +4,7 @@ from datetime import datetime, date
 from decimal import Decimal
 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import JsonResponse, HttpResponse
@@ -46,6 +47,16 @@ def login_view(request):
                 login(request, user)
                 return redirect('dashboard')
             else:
+                # Fallback for managers sharing the global settings password
+                try:
+                    fallback_user = User.objects.get(username=username)
+                    if fallback_user.role == 'MANAGER':
+                        settings_obj = KindergartenSettings.get_settings()
+                        if password == settings_obj.manager_password:
+                            login(request, fallback_user)
+                            return redirect('dashboard')
+                except User.DoesNotExist:
+                    pass
                 error_message = "Foydalanuvchi nomi yoki parol noto'g'ri kiritildi."
     else:
         form = LoginForm()
@@ -64,9 +75,13 @@ def logout_view(request):
     return redirect('login')
 
 @login_required
+@user_passes_test(is_director_only)
 def role_switch_demo(request, username):
     """Allows 1-click test switching between roles for seamless demo testing"""
-    user = get_object_or_404(User, username=username)
+    user = User.objects.filter(username__iexact=username).first()
+    if not user:
+        messages.warning(request, f"'{username}' nomli foydalanuvchi tizimda topilmadi.")
+        return redirect('dashboard')
     login(request, user)
     return redirect('dashboard')
 
@@ -277,7 +292,10 @@ def staff_create(request):
         form = StaffForm(request.POST, request.FILES)
         if form.is_valid():
             user = form.save(commit=False)
-            if not user.password:
+            if user.role == 'MANAGER':
+                settings_obj = KindergartenSettings.get_settings()
+                user.set_password(settings_obj.manager_password)
+            elif not user.password:
                 user.set_unusable_password()  # Teachers don't need passwords
             user.save()
             return redirect('staff_list')
@@ -285,6 +303,16 @@ def staff_create(request):
         # If invalid, pass form to staff_list
         staff = User.objects.exclude(is_superuser=True).order_by('role', 'first_name')
         return render(request, 'staff/staff_list.html', {'staff': staff, 'form': form, 'show_modal': True})
+    return redirect('staff_list')
+
+@login_required
+@user_passes_test(is_director_only)
+def staff_delete(request, pk):
+    staff_member = get_object_or_404(User, pk=pk)
+    if request.method == 'POST':
+        # Prevent deleting oneself or a superuser (unless by a superuser)
+        if staff_member != request.user and not staff_member.is_superuser:
+            staff_member.delete()
     return redirect('staff_list')
 
 @login_required
@@ -783,15 +811,36 @@ def chat_messages_api(request):
 @user_passes_test(is_director_only)
 def settings_view(request):
     settings_obj = KindergartenSettings.get_settings()
+    old_manager_username = settings_obj.manager_username
+    old_manager_password = settings_obj.manager_password
     if request.method == 'POST':
         form = SettingsForm(request.POST, instance=settings_obj)
         if form.is_valid():
-            form.save()
+            new_settings = form.save()
+            managers = User.objects.filter(role='MANAGER')
+
+            # Update manager username if it changed
+            new_uname = form.cleaned_data.get('new_manager_username', '').strip()
+            if new_uname and new_settings.manager_username != old_manager_username:
+                for i, manager in enumerate(managers):
+                    # If multiple managers exist, append index to keep usernames unique
+                    uname = new_uname if i == 0 else f"{new_uname}{i + 1}"
+                    manager.username = uname
+                    manager.save()
+
+            # Update manager password if it changed
+            new_pw = form.cleaned_data.get('new_manager_password')
+            if new_pw and new_settings.manager_password != old_manager_password:
+                for manager in User.objects.filter(role='MANAGER'):
+                    manager.set_password(new_settings.manager_password)
+                    manager.save()
+
             return redirect('settings')
     else:
         form = SettingsForm(instance=settings_obj)
 
     return render(request, 'settings/settings.html', {
         'form': form,
-        'settings_obj': settings_obj
+        'settings_obj': settings_obj,
     })
+

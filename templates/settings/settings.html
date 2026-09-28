@@ -3,93 +3,210 @@
 {% block title %}Bog'cha Sozlamalari — Humo Kids{% endblock %}
 
 {% block content %}
-<div style="max-width: 800px; margin: 0 auto;">
-    
-    <div style="margin-bottom: 24px;">
-        <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">Tizim va Bog'cha Sozlamalari</h2>
-        <p style="font-size: 13px; color: var(--text-muted);">GPS Geofencing koordinatalari, ovqatlanish stavkasi va umumiy ma'lumotlar</p>
+<div style="max-width: 860px; margin: 0 auto;">
+
+    <div style="margin-bottom: 28px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+        <div>
+            <h2 style="font-family: 'Outfit', sans-serif; font-size: 28px; font-weight: 800; color: white; margin: 0;">
+                Tizim va Bog'cha Sozlamalari
+            </h2>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+                GPS koordinatalari, moliyaviy stavkalar, xavfsizlik va umumiy ma'lumotlar
+            </p>
+        </div>
+        {% if messages %}
+        {% for msg in messages %}
+        <div style="background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.4); border-radius: 10px; padding: 10px 18px; font-size: 13px; color: #34d399; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="check-circle" style="width: 16px; height: 16px;"></i>
+            {{ msg }}
+        </div>
+        {% endfor %}
+        {% endif %}
     </div>
 
-    <div class="glass-card" style="padding: 32px;">
-        <form method="POST">
-            {% csrf_token %}
-            
-            <h3 style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; color: #c084fc; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+    {% if form.non_field_errors %}
+    <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; color: #f87171; font-size: 13px;">
+        <strong>Xatolik:</strong>
+        {% for error in form.non_field_errors %}
+        <div>{{ error }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="{% url 'settings' %}" id="settings-form">
+        {% csrf_token %}
+
+
+        <!-- SECTION 1: Muassasa Ma'lumotlari -->
+        <div class="glass-card" style="padding: 28px 32px; margin-bottom: 24px;">
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 17px; font-weight: 700; color: #c084fc; margin: 0 0 20px 0; display: flex; align-items: center; gap: 9px;">
                 <i data-lucide="building-2" style="width: 20px; height: 20px;"></i>
-                <span>Muassasa Ma'lumotlari</span>
+                Muassasa Ma'lumotlari
             </h3>
 
-            <div class="form-group">
-                <label class="form-label">Bog'cha Nomi *</label>
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">Bog'cha Nomi <span style="color:#ef4444;">*</span></label>
                 {{ form.name }}
+                {% if form.name.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.name.errors|join:", " }}</p>{% endif %}
             </div>
 
-            <div class="form-group">
-                <label class="form-label">Yuridik Manzil *</label>
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">Yuridik Manzil <span style="color:#ef4444;">*</span></label>
                 {{ form.address }}
+                {% if form.address.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.address.errors|join:", " }}</p>{% endif %}
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                 <div class="form-group">
                     <label class="form-label">Aloqa Telefoni</label>
                     {{ form.contact_phone }}
+                    {% if form.contact_phone.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.contact_phone.errors|join:", " }}</p>{% endif %}
                 </div>
                 <div class="form-group">
                     <label class="form-label">Elektron Pochta</label>
                     {{ form.contact_email }}
+                    {% if form.contact_email.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.contact_email.errors|join:", " }}</p>{% endif %}
                 </div>
             </div>
+        </div>
 
-            <!-- GPS Geofence Section -->
-            <h3 style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; color: #34d399; margin: 28px 0 16px 0; display: flex; align-items: center; gap: 8px;">
+        <!-- SECTION 2: GPS Geofencing -->
+        <div class="glass-card" style="padding: 28px 32px; margin-bottom: 24px;">
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 17px; font-weight: 700; color: #34d399; margin: 0 0 8px 0; display: flex; align-items: center; gap: 9px;">
                 <i data-lucide="map-pin" style="width: 20px; height: 20px;"></i>
-                <span>GPS Geofencing (Staff Attendance) Sozlamalari</span>
+                GPS Geofencing (Staff Attendance) Sozlamalari
             </h3>
+            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 20px 0;">
+                Xodimlar davomat belgilashi uchun bog'cha GPS koordinatalari va ruxsat etilgan radius.
+            </p>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
                 <div class="form-group">
-                    <label class="form-label">Kenglik (Latitude) *</label>
-                    {{ form.latitude }}
+                    <label class="form-label" for="id_latitude">Kenglik (Latitude) <span style="color:#ef4444;">*</span></label>
+                    <input type="text" inputmode="decimal" name="latitude" id="id_latitude" class="glass-input" value="{{ form.latitude.value|default_if_none:settings_obj.latitude }}" required placeholder="41.311081">
+                    {% if form.latitude.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.latitude.errors|join:", " }}</p>{% endif %}
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Uzunlik (Longitude) *</label>
-                    {{ form.longitude }}
+                    <label class="form-label" for="id_longitude">Uzunlik (Longitude) <span style="color:#ef4444;">*</span></label>
+                    <input type="text" inputmode="decimal" name="longitude" id="id_longitude" class="glass-input" value="{{ form.longitude.value|default_if_none:settings_obj.longitude }}" required placeholder="69.240562">
+                    {% if form.longitude.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.longitude.errors|join:", " }}</p>{% endif %}
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Ruxsat Radiusi (Metr) *</label>
-                    {{ form.geofence_radius_meters }}
+                    <label class="form-label" for="id_geofence_radius_meters">Ruxsat Radiusi (Metr) <span style="color:#ef4444;">*</span></label>
+                    <input type="number" step="any" name="geofence_radius_meters" id="id_geofence_radius_meters" class="glass-input" value="{{ form.geofence_radius_meters.value|default_if_none:settings_obj.geofence_radius_meters }}" required placeholder="50">
+                    {% if form.geofence_radius_meters.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.geofence_radius_meters.errors|join:", " }}</p>{% endif %}
                 </div>
             </div>
 
-            <!-- Financial Rates Section -->
-            <h3 style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; color: #fbbf24; margin: 28px 0 16px 0; display: flex; align-items: center; gap: 8px;">
+            <div style="margin-top: 14px; padding: 12px 16px; background: rgba(52,211,153,0.06); border: 1px solid rgba(52,211,153,0.15); border-radius: 8px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="info" style="width: 14px; height: 14px; color: #34d399; flex-shrink: 0;"></i>
+                Joriy sozlamalar: <strong style="color: #34d399;">{{ settings_obj.latitude }}, {{ settings_obj.longitude }}</strong> — Radius: <strong style="color: #34d399;">{{ settings_obj.geofence_radius_meters }} m</strong>
+            </div>
+        </div>
+
+        <!-- SECTION 3: Moliya va Stavkalar -->
+        <div class="glass-card" style="padding: 28px 32px; margin-bottom: 24px;">
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 17px; font-weight: 700; color: #fbbf24; margin: 0 0 20px 0; display: flex; align-items: center; gap: 9px;">
                 <i data-lucide="calculator" style="width: 20px; height: 20px;"></i>
-                <span>Moliya va Qayta Hisoblash Stavkalari</span>
+                Moliya va Qayta Hisoblash Stavkalari
             </h3>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
                 <div class="form-group">
                     <label class="form-label">Standart Oylik To'lov</label>
                     {{ form.default_monthly_fee }}
+                    {% if form.default_monthly_fee.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.default_monthly_fee.errors|join:", " }}</p>{% endif %}
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">UZS / oy</p>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Kunlik Ovqatlanish Normasi (Перерасчет)</label>
+                    <label class="form-label">Kunlik Ovqatlanish Normasi</label>
                     {{ form.daily_meal_rate }}
+                    {% if form.daily_meal_rate.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.daily_meal_rate.errors|join:", " }}</p>{% endif %}
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Qoldirilgan kun uchun chegirmalanadigan summa</p>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Valyuta</label>
+                    <label class="form-label">Valyuta Belgisi</label>
                     {{ form.currency_symbol }}
+                    {% if form.currency_symbol.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.currency_symbol.errors|join:", " }}</p>{% endif %}
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Masalan: UZS, USD, EUR</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 4: Xavfsizlik — Menejer Login & Parol -->
+        <div class="glass-card" style="padding: 28px 32px; margin-bottom: 24px;">
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 17px; font-weight: 700; color: #ef4444; margin: 0 0 8px 0; display: flex; align-items: center; gap: 9px;">
+                <i data-lucide="lock" style="width: 20px; height: 20px;"></i>
+                Xavfsizlik Sozlamalari — Menejer Kirish Ma'lumotlari
+            </h3>
+            <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 16px 0;">
+                Menejer rolidagi foydalanuvchilar uchun umumiy login va parol. Faqat o'zgartirmoqchi bo'lgan maydonlarni to'ldiring.
+            </p>
+
+            {# Hidden model fields — values managed by new_ fields above #}
+            {{ form.manager_username }}
+            {{ form.manager_password }}
+
+            <!-- Current Credentials Badge -->
+            <div style="padding: 12px 18px; background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.15); border-radius: 10px; margin-bottom: 22px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted);">
+                    <i data-lucide="user" style="width: 14px; height: 14px; color: #ef4444; flex-shrink: 0;"></i>
+                    Joriy login: <strong style="color: white; font-size: 13px; font-family: 'Outfit', monospace;">{{ settings_obj.manager_username }}</strong>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted);">
+                    <i data-lucide="key-round" style="width: 14px; height: 14px; color: #ef4444; flex-shrink: 0;"></i>
+                    Parol: <strong style="color: white; letter-spacing: 2px; font-size: 13px;">••••••••</strong>
                 </div>
             </div>
 
-            <div style="display: flex; justify-content: flex-end; margin-top: 28px;">
-                <button type="submit" class="btn-glass btn-primary" style="padding: 12px 28px; font-size: 15px;">
-                    <i data-lucide="check" style="width: 18px; height: 18px;"></i>
-                    <span>Sozlamalarni Saqlash</span>
-                </button>
+            <!-- Username Field (full width) -->
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">
+                    <i data-lucide="at-sign" style="width: 14px; height: 14px; display: inline; vertical-align: middle; margin-right: 4px;"></i>
+                    Menejer Logini (Username)
+                </label>
+                {{ form.new_manager_username }}
+                {% if form.new_manager_username.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.new_manager_username.errors|join:", " }}</p>{% endif %}
+                <p style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">Kamida 3 belgi, bo'sh joy bo'lmasin. Bo'sh qoldirsangiz — login o'zgarmaydi.</p>
             </div>
-        </form>
-    </div>
+
+            <!-- Password Fields (2 columns) -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">
+                        <i data-lucide="lock-keyhole" style="width: 14px; height: 14px; display: inline; vertical-align: middle; margin-right: 4px;"></i>
+                        Yangi Menejer Paroli
+                    </label>
+                    {{ form.new_manager_password }}
+                    {% if form.new_manager_password.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.new_manager_password.errors|join:", " }}</p>{% endif %}
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">Kamida 6 belgi. Bo'sh qoldirsangiz — parol o'zgarmaydi.</p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        <i data-lucide="shield-check" style="width: 14px; height: 14px; display: inline; vertical-align: middle; margin-right: 4px;"></i>
+                        Yangi Parolni Tasdiqlash
+                    </label>
+                    {{ form.confirm_manager_password }}
+                    {% if form.confirm_manager_password.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.confirm_manager_password.errors|join:", " }}</p>{% endif %}
+                </div>
+            </div>
+        </div>
+
+
+        <!-- Submit -->
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 4px; margin-bottom: 40px;">
+            <a href="{% url 'dashboard' %}" class="btn-glass" style="padding: 12px 24px; font-size: 14px; text-decoration: none; display: flex; align-items: center; gap: 6px;">
+                <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                Bekor Qilish
+            </a>
+            <button type="submit" class="btn-glass btn-primary" style="padding: 12px 28px; font-size: 15px; display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="save" style="width: 18px; height: 18px;"></i>
+                <span>Sozlamalarni Saqlash</span>
+            </button>
+        </div>
+    </form>
 
 </div>
 {% endblock %}
+
+

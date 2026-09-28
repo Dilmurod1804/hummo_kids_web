@@ -28,6 +28,7 @@ urlpatterns = [
     # Staff Management
     path('staff/', views.staff_list, name='staff_list'),
     path('staff/create/', views.staff_create, name='staff_create'),
+    path('staff/<int:pk>/delete/', views.staff_delete, name='staff_delete'),
 
     # Attendance (Children)
     path('attendance/daily/', views.attendance_daily, name='attendance_daily'),

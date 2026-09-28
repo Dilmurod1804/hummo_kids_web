@@ -33,6 +33,28 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-humokids-produ
 DEBUG = env_bool('DEBUG', True)
 ALLOWED_HOSTS = env_list('ALLOWED_HOSTS', ['127.0.0.1', 'localhost', '0.0.0.0', '*'])
 
+# CSRF Trusted Origins (Django 4.0+ requires origin matching for POST requests)
+CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS', [
+    'http://127.0.0.1:8000',
+    'http://localhost:8000',
+    'http://127.0.0.1',
+    'http://localhost',
+    'http://0.0.0.0:8000',
+])
+# Automatically trust origins corresponding to non-wildcard ALLOWED_HOSTS
+for _h in ALLOWED_HOSTS:
+    if _h and _h != '*':
+        if not _h.startswith(('http://', 'https://')):
+            for _proto in ('http://', 'https://'):
+                _orig = f"{_proto}{_h}"
+                if _orig not in CSRF_TRUSTED_ORIGINS:
+                    CSRF_TRUSTED_ORIGINS.append(_orig)
+                _orig_port = f"{_proto}{_h}:8000"
+                if _orig_port not in CSRF_TRUSTED_ORIGINS:
+                    CSRF_TRUSTED_ORIGINS.append(_orig_port)
+        elif _h not in CSRF_TRUSTED_ORIGINS:
+            CSRF_TRUSTED_ORIGINS.append(_h)
+
 INSTALLED_APPS = [
     'daphne',
     'django.contrib.admin',
@@ -72,6 +94,7 @@ TEMPLATES = [
             'context_processors': [
                 'django.template.context_processors.debug',
                 'django.template.context_processors.request',
+                'django.template.context_processors.csrf',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'kindergarten.context_processors.kindergarten_context',
@@ -107,6 +130,7 @@ else:
 
 # Custom User Model
 AUTH_USER_MODEL = 'kindergarten.User'
+AUTHENTICATION_BACKENDS = ['kindergarten.backends.RoleBasedAuthBackend']
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [

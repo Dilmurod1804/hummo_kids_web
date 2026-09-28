@@ -61,6 +61,7 @@
 
         <!-- Chat Input Bar -->
         <form id="chatForm" onsubmit="sendChatMessage(event)" class="chat-input-bar">
+            {% csrf_token %}
             <input type="text" id="chatMessageInput" class="glass-input" placeholder="Xabaringizni yozing..." autocomplete="off" style="border-radius: 24px; padding: 12px 20px;">
             <button type="submit" class="btn-glass btn-primary" style="border-radius: 50%; width: 44px; height: 44px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                 <i data-lucide="send" style="width: 18px; height: 18px;"></i>
@@ -148,9 +149,13 @@ function sendChatMessage(e) {
         inputField.value = '';
     } else {
         // Fallback POST
+        const csrfToken = document.querySelector('#chatForm [name=csrfmiddlewaretoken]')?.value || '';
         fetch(`/chat/messages-api/?room=${roomName}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
             body: JSON.stringify({ message: msg })
         }).then(() => {
             inputField.value = '';

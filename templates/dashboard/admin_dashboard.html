@@ -120,7 +120,12 @@
                     <div style="width: {% widthratio g.active_children g.capacity 100 %}%; height: 100%; background: var(--primary-gradient);"></div>
                 </div>
                 <div style="font-size: 11px; color: var(--text-dim); margin-top: 6px;">
-                    Tarbiyachi: {{ g.primary_teacher.get_full_name|default:g.primary_teacher.username|default:"Biriktirilmagan" }}
+                    Tarbiyachi: 
+                    {% if g.primary_teacher %}
+                        {{ g.primary_teacher.get_full_name|default:g.primary_teacher.username }}
+                    {% else %}
+                        Biriktirilmagan
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}

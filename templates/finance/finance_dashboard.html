@@ -193,6 +193,7 @@
         </div>
 
         <form id="formPayment" onsubmit="submitPayment(event)">
+            {% csrf_token %}
             <input type="hidden" id="payInvoiceId" name="invoice_id">
             
             <div style="background: rgba(255, 255, 255, 0.04); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 18px;">
@@ -252,11 +253,15 @@ async function submitPayment(e) {
     const method = document.getElementById('payMethod').value;
     const transId = document.getElementById('payTransId').value;
     const notes = document.getElementById('payNotes').value;
+    const csrfToken = document.querySelector('#formPayment [name=csrfmiddlewaretoken]')?.value || '';
 
     try {
         const res = await fetch("{% url 'record_payment_api' %}", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken
+            },
             body: JSON.stringify({
                 invoice_id: invoiceId,
                 amount: amount,

@@ -10,7 +10,7 @@
             <a href="{% url 'groups_list' %}" class="btn-glass btn-secondary" style="font-size: 12px;">&larr; Orqaga</a>
         </div>
 
-        <form method="POST">
+        <form method="POST" action="{% url 'group_edit' group.id %}">
             {% csrf_token %}
             <div class="form-group">
                 <label class="form-label">Guruh Nomi *</label>
