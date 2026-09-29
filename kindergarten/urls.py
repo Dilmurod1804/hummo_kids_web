@@ -16,6 +16,7 @@ urlpatterns = [
     path('groups/', views.groups_list, name='groups_list'),
     path('groups/create/', views.group_create, name='group_create'),
     path('groups/<int:pk>/edit/', views.group_update, name='group_update'),
+    path('groups/<int:pk>/replace-teacher/', views.group_replace_teacher, name='group_replace_teacher'),
     path('groups/<int:pk>/delete/', views.group_delete, name='group_delete'),
 
     # Children
@@ -28,6 +29,8 @@ urlpatterns = [
     # Staff Management
     path('staff/', views.staff_list, name='staff_list'),
     path('staff/create/', views.staff_create, name='staff_create'),
+    path('staff/<int:pk>/toggle-active/', views.staff_toggle_active, name='staff_toggle_active'),
+    path('staff/<int:pk>/reset-password/', views.staff_reset_password, name='staff_reset_password'),
     path('staff/<int:pk>/delete/', views.staff_delete, name='staff_delete'),
 
     # Attendance (Children)

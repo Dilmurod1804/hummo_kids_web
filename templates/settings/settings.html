@@ -83,12 +83,12 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
                 <div class="form-group">
                     <label class="form-label" for="id_latitude">Kenglik (Latitude) <span style="color:#ef4444;">*</span></label>
-                    <input type="text" inputmode="decimal" name="latitude" id="id_latitude" class="glass-input" value="{{ form.latitude.value|default_if_none:settings_obj.latitude }}" required placeholder="41.311081">
+                    <input type="number" step="any" inputmode="decimal" name="latitude" id="id_latitude" class="glass-input" value="{{ form.latitude.value|default_if_none:settings_obj.latitude }}" required placeholder="41.311081">
                     {% if form.latitude.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.latitude.errors|join:", " }}</p>{% endif %}
                 </div>
                 <div class="form-group">
                     <label class="form-label" for="id_longitude">Uzunlik (Longitude) <span style="color:#ef4444;">*</span></label>
-                    <input type="text" inputmode="decimal" name="longitude" id="id_longitude" class="glass-input" value="{{ form.longitude.value|default_if_none:settings_obj.longitude }}" required placeholder="69.240562">
+                    <input type="number" step="any" inputmode="decimal" name="longitude" id="id_longitude" class="glass-input" value="{{ form.longitude.value|default_if_none:settings_obj.longitude }}" required placeholder="69.240562">
                     {% if form.longitude.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.longitude.errors|join:", " }}</p>{% endif %}
                 </div>
                 <div class="form-group">
@@ -98,9 +98,25 @@
                 </div>
             </div>
 
+            <!-- Work Hours -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px;">
+                <div class="form-group">
+                    <label class="form-label" for="id_work_start_time">Ish Boshlanish Vaqti <span style="color:#ef4444;">*</span></label>
+                    {{ form.work_start_time }}
+                    {% if form.work_start_time.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.work_start_time.errors|join:", " }}</p>{% endif %}
+                    <p style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">Face ID kelish oynasi: 1 soat oldin ochiladi, 10 daqiqa keyin yopiladi</p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="id_work_end_time">Ish Tugash Vaqti <span style="color:#ef4444;">*</span></label>
+                    {{ form.work_end_time }}
+                    {% if form.work_end_time.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.work_end_time.errors|join:", " }}</p>{% endif %}
+                    <p style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">Face ID ketish oynasi: 10 daqiqa oldin ochiladi, 24:00 da yopiladi</p>
+                </div>
+            </div>
+
             <div style="margin-top: 14px; padding: 12px 16px; background: rgba(52,211,153,0.06); border: 1px solid rgba(52,211,153,0.15); border-radius: 8px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
                 <i data-lucide="info" style="width: 14px; height: 14px; color: #34d399; flex-shrink: 0;"></i>
-                Joriy sozlamalar: <strong style="color: #34d399;">{{ settings_obj.latitude }}, {{ settings_obj.longitude }}</strong> — Radius: <strong style="color: #34d399;">{{ settings_obj.geofence_radius_meters }} m</strong>
+                Joriy sozlamalar: <strong style="color: #34d399;">{{ settings_obj.latitude }}, {{ settings_obj.longitude }}</strong> — Radius: <strong style="color: #34d399;">{{ settings_obj.geofence_radius_meters }} m</strong> — Ish vaqti: <strong style="color: #34d399;">{{ settings_obj.work_start_time|time:"H:i" }} – {{ settings_obj.work_end_time|time:"H:i" }}</strong>
             </div>
         </div>
 

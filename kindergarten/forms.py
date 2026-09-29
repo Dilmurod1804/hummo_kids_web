@@ -56,8 +56,8 @@ class GroupForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['primary_teacher'].queryset = User.objects.filter(role__in=['TEACHER', 'MANAGER', 'DIRECTOR'])
-        self.fields['assistant_teacher'].queryset = User.objects.filter(role__in=['TEACHER', 'MANAGER', 'DIRECTOR'])
+        self.fields['primary_teacher'].queryset = User.objects.filter(role__in=['TEACHER', 'ASSISTANT', 'MANAGER', 'DIRECTOR'], is_active=True)
+        self.fields['assistant_teacher'].queryset = User.objects.filter(role__in=['TEACHER', 'ASSISTANT', 'MANAGER', 'DIRECTOR'], is_active=True)
 
 
 class PaymentForm(forms.ModelForm):
@@ -104,19 +104,19 @@ class SettingsForm(forms.ModelForm):
     )
     latitude = forms.CharField(
         required=True,
-        widget=forms.TextInput(attrs={
+        widget=forms.NumberInput(attrs={
             'class': 'glass-input',
             'placeholder': '41.311081',
-            'inputmode': 'decimal',
+            'step': 'any',
         }),
         label="Kenglik (Latitude)"
     )
     longitude = forms.CharField(
         required=True,
-        widget=forms.TextInput(attrs={
+        widget=forms.NumberInput(attrs={
             'class': 'glass-input',
             'placeholder': '69.240562',
-            'inputmode': 'decimal',
+            'step': 'any',
         }),
         label="Uzunlik (Longitude)"
     )
@@ -124,14 +124,17 @@ class SettingsForm(forms.ModelForm):
     class Meta:
         model = KindergartenSettings
         fields = ['name', 'address', 'latitude', 'longitude', 'geofence_radius_meters',
+                  'work_start_time', 'work_end_time',
                   'daily_meal_rate', 'default_monthly_fee', 'currency_symbol',
                   'contact_phone', 'contact_email', 'manager_username', 'manager_password']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Bog\'cha nomi'}),
             'address': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'To\'liq manzil'}),
-            'latitude': forms.TextInput(attrs={'class': 'glass-input', 'inputmode': 'decimal', 'placeholder': '41.311081'}),
-            'longitude': forms.TextInput(attrs={'class': 'glass-input', 'inputmode': 'decimal', 'placeholder': '69.240562'}),
+            'latitude': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any', 'placeholder': '41.311081'}),
+            'longitude': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any', 'placeholder': '69.240562'}),
             'geofence_radius_meters': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any', 'placeholder': '50'}),
+            'work_start_time': forms.TimeInput(attrs={'class': 'glass-input', 'type': 'time'}),
+            'work_end_time': forms.TimeInput(attrs={'class': 'glass-input', 'type': 'time'}),
             'daily_meal_rate': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any'}),
             'default_monthly_fee': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any'}),
             'currency_symbol': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'UZS'}),
@@ -181,16 +184,75 @@ class SettingsForm(forms.ModelForm):
                 cleaned_data['manager_password'] = new_pw
         return cleaned_data
 
+
+import random
+import re
+
+def generate_staff_credentials(first_name, last_name=''):
+    tr = {
+        'а':'a', 'б':'b', 'в':'v', 'г':'g', 'д':'d', 'е':'e', 'ё':'yo', 'ж':'j',
+        'з':'z', 'и':'i', 'й':'y', 'к':'k', 'л':'l', 'м':'m', 'н':'n', 'о':'o',
+        'п':'p', 'р':'r', 'с':'s', 'т':'t', 'у':'u', 'ф':'f', 'х':'x', 'ц':'ts',
+        'ч':'ch', 'ш':'sh', 'щ':'sh', 'ъ':'', 'ы':'i', 'ь':'', 'э':'e', 'ю':'yu',
+        'я':'ya', 'ў':'o', 'ғ':'g', 'қ':'q', 'ҳ':'h', "'": '', "‘": '', "’": '', "`": ''
+    }
+    base = (first_name or 'xodim').strip().lower()
+    for cyr, lat in tr.items():
+        base = base.replace(cyr, lat)
+    base = re.sub(r'[^a-z0-9]', '', base)
+    if not base or len(base) < 2:
+        base = "xodim"
+
+    candidate = f"{base}_{random.randint(100, 999)}"
+    while User.objects.filter(username=candidate).exists():
+        candidate = f"{base}_{random.randint(1000, 9999)}"
+
+    pin = random.randint(1000, 9999)
+    password = f"Humo_{pin}"
+    return candidate, password
+
+
 class StaffForm(forms.ModelForm):
     class Meta:
         model = User
-        fields = ['username', 'first_name', 'last_name', 'phone_number', 'role', 'salary', 'avatar']
+        fields = ['first_name', 'last_name', 'phone_number', 'role', 'custom_position', 'salary', 'avatar']
         widgets = {
-            'username': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Login / Taxallus'}),
             'first_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Ism'}),
             'last_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Familiya'}),
-            'phone_number': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Telefon raqam'}),
+            'phone_number': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': '+998 90 123 45 67'}),
             'role': forms.Select(attrs={'class': 'glass-input'}),
+            'custom_position': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': "Ixtiyoriy aniq lavozim (masalan: Bosh oshpaz)"}),
             'salary': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': 'Oylik maosh (UZS)'}),
             'avatar': forms.FileInput(attrs={'class': 'glass-input-file'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['first_name'].required = True
+        self.fields['last_name'].required = True
+        self.fields['phone_number'].required = True
+        self.fields['salary'].required = True
+        self.fields['role'].required = True
+
+
+class TeacherReplaceForm(forms.ModelForm):
+    class Meta:
+        model = Group
+        fields = ['primary_teacher', 'assistant_teacher']
+        widgets = {
+            'primary_teacher': forms.Select(attrs={'class': 'glass-input'}),
+            'assistant_teacher': forms.Select(attrs={'class': 'glass-input'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['primary_teacher'].queryset = User.objects.filter(
+            role__in=['TEACHER', 'ASSISTANT', 'MANAGER', 'DIRECTOR'],
+            is_active=True
+        )
+        self.fields['assistant_teacher'].queryset = User.objects.filter(
+            role__in=['TEACHER', 'ASSISTANT', 'MANAGER', 'DIRECTOR'],
+            is_active=True
+        )
+        self.fields['primary_teacher'].required = True
+        self.fields['assistant_teacher'].required = False

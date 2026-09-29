@@ -43,13 +43,15 @@
 
             <p class="nav-section-title">ASOSIY MENYU</p>
             <ul class="nav-menu">
+                {% if user.can_manage_all or user.is_teacher %}
                 <li>
                     <a href="{% url 'dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' or request.resolver_match.url_name == 'admin_dashboard' or request.resolver_match.url_name == 'teacher_dashboard' %}active{% endif %}">
                         <i data-lucide="layout-dashboard" style="width: 18px; height: 18px;"></i>
                         <span>Boshqaruv Paneli</span>
                     </a>
                 </li>
-                
+                {% endif %}
+
                 {% if user.can_manage_all %}
                 <li>
                     <a href="{% url 'groups_list' %}" class="nav-link {% if 'groups' in request.path %}active{% endif %}">
@@ -65,6 +67,7 @@
                 </li>
                 {% endif %}
 
+                {% if user.can_manage_all or user.is_teacher %}
                 <li>
                     <a href="{% url 'children_list' %}" class="nav-link {% if 'children' in request.path %}active{% endif %}">
                         <i data-lucide="smile" style="width: 18px; height: 18px;"></i>
@@ -78,6 +81,7 @@
                         <span>Kunlik Davomat</span>
                     </a>
                 </li>
+                {% endif %}
 
                 <li>
                     <a href="{% url 'staff_attendance_portal' %}" class="nav-link {% if 'staff-portal' in request.path %}active{% endif %}">
@@ -102,6 +106,7 @@
                 {% endif %}
 
                 <p class="nav-section-title">ALOQA & TIZIM</p>
+                {% if user.can_manage_all or user.is_teacher %}
                 <li>
                     <a href="{% url 'chat_view' %}" class="nav-link {% if 'chat' in request.path %}active{% endif %}">
                         <i data-lucide="messages-square" style="width: 18px; height: 18px;"></i>
@@ -111,6 +116,7 @@
                         {% endif %}
                     </a>
                 </li>
+                {% endif %}
 
                 {% if user.is_director %}
                 <li>

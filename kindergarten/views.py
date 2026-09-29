@@ -1,6 +1,6 @@
 import base64
 import json
-from datetime import datetime, date
+from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 
 from django.shortcuts import render, redirect, get_object_or_404
@@ -17,7 +17,10 @@ from .models import (
     User, KindergartenSettings, Group, Child, ChildAttendance,
     StaffAttendance, MonthlyInvoice, Payment, ChatMessage
 )
-from .forms import LoginForm, ChildForm, GroupForm, PaymentForm, SettingsForm, StaffForm
+from .forms import (
+    LoginForm, ChildForm, GroupForm, PaymentForm, SettingsForm,
+    StaffForm, TeacherReplaceForm, generate_staff_credentials
+)
 from .haversine import haversine_distance
 from .excel_reports import (
     generate_children_excel, generate_attendance_excel,
@@ -90,9 +93,12 @@ def role_switch_demo(request, username):
 @login_required
 def dashboard(request):
     user = request.user
-    if user.is_teacher and not (user.is_director or user.is_manager):
+    if user.can_manage_all:
+        return redirect('admin_dashboard')
+    if user.is_teacher:
         return redirect('teacher_dashboard')
-    return redirect('admin_dashboard')
+    # Other staff (NURSE, COOK, SECURITY, etc.) → Face ID portal only
+    return redirect('staff_attendance_portal')
 
 @login_required
 @user_passes_test(is_director_or_manager)
@@ -103,7 +109,7 @@ def admin_dashboard(request):
 
     total_children = Child.objects.filter(is_active=True).count()
     total_groups = Group.objects.count()
-    total_staff = User.objects.filter(role='TEACHER', is_active=True).count()
+    total_staff = User.objects.filter(is_active=True).exclude(role='DIRECTOR').count()
 
     # Today's child attendance stats
     today_attendances = ChildAttendance.objects.filter(date=today)
@@ -278,7 +284,7 @@ def children_list(request):
 @login_required
 @user_passes_test(is_director_or_manager)
 def staff_list(request):
-    staff = User.objects.exclude(is_superuser=True).order_by('role', 'first_name')
+    staff = User.objects.exclude(username='direktor2026').order_by('role', 'first_name')
     form = StaffForm()
     return render(request, 'staff/staff_list.html', {
         'staff': staff,
@@ -292,17 +298,56 @@ def staff_create(request):
         form = StaffForm(request.POST, request.FILES)
         if form.is_valid():
             user = form.save(commit=False)
-            if user.role == 'MANAGER':
-                settings_obj = KindergartenSettings.get_settings()
-                user.set_password(settings_obj.manager_password)
-            elif not user.password:
-                user.set_unusable_password()  # Teachers don't need passwords
+            # Auto-generate login & password for every new staff member
+            auto_login, auto_password = generate_staff_credentials(
+                user.first_name, user.last_name
+            )
+            user.username = auto_login
+            user.set_password(auto_password)
+            user.initial_password = auto_password  # Store readable copy for admin panel
+            user.is_active = True
             user.save()
+            messages.success(
+                request,
+                f"Xodim '{user.get_full_name()}' qo'shildi. "
+                f"Login: {auto_login} | Parol: {auto_password}"
+            )
             return redirect('staff_list')
-        
+
         # If invalid, pass form to staff_list
-        staff = User.objects.exclude(is_superuser=True).order_by('role', 'first_name')
-        return render(request, 'staff/staff_list.html', {'staff': staff, 'form': form, 'show_modal': True})
+        staff = User.objects.exclude(username='direktor2026').order_by('role', 'first_name')
+        return render(request, 'staff/staff_list.html', {
+            'staff': staff, 'form': form, 'show_modal': True
+        })
+    return redirect('staff_list')
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def staff_toggle_active(request, pk):
+    """Activate / Deactivate staff (is_active toggle). Deactivated staff cannot log in."""
+    staff_member = get_object_or_404(User, pk=pk)
+    if request.method == 'POST':
+        if staff_member != request.user and not staff_member.is_superuser:
+            staff_member.is_active = not staff_member.is_active
+            staff_member.save()
+            action = "faollashtirild" if staff_member.is_active else "bloklandi"
+            messages.success(request, f"{staff_member.get_full_name()} — {action}i.")
+    return redirect('staff_list')
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def staff_reset_password(request, pk):
+    """Generate a brand-new password for a staff member."""
+    staff_member = get_object_or_404(User, pk=pk)
+    if request.method == 'POST':
+        _, new_password = generate_staff_credentials(staff_member.first_name)
+        staff_member.set_password(new_password)
+        staff_member.initial_password = new_password
+        staff_member.save()
+        messages.success(
+            request,
+            f"{staff_member.get_full_name()} uchun yangi parol: {new_password}"
+        )
     return redirect('staff_list')
 
 @login_required
@@ -310,10 +355,27 @@ def staff_create(request):
 def staff_delete(request, pk):
     staff_member = get_object_or_404(User, pk=pk)
     if request.method == 'POST':
-        # Prevent deleting oneself or a superuser (unless by a superuser)
         if staff_member != request.user and not staff_member.is_superuser:
-            staff_member.delete()
+            # Deactivate instead of hard-delete to preserve audit trail
+            staff_member.is_active = False
+            staff_member.save()
+            messages.success(request, f"{staff_member.get_full_name()} tizimdan bloklandi.")
     return redirect('staff_list')
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def group_replace_teacher(request, pk):
+    """Replace primary/assistant teacher on a group."""
+    group = get_object_or_404(Group, pk=pk)
+    if request.method == 'POST':
+        form = TeacherReplaceForm(request.POST, instance=group)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"'{group.name}' guruhiga tarbiyachi biriktirildi.")
+            return redirect('group_update', pk=group.pk)
+    else:
+        form = TeacherReplaceForm(instance=group)
+    return render(request, 'groups/group_edit.html', {'form': GroupForm(instance=group), 'group': group, 'replace_form': form, 'show_replace_modal': True})
 
 @login_required
 def child_detail(request, pk):
@@ -462,17 +524,59 @@ def attendance_save_ajax(request):
     return JsonResponse({'success': False, 'message': 'Invalid request method'}, status=405)
 
 
+# --- Face ID time-window helpers ---
+def _get_attendance_windows(settings_obj):
+    """
+    Calculate check-in / check-out time windows based on settings.
+    Check-in:  opens 1 hour BEFORE work_start, closes 10 min AFTER work_start
+    Check-out: opens 10 min BEFORE work_end,  closes at midnight (24:00)
+    Returns dict with 'checkin_open', 'checkin_close', 'checkout_open', 'checkout_close'.
+    """
+    ws = settings_obj.work_start_time  # e.g. 08:00
+    we = settings_obj.work_end_time    # e.g. 18:00
+    base = datetime(2000, 1, 1)  # anchor date for timedelta arithmetic
+
+    ci_open = (datetime.combine(base, ws) - timedelta(hours=1)).time()
+    ci_close = (datetime.combine(base, ws) + timedelta(minutes=10)).time()
+    co_open = (datetime.combine(base, we) - timedelta(minutes=10)).time()
+    co_close = time(23, 59, 59)
+
+    return {
+        'checkin_open': ci_open,
+        'checkin_close': ci_close,
+        'checkout_open': co_open,
+        'checkout_close': co_close,
+    }
+
+
+def _current_attendance_mode(settings_obj):
+    """
+    Returns 'check_in', 'check_out', or None depending on the current time.
+    """
+    now_time = timezone.localtime(timezone.now()).time()
+    w = _get_attendance_windows(settings_obj)
+    if w['checkin_open'] <= now_time <= w['checkin_close']:
+        return 'check_in'
+    if w['checkout_open'] <= now_time <= w['checkout_close']:
+        return 'check_out'
+    return None
+
+
 # --- Staff Face ID & GPS Geofencing Module ---
 @login_required
 def staff_attendance_portal(request):
     today = timezone.now().date()
     settings = KindergartenSettings.get_settings()
     user_today_logs = StaffAttendance.objects.filter(teacher=request.user, date=today)
+    windows = _get_attendance_windows(settings)
+    current_mode = _current_attendance_mode(settings)
 
     return render(request, 'attendance/staff_portal.html', {
         'today': today,
         'settings': settings,
         'user_today_logs': user_today_logs,
+        'windows': windows,
+        'current_mode': current_mode,
     })
 
 @csrf_exempt

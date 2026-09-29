@@ -5,14 +5,21 @@ from decimal import Decimal
 
 class User(AbstractUser):
     ROLE_CHOICES = (
-        ('DIRECTOR', 'Director (Superadmin)'),
-        ('MANAGER', 'Manager (Admin)'),
-        ('TEACHER', 'Teacher'),
+        ('DIRECTOR', 'Direktor'),
+        ('MANAGER', 'Menejer'),
+        ('TEACHER', 'Tarbiyachi'),
+        ('ASSISTANT', 'Yordamchi tarbiyachi / Enaga'),
+        ('NURSE', 'Hamshira'),
+        ('COOK', 'Oshpaz'),
+        ('SECURITY', 'Qorovul'),
+        ('OTHER', 'Boshqa xodim'),
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='TEACHER')
+    custom_position = models.CharField(max_length=100, blank=True, null=True, verbose_name="Lavozim nomi")
     salary = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name="Oylik Maosh")
     phone_number = models.CharField(max_length=25, blank=True, null=True)
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
+    initial_password = models.CharField(max_length=128, blank=True, null=True, verbose_name="Berilgan boshlang'ich parol")
     created_at = models.DateTimeField(auto_now_add=True)
 
     @property
@@ -28,11 +35,19 @@ class User(AbstractUser):
         return self.role == 'TEACHER'
 
     @property
+    def is_other_staff(self):
+        return self.role not in ['DIRECTOR', 'MANAGER', 'TEACHER'] and not self.is_superuser
+
+    @property
     def can_manage_all(self):
         return self.is_director or self.is_manager or self.is_superuser
 
+    @property
+    def position_display(self):
+        return self.custom_position if self.custom_position else self.get_role_display()
+
     def __str__(self):
-        return f"{self.get_full_name() or self.username} ({self.get_role_display()})"
+        return f"{self.get_full_name() or self.username} ({self.position_display})"
 
 
 from django.conf import settings
@@ -43,6 +58,8 @@ class KindergartenSettings(models.Model):
     latitude = models.FloatField(default=getattr(settings, 'KINDERGARTEN_LAT', 41.311081), help_text="Kindergarten GPS Latitude from .env")
     longitude = models.FloatField(default=getattr(settings, 'KINDERGARTEN_LON', 69.240562), help_text="Kindergarten GPS Longitude from .env")
     geofence_radius_meters = models.FloatField(default=getattr(settings, 'GEOFENCE_RADIUS_METERS', 50.0), help_text="Allowed radius in meters from .env")
+    work_start_time = models.TimeField(default="08:00", help_text="Ish boshlanish vaqti (masalan: 08:00)")
+    work_end_time = models.TimeField(default="18:00", help_text="Ish tugash vaqti (masalan: 18:00)")
     daily_meal_rate = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal(str(getattr(settings, 'DAILY_MEAL_RATE', 25000.00))), help_text="Meal cost deducted per excused absent day")
     default_monthly_fee = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal(str(getattr(settings, 'DEFAULT_MONTHLY_FEE', 2500000.00))), help_text="Standard monthly tuition fee")
     currency_symbol = models.CharField(max_length=15, default=getattr(settings, 'CURRENCY_SYMBOL', "UZS"))

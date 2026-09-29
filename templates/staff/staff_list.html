@@ -19,15 +19,29 @@
     </div>
 </div>
 
+<!-- Django messages (shows auto-generated credentials etc.) -->
+{% if messages %}
+<div style="margin-bottom: 20px;">
+    {% for msg in messages %}
+    <div style="background: {% if msg.tags == 'success' %}rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.3); color: #34d399;{% else %}rgba(244,63,94,0.12); border: 1px solid rgba(244,63,94,0.3); color: #fb7185;{% endif %} border-radius: 10px; padding: 14px 18px; font-size: 13px; display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+        <i data-lucide="{% if msg.tags == 'success' %}check-circle-2{% else %}alert-circle{% endif %}" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
+        <span>{{ msg }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
 <div class="glass-card" style="padding: 20px;">
     <div style="overflow-x: auto;">
         <table style="width: 100%; border-collapse: collapse; color: white; text-align: left;">
             <thead>
                 <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
                     <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Xodim</th>
+                    <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Lavozim</th>
                     <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Telefon</th>
                     <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Maosh</th>
-                    <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Rol</th>
+                    <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Login / Parol</th>
+                    <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Holat</th>
                     {% if user.can_manage_all %}
                     <th style="padding: 12px; font-weight: 600; color: var(--text-dim); text-align: right;">Amallar</th>
                     {% endif %}
@@ -35,7 +49,7 @@
             </thead>
             <tbody>
                 {% for st in staff %}
-                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); {% if not st.is_active %}opacity: 0.5;{% endif %}">
                     <td style="padding: 12px; display: flex; align-items: center; gap: 12px;">
                         <div style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; overflow: hidden;">
                             {% if st.avatar %}
@@ -46,32 +60,69 @@
                         </div>
                         <div>
                             <strong style="display: block; font-family: 'Outfit', sans-serif;">{{ st.get_full_name|default:st.username }}</strong>
-                            <span style="font-size: 12px; color: var(--text-muted);">{{ st.username }}</span>
+                            <span style="font-size: 12px; color: var(--text-muted);">@{{ st.username }}</span>
                         </div>
                     </td>
-                    <td style="padding: 12px; color: var(--text-dim);">
-                        {{ st.phone_number|default:"Kiritilmagan" }}
+                    <td style="padding: 12px;">
+                        <span class="user-role-badge role-{{ st.role|lower }}">{{ st.position_display }}</span>
                     </td>
                     <td style="padding: 12px; color: var(--text-dim);">
-                        {{ st.salary }} UZS
+                        {{ st.phone_number|default:"—" }}
+                    </td>
+                    <td style="padding: 12px; color: var(--text-dim);">
+                        {{ st.salary|floatformat:0 }} UZS
                     </td>
                     <td style="padding: 12px;">
-                        <span class="user-role-badge role-{{ st.role|lower }}">{{ st.get_role_display }}</span>
+                        {% if st.initial_password %}
+                        <div style="font-size: 12px; font-family: monospace;">
+                            <span style="color: #a855f7;">{{ st.username }}</span>
+                            <span style="color: var(--text-dim);"> / </span>
+                            <span style="color: #fbbf24; cursor: pointer;" title="Parolni ko'rish" onclick="this.innerText = this.innerText === '••••' ? '{{ st.initial_password }}' : '••••'">••••</span>
+                        </div>
+                        {% else %}
+                        <span style="font-size: 12px; color: var(--text-dim);">—</span>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 12px;">
+                        {% if st.is_active %}
+                        <span style="font-size: 11px; padding: 3px 10px; border-radius: 20px; background: rgba(52,211,153,0.15); color: #34d399; font-weight: 600;">Faol</span>
+                        {% else %}
+                        <span style="font-size: 11px; padding: 3px 10px; border-radius: 20px; background: rgba(244,63,94,0.15); color: #fb7185; font-weight: 600;">Bloklangan</span>
+                        {% endif %}
                     </td>
                     {% if user.can_manage_all %}
                     <td style="padding: 12px; text-align: right;">
-                        <form method="POST" action="{% url 'staff_delete' st.id %}" style="display:inline;" onsubmit="return confirm('Siz ushbu xodimni o\'chirishga ishonchingiz komilmi?');">
-                            {% csrf_token %}
-                            <button type="submit" class="btn-glass" style="color: #fb7185; padding: 6px; border: none; background: transparent; cursor: pointer;" title="O'chirish">
-                                <i data-lucide="trash-2" style="width: 18px; height: 18px;"></i>
-                            </button>
-                        </form>
+                        <div style="display: flex; gap: 4px; justify-content: flex-end;">
+                            <!-- Reset password -->
+                            <form method="POST" action="{% url 'staff_reset_password' st.id %}" style="display:inline;" onsubmit="return confirm('Yangi parol yaratilsinmi?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-glass" style="color: #fbbf24; padding: 6px; border: none; background: transparent; cursor: pointer;" title="Parolni yangilash">
+                                    <i data-lucide="key-round" style="width: 16px; height: 16px;"></i>
+                                </button>
+                            </form>
+                            <!-- Toggle active -->
+                            <form method="POST" action="{% url 'staff_toggle_active' st.id %}" style="display:inline;" onsubmit="return confirm('{% if st.is_active %}Xodimni bloklashga{% else %}Xodimni faollashtirishga{% endif %} ishonchingiz komilmi?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-glass" style="color: {% if st.is_active %}#fb7185{% else %}#34d399{% endif %}; padding: 6px; border: none; background: transparent; cursor: pointer;" title="{% if st.is_active %}Bloklash{% else %}Faollashtirish{% endif %}">
+                                    <i data-lucide="{% if st.is_active %}user-x{% else %}user-check{% endif %}" style="width: 16px; height: 16px;"></i>
+                                </button>
+                            </form>
+                            {% if user.is_director %}
+                            <!-- Hard delete (director only) -->
+                            <form method="POST" action="{% url 'staff_delete' st.id %}" style="display:inline;" onsubmit="return confirm('O\'chirishga ishonchingiz komilmi?');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-glass" style="color: #ef4444; padding: 6px; border: none; background: transparent; cursor: pointer;" title="O'chirish">
+                                    <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
                     </td>
                     {% endif %}
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="3" style="padding: 24px; text-align: center; color: var(--text-muted);">Xodimlar topilmadi.</td>
+                    <td colspan="7" style="padding: 24px; text-align: center; color: var(--text-muted);">Xodimlar topilmadi.</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -90,6 +141,11 @@
             </button>
         </div>
 
+        <div style="padding: 10px 14px; background: rgba(168,85,247,0.08); border: 1px solid rgba(168,85,247,0.2); border-radius: 8px; margin-bottom: 18px; font-size: 12px; color: #c084fc; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="info" style="width: 14px; height: 14px; flex-shrink: 0;"></i>
+            Login va parol avtomatik tuziladi va xodimlar ro'yxatida ko'rsatiladi.
+        </div>
+
         {% if form.errors %}
         <div style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 8px; padding: 12px; color: #fb7185; margin-bottom: 16px;">
             Iltimos, xatoliklarni to'g'rilang.
@@ -97,20 +153,8 @@
         </div>
         {% endif %}
 
-        <!-- Enctype must be multipart/form-data for image upload -->
         <form method="POST" action="{% url 'staff_create' %}" enctype="multipart/form-data">
             {% csrf_token %}
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
-                <div class="form-group">
-                    <label class="form-label">Foydalanuvchi nomi (Login) *</label>
-                    {{ form.username }}
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Rol *</label>
-                    {{ form.role }}
-                </div>
-            </div>
-
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
                 <div class="form-group">
                     <label class="form-label">Ism *</label>
@@ -133,8 +177,19 @@
                 </div>
             </div>
 
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Rol *</label>
+                    {{ form.role }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Lavozim nomi (ixtiyoriy)</label>
+                    {{ form.custom_position }}
+                </div>
+            </div>
+
             <div class="form-group">
-                <label class="form-label">Face ID Rasm (Avatar) *</label>
+                <label class="form-label">Face ID Rasm (Avatar)</label>
                 {{ form.avatar }}
             </div>
 
