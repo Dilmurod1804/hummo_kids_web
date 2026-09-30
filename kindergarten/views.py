@@ -567,7 +567,7 @@ def _current_attendance_mode(settings_obj):
 def staff_attendance_portal(request):
     today = timezone.now().date()
     settings = KindergartenSettings.get_settings()
-    user_today_logs = StaffAttendance.objects.filter(teacher=request.user, date=today)
+    user_today_logs = StaffAttendance.objects.filter(teacher=request.user, date=today).order_by('-is_within_geofence', '-created_at')
     windows = _get_attendance_windows(settings)
     current_mode = _current_attendance_mode(settings)
 
@@ -612,18 +612,36 @@ def staff_check_in_api(request):
                 image_file = ContentFile(image_data, name=filename)
 
             if not is_within_radius:
-                # Log rejected attempt
-                StaffAttendance.objects.create(
-                    teacher=request.user,
-                    date=today,
-                    latitude=user_lat,
-                    longitude=user_lon,
-                    distance_meters=distance,
-                    is_within_geofence=False,
-                    face_snapshot=image_file,
-                    status='REJECTED_GEOFENCE',
-                    notes=f"Geolokatsiya xatosi: {distance:.1f}m uzoqlikda (Maksimal ruxsat: {radius_limit}m)."
-                )
+                # Rad etilgan urinish - xodim uchun bugungi yozuv mavjudligini tekshirish
+                existing_log = StaffAttendance.objects.filter(teacher=request.user, date=today).order_by('-is_within_geofence', 'id').first()
+                if existing_log:
+                    # Agar xodim allaqachon muvaffaqiyatli kelgan bo'lsa (is_within_geofence=True),
+                    # uning asosiy davomat holatini buzmaymiz, faqat xatolik xabarini qaytaramiz.
+                    # Agar avvalgi urinish ham rad etilgan bo'lsa, yangi qator ochmasdan shu yozuvni yangilaymiz.
+                    if not existing_log.is_within_geofence:
+                        existing_log.latitude = user_lat
+                        existing_log.longitude = user_lon
+                        existing_log.distance_meters = distance
+                        if image_file:
+                            existing_log.face_snapshot = image_file
+                        existing_log.status = 'REJECTED_GEOFENCE'
+                        existing_log.notes = f"Geolokatsiya xatosi: {distance:.1f}m uzoqlikda (Maksimal ruxsat: {radius_limit}m)."
+                        existing_log.save()
+                    # Mavjud dublikat yozuvlar bo'lsa tozalab, faqat bitta asosiy yozuv qoldiramiz
+                    StaffAttendance.objects.filter(teacher=request.user, date=today).exclude(id=existing_log.id).delete()
+                else:
+                    # Bugun uchun birinchi yozuvni yaratish
+                    StaffAttendance.objects.create(
+                        teacher=request.user,
+                        date=today,
+                        latitude=user_lat,
+                        longitude=user_lon,
+                        distance_meters=distance,
+                        is_within_geofence=False,
+                        face_snapshot=image_file,
+                        status='REJECTED_GEOFENCE',
+                        notes=f"Geolokatsiya xatosi: {distance:.1f}m uzoqlikda (Maksimal ruxsat: {radius_limit}m)."
+                    )
                 return JsonResponse({
                     'success': False,
                     'within_geofence': False,
@@ -633,33 +651,45 @@ def staff_check_in_api(request):
                 }, status=400)
 
             # Inside geofence - Record attendance
-            log_entry, created = StaffAttendance.objects.get_or_create(
-                teacher=request.user,
-                date=today,
-                defaults={
-                    'check_in_time': current_time,
-                    'latitude': user_lat,
-                    'longitude': user_lon,
-                    'distance_meters': distance,
-                    'is_within_geofence': True,
-                    'face_snapshot': image_file,
-                    'status': 'ON_TIME' if current_time.hour < 9 else 'LATE',
-                    'notes': f"Face ID va GPS muvaffaqiyatli tasdiqlandi. Masofa: {distance:.1f}m."
-                }
-            )
+            # Har bir xodim bir kunda faqat bitta asosiy davomat yozuviga ega bo'lishi ta'minlanadi
+            log_entry = StaffAttendance.objects.filter(teacher=request.user, date=today).order_by('-is_within_geofence', 'id').first()
 
-            if not created:
+            if not log_entry:
+                status_val = 'ON_TIME' if current_time.hour < 9 else 'LATE'
+                log_entry = StaffAttendance.objects.create(
+                    teacher=request.user,
+                    date=today,
+                    check_in_time=current_time if action_type != 'check_out' else None,
+                    check_out_time=current_time if action_type == 'check_out' else None,
+                    latitude=user_lat,
+                    longitude=user_lon,
+                    distance_meters=distance,
+                    is_within_geofence=True,
+                    face_snapshot=image_file,
+                    status=status_val,
+                    notes=f"Face ID va GPS muvaffaqiyatli tasdiqlandi. Masofa: {distance:.1f}m."
+                )
+            else:
+                # Bir kunda birdan ortiq dublikat yozuvlar bo'lsa, ularni tozalash (faqat bitta asosiy yozuv qoladi)
+                StaffAttendance.objects.filter(teacher=request.user, date=today).exclude(id=log_entry.id).delete()
+
                 if action_type == 'check_out':
                     log_entry.check_out_time = current_time
-                    log_entry.notes += f" | Chiqish qayd etildi: {current_time.strftime('%H:%M:%S')}."
+                    log_entry.notes = (log_entry.notes or '') + f" | Chiqish qayd etildi: {current_time.strftime('%H:%M:%S')}."
                 else:
-                    log_entry.check_in_time = current_time
+                    if not log_entry.check_in_time:
+                        log_entry.check_in_time = current_time
+                    else:
+                        log_entry.notes = (log_entry.notes or '') + f" | Qayta tekshirildi: {current_time.strftime('%H:%M:%S')}."
+
                 if image_file:
                     log_entry.face_snapshot = image_file
                 log_entry.latitude = user_lat
                 log_entry.longitude = user_lon
                 log_entry.distance_meters = distance
                 log_entry.is_within_geofence = True
+                if log_entry.status == 'REJECTED_GEOFENCE':
+                    log_entry.status = 'ON_TIME' if current_time.hour < 9 else 'LATE'
                 log_entry.save()
 
             return JsonResponse({
