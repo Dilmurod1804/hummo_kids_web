@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import JsonResponse, HttpResponse
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.core.files.base import ContentFile
 from django.db.models import Count, Sum, Q, Avg
 from django.utils import timezone
@@ -35,6 +35,7 @@ def is_director_only(user):
     return user.is_authenticated and (user.role == 'DIRECTOR' or user.is_superuser)
 
 # --- Authentication Views ---
+@ensure_csrf_cookie
 def login_view(request):
     if request.user.is_authenticated:
         return redirect('dashboard')
@@ -43,22 +44,34 @@ def login_view(request):
     if request.method == 'POST':
         form = LoginForm(request.POST)
         if form.is_valid():
-            username = form.cleaned_data['username']
-            password = form.cleaned_data['password']
+            username = str(form.cleaned_data['username']).strip()
+            password = str(form.cleaned_data['password']).strip()
             user = authenticate(request, username=username, password=password)
             if user:
                 login(request, user)
-                return redirect('dashboard')
+                next_url = request.GET.get('next') or request.POST.get('next')
+                if next_url and next_url.startswith('/'):
+                    return redirect(next_url)
+                # Redirect directly based on role
+                if user.can_manage_all:
+                    return redirect('admin_dashboard')
+                elif user.is_teacher:
+                    return redirect('teacher_dashboard')
+                else:
+                    return redirect('staff_attendance_portal')
             else:
-                # Fallback for managers sharing the global settings password
+                # Safe fallback for managers sharing the global settings password
                 try:
-                    fallback_user = User.objects.get(username=username)
-                    if fallback_user.role == 'MANAGER':
+                    fallback_user = User.objects.filter(username__iexact=username).first()
+                    if fallback_user and fallback_user.role == 'MANAGER':
                         settings_obj = KindergartenSettings.get_settings()
                         if password == settings_obj.manager_password:
                             login(request, fallback_user)
-                            return redirect('dashboard')
-                except User.DoesNotExist:
+                            next_url = request.GET.get('next') or request.POST.get('next')
+                            if next_url and next_url.startswith('/'):
+                                return redirect(next_url)
+                            return redirect('admin_dashboard')
+                except Exception:
                     pass
                 error_message = "Foydalanuvchi nomi yoki parol noto'g'ri kiritildi."
     else:
@@ -408,15 +421,15 @@ def child_create(request):
             # Auto-generate current month invoice
             today = timezone.now().date()
             settings = KindergartenSettings.get_settings()
-            MonthlyInvoice.objects.get_or_create(
-                child=child,
-                month=today.month,
-                year=today.year,
-                defaults={
-                    'base_fee': child.group.monthly_fee if child.group else settings.default_monthly_fee,
-                    'meal_rate': settings.daily_meal_rate,
-                }
-            )
+            invoice = MonthlyInvoice.objects.filter(child=child, month=today.month, year=today.year).first()
+            if not invoice:
+                MonthlyInvoice.objects.create(
+                    child=child,
+                    month=today.month,
+                    year=today.year,
+                    base_fee=child.group.monthly_fee if child.group else settings.default_monthly_fee,
+                    meal_rate=settings.daily_meal_rate,
+                )
             return redirect('children_list')
         
         # If invalid, return to list with form errors
@@ -507,15 +520,20 @@ def attendance_save_ajax(request):
                 status = item.get('status', 'PRESENT')
                 notes = item.get('notes', '')
 
-                ChildAttendance.objects.update_or_create(
-                    child_id=child_id,
-                    date=att_date,
-                    defaults={
-                        'status': status,
-                        'notes': notes,
-                        'marked_by': request.user,
-                    }
-                )
+                att = ChildAttendance.objects.filter(child_id=child_id, date=att_date).first()
+                if att:
+                    att.status = status
+                    att.notes = notes
+                    att.marked_by = request.user
+                    att.save()
+                else:
+                    ChildAttendance.objects.create(
+                        child_id=child_id,
+                        date=att_date,
+                        status=status,
+                        notes=notes,
+                        marked_by=request.user
+                    )
                 saved_count += 1
 
             return JsonResponse({'success': True, 'saved_count': saved_count, 'message': 'Davomat muvaffaqiyatli saqlandi!'})
@@ -798,15 +816,15 @@ def recalculate_invoices_api(request):
                     status='EXCUSED'
                 ).count()
 
-                invoice, created = MonthlyInvoice.objects.get_or_create(
-                    child=child,
-                    month=month,
-                    year=year,
-                    defaults={
-                        'base_fee': child.group.monthly_fee if child.group else settings.default_monthly_fee,
-                        'meal_rate': settings.daily_meal_rate,
-                    }
-                )
+                invoice = MonthlyInvoice.objects.filter(child=child, month=month, year=year).first()
+                if not invoice:
+                    invoice = MonthlyInvoice.objects.create(
+                        child=child,
+                        month=month,
+                        year=year,
+                        base_fee=child.group.monthly_fee if child.group else settings.default_monthly_fee,
+                        meal_rate=settings.daily_meal_rate,
+                    )
 
                 invoice.meal_rate = settings.daily_meal_rate
                 invoice.excused_days_count = excused_days

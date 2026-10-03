@@ -290,10 +290,15 @@ async function triggerRecalculation() {
     btn.disabled = true;
     btn.innerHTML = "<span>⏳ Qayta hisoblanmoqda...</span>";
 
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+
     try {
         const res = await fetch("{% url 'recalculate_invoices_api' %}", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken
+            },
             body: JSON.stringify({
                 month: {{ month }},
                 year: {{ year }}

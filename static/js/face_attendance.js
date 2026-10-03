@@ -2,6 +2,22 @@
  * HUMO KIDS — Staff Face ID & GPS Geofencing Attendance Module
  */
 
+// CSRF token o'qish uchun ishonchli yordamchi funksiyalar
+function getCsrfToken() {
+    // 1. Cookie'dan
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    if (m) return decodeURIComponent(m[1]);
+    // 2. base.html dagi yashirin form'dan
+    const inp = document.querySelector('#csrf-sync-form [name=csrfmiddlewaretoken]');
+    if (inp) return inp.value;
+    return '';
+}
+function getCookie(name) {
+    if (name === 'csrftoken') return getCsrfToken();
+    const m = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith(name + '='));
+    return m ? decodeURIComponent(m.split('=')[1]) : null;
+}
+
 let videoStream = null;
 let currentCoords = null;
 
@@ -122,6 +138,7 @@ async function captureAndSubmitAttendance(actionType = 'check_in') {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken'),  // ← CSRF token qo'shildi
             },
             body: JSON.stringify(payload)
         });

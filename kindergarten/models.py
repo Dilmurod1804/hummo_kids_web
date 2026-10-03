@@ -74,7 +74,9 @@ class KindergartenSettings(models.Model):
 
     @classmethod
     def get_settings(cls):
-        obj, created = cls.objects.get_or_create(id=1)
+        obj = cls.objects.first()
+        if not obj:
+            obj = cls.objects.create(id=1)
         return obj
 
     def __str__(self):

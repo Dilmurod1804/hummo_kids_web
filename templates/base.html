@@ -19,6 +19,9 @@
     <!-- Glassmorphism Stylesheet -->
     <link rel="stylesheet" href="/static/css/glassmorphism.css">
     
+    <!-- CSRF Meta Tag (JavaScript fetch uchun) -->
+    <meta name="csrf-token" content="{% csrf_token %}">
+    
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -186,6 +189,9 @@
 
     <!-- Global Toast Container -->
     <div id="toast-container" style="position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;"></div>
+
+    <!-- Hidden CSRF form: cookie ni har doim o'rnatib turadi -->
+    <form id="csrf-sync-form" style="display:none;">{% csrf_token %}</form>
 
     <script>
         // Initialize Lucide Icons

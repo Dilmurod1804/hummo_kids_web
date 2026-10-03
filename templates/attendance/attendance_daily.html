@@ -155,6 +155,20 @@
 
 {% block extra_scripts %}
 <script>
+// CSRF token ni cookie yoki base.html yashirin form'dan o'qish
+function getCsrfToken() {
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    if (m) return decodeURIComponent(m[1]);
+    const inp = document.querySelector('#csrf-sync-form [name=csrfmiddlewaretoken]');
+    if (inp) return inp.value;
+    return '';
+}
+function getCookie(name) {
+    if (name === 'csrftoken') return getCsrfToken();
+    const m = document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith(name+'='));
+    return m ? decodeURIComponent(m.split('=')[1]) : null;
+}
+
 function selectStatus(labelElem, status) {
     const parentRow = labelElem.closest('tr');
     parentRow.querySelectorAll('.att-status-btn').forEach(btn => btn.classList.remove('active'));
@@ -193,7 +207,10 @@ async function saveAttendanceBatch() {
     try {
         const response = await fetch("{% url 'attendance_save_ajax' %}", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie('csrftoken'),  // ← CSRF token qo'shildi
+            },
             body: JSON.stringify({
                 date: "{{ selected_date_str }}",
                 records: records

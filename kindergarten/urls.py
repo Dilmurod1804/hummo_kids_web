@@ -24,6 +24,7 @@ urlpatterns = [
     path('children/<int:pk>/', views.child_detail, name='child_detail'),
     path('children/create/', views.child_create, name='child_create'),
     path('children/<int:pk>/edit/', views.child_update, name='child_update'),
+    path('children/<int:pk>/edit-child/', views.child_update, name='child_edit'),
     path('children/<int:pk>/delete/', views.child_delete, name='child_delete'),
 
     # Staff Management
