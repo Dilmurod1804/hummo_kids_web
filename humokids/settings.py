@@ -55,6 +55,16 @@ for _h in ALLOWED_HOSTS:
         elif _h not in CSRF_TRUSTED_ORIGINS:
             CSRF_TRUSTED_ORIGINS.append(_h)
 
+# HTTPS and Cookie Security Settings
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
+else:
+    CSRF_COOKIE_SECURE = False
+    SESSION_COOKIE_SECURE = False
+
+
 INSTALLED_APPS = [
     'daphne',
     'django.contrib.admin',

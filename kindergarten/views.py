@@ -1,7 +1,10 @@
 import base64
 import json
+import logging
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -22,6 +25,7 @@ from .forms import (
     StaffForm, TeacherReplaceForm, generate_staff_credentials
 )
 from .haversine import haversine_distance
+from .face_utils import verify_face, decode_base64_image, FACE_RECOGNITION_AVAILABLE
 from .excel_reports import (
     generate_children_excel, generate_attendance_excel,
     generate_staff_attendance_excel, generate_finance_excel
@@ -600,20 +604,107 @@ def staff_attendance_portal(request):
 @csrf_exempt
 @login_required
 def staff_check_in_api(request):
+    """
+    Xodimlar uchun Face ID + GPS davomat API.
+
+    Xavfsizlik qatlamlari (tartib bo'yicha):
+      1. face_image mavjudligi tekshiruvi
+      2. Xodimda avatar (etalon rasm) borligini tekshirish
+      3. Haqiqiy yuz taqqoslash (face_recognition)
+      4. GPS / Geofence tekshiruvi
+      5. Davomat yozuvi yaratish/yangilash
+    """
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            user_lat = float(data.get('latitude'))
-            user_lon = float(data.get('longitude'))
-            action_type = data.get('action', 'check_in') # check_in or check_out
+            user_lat = float(data.get('latitude', 0))
+            user_lon = float(data.get('longitude', 0))
+            action_type = data.get('action', 'check_in')  # check_in or check_out
             face_b64 = data.get('face_image', '')
 
+            # ── 1. Face rasm mavjudligini tekshirish ──────────────────────────────
+            if not face_b64:
+                return JsonResponse({
+                    'success': False,
+                    'message': "Yuz rasmi (face_image) yuborilmadi. Kamera ruxsati berilganligini tekshiring."
+                }, status=400)
+
+            # ── 2. Xodimda etalon avatar borligini tekshirish ─────────────────────
+            user = request.user
+            if not user.avatar or not user.avatar.name:
+                return JsonResponse({
+                    'success': False,
+                    'message': (
+                        "Xodimning tizimda etalon yuzi (avatar) saqlanmagan! "
+                        "Iltimos, administrator bilan bog'laning."
+                    )
+                }, status=400)
+
+            # ── 3. Haqiqiy yuz taqqoslash ─────────────────────────────────────────
+            try:
+                incoming_bytes = decode_base64_image(face_b64)
+            except Exception:
+                return JsonResponse({
+                    'success': False,
+                    'message': "Yuborilgan rasm noto'g'ri formatda (base64 xatosi)."
+                }, status=400)
+
+            try:
+                avatar_path = user.avatar.path  # Django FileField.path => mutlaq yo'l
+            except Exception:
+                return JsonResponse({
+                    'success': False,
+                    'message': "Avatar faylini o'qib bo'lmadi. Administrator bilan bog'laning."
+                }, status=400)
+
+            face_match, face_message, face_distance = verify_face(
+                incoming_image_bytes=incoming_bytes,
+                stored_avatar_path=avatar_path,
+            )
+
+            if not face_match:
+                # Yuz mos kelmadi — bazaga REJECTED yozuv yozib, 400 qaytarish
+                now_rej = timezone.now()
+                today_rej = now_rej.date()
+                try:
+                    fname = f"face_rejected_{user.id}_{today_rej.strftime('%Y%m%d')}_{now_rej.strftime('%H%M%S')}.jpg"
+                    rej_image = ContentFile(incoming_bytes, name=fname)
+                    existing_rej = StaffAttendance.objects.filter(
+                        teacher=user, date=today_rej
+                    ).order_by('-is_within_geofence', 'id').first()
+
+                    rejection_note = f"FACE_ID_REJECTED: {face_message}"
+                    if existing_rej and not existing_rej.is_within_geofence:
+                        existing_rej.face_snapshot = rej_image
+                        existing_rej.notes = rejection_note
+                        existing_rej.save()
+                    elif not existing_rej:
+                        StaffAttendance.objects.create(
+                            teacher=user,
+                            date=today_rej,
+                            latitude=user_lat,
+                            longitude=user_lon,
+                            is_within_geofence=False,
+                            face_snapshot=rej_image,
+                            status='REJECTED_GEOFENCE',
+                            notes=rejection_note,
+                        )
+                except Exception:
+                    pass  # Yozuv xatosi asosiy javobni to'sib qolmasin
+
+                return JsonResponse({
+                    'success': False,
+                    'face_verified': False,
+                    'face_distance': round(face_distance, 4),
+                    'message': face_message,
+                }, status=400)
+
+            # ── 4. GPS / Geofence tekshiruvi ──────────────────────────────────────
             settings = KindergartenSettings.get_settings()
             k_lat = settings.latitude
             k_lon = settings.longitude
             radius_limit = settings.geofence_radius_meters
 
-            # Calculate distance using Haversine formula
             distance = haversine_distance(user_lat, user_lon, k_lat, k_lon)
             now = timezone.now()
             today = now.date()
@@ -621,36 +712,35 @@ def staff_check_in_api(request):
 
             is_within_radius = distance <= radius_limit
 
-            # Handle Face Snapshot image
-            image_file = None
-            if face_b64 and 'base64,' in face_b64:
-                header, encoded = face_b64.split('base64,', 1)
-                image_data = base64.b64decode(encoded)
-                filename = f"face_{request.user.id}_{today.strftime('%Y%m%d')}_{now.strftime('%H%M%S')}.jpg"
-                image_file = ContentFile(image_data, name=filename)
+            # Face tasdiqlangan — rasmni fayl sifatida saqlashga tayyorlaymiz
+            fname = f"face_{user.id}_{today.strftime('%Y%m%d')}_{now.strftime('%H%M%S')}.jpg"
+            image_file = ContentFile(incoming_bytes, name=fname)
 
             if not is_within_radius:
-                # Rad etilgan urinish - xodim uchun bugungi yozuv mavjudligini tekshirish
-                existing_log = StaffAttendance.objects.filter(teacher=request.user, date=today).order_by('-is_within_geofence', 'id').first()
+                # Yuz to'g'ri, lekin GPS hududdan tashqarida
+                existing_log = StaffAttendance.objects.filter(
+                    teacher=user, date=today
+                ).order_by('-is_within_geofence', 'id').first()
+
                 if existing_log:
-                    # Agar xodim allaqachon muvaffaqiyatli kelgan bo'lsa (is_within_geofence=True),
-                    # uning asosiy davomat holatini buzmaymiz, faqat xatolik xabarini qaytaramiz.
-                    # Agar avvalgi urinish ham rad etilgan bo'lsa, yangi qator ochmasdan shu yozuvni yangilaymiz.
                     if not existing_log.is_within_geofence:
                         existing_log.latitude = user_lat
                         existing_log.longitude = user_lon
                         existing_log.distance_meters = distance
-                        if image_file:
-                            existing_log.face_snapshot = image_file
+                        existing_log.face_snapshot = image_file
                         existing_log.status = 'REJECTED_GEOFENCE'
-                        existing_log.notes = f"Geolokatsiya xatosi: {distance:.1f}m uzoqlikda (Maksimal ruxsat: {radius_limit}m)."
+                        existing_log.notes = (
+                            f"Face ID tasdiqlandi, lekin GPS xatosi: "
+                            f"{distance:.1f}m uzoqlikda (Ruxsat: {radius_limit}m). "
+                            f"Face distance: {face_distance:.3f}"
+                        )
                         existing_log.save()
-                    # Mavjud dublikat yozuvlar bo'lsa tozalab, faqat bitta asosiy yozuv qoldiramiz
-                    StaffAttendance.objects.filter(teacher=request.user, date=today).exclude(id=existing_log.id).delete()
+                    StaffAttendance.objects.filter(
+                        teacher=user, date=today
+                    ).exclude(id=existing_log.id).delete()
                 else:
-                    # Bugun uchun birinchi yozuvni yaratish
                     StaffAttendance.objects.create(
-                        teacher=request.user,
+                        teacher=user,
                         date=today,
                         latitude=user_lat,
                         longitude=user_lon,
@@ -658,24 +748,36 @@ def staff_check_in_api(request):
                         is_within_geofence=False,
                         face_snapshot=image_file,
                         status='REJECTED_GEOFENCE',
-                        notes=f"Geolokatsiya xatosi: {distance:.1f}m uzoqlikda (Maksimal ruxsat: {radius_limit}m)."
+                        notes=(
+                            f"Face ID tasdiqlandi, lekin GPS xatosi: "
+                            f"{distance:.1f}m uzoqlikda (Ruxsat: {radius_limit}m)."
+                        )
                     )
+
                 return JsonResponse({
                     'success': False,
+                    'face_verified': True,
                     'within_geofence': False,
                     'distance': distance,
                     'radius_limit': radius_limit,
-                    'message': f"Rad etildi! Siz bog'cha hududidan {distance:.1f} metr uzoqdasiz. Ruxsat etilgan radius: {radius_limit} metr."
+                    'message': (
+                        f"Rad etildi! Yuz tasdiqlandi, lekin siz bog'cha hududidan "
+                        f"{distance:.1f} metr uzoqdasiz. "
+                        f"Ruxsat etilgan radius: {radius_limit} metr."
+                    )
                 }, status=400)
 
-            # Inside geofence - Record attendance
-            # Har bir xodim bir kunda faqat bitta asosiy davomat yozuviga ega bo'lishi ta'minlanadi
-            log_entry = StaffAttendance.objects.filter(teacher=request.user, date=today).order_by('-is_within_geofence', 'id').first()
+            # ── 5. Davomat yozuvi yaratish/yangilash ──────────────────────────────
+            log_entry = StaffAttendance.objects.filter(
+                teacher=user, date=today
+            ).order_by('-is_within_geofence', 'id').first()
+
+            face_note = f"Face ID tasdiqlandi (masofa: {face_distance:.3f}). GPS: {distance:.1f}m."
 
             if not log_entry:
                 status_val = 'ON_TIME' if current_time.hour < 9 else 'LATE'
                 log_entry = StaffAttendance.objects.create(
-                    teacher=request.user,
+                    teacher=user,
                     date=today,
                     check_in_time=current_time if action_type != 'check_out' else None,
                     check_out_time=current_time if action_type == 'check_out' else None,
@@ -685,23 +787,30 @@ def staff_check_in_api(request):
                     is_within_geofence=True,
                     face_snapshot=image_file,
                     status=status_val,
-                    notes=f"Face ID va GPS muvaffaqiyatli tasdiqlandi. Masofa: {distance:.1f}m."
+                    notes=face_note
                 )
             else:
-                # Bir kunda birdan ortiq dublikat yozuvlar bo'lsa, ularni tozalash (faqat bitta asosiy yozuv qoladi)
-                StaffAttendance.objects.filter(teacher=request.user, date=today).exclude(id=log_entry.id).delete()
+                # Dublikat yozuvlarni tozalash
+                StaffAttendance.objects.filter(
+                    teacher=user, date=today
+                ).exclude(id=log_entry.id).delete()
 
                 if action_type == 'check_out':
                     log_entry.check_out_time = current_time
-                    log_entry.notes = (log_entry.notes or '') + f" | Chiqish qayd etildi: {current_time.strftime('%H:%M:%S')}."
+                    log_entry.notes = (
+                        (log_entry.notes or '') +
+                        f" | Chiqish: {current_time.strftime('%H:%M:%S')} — {face_note}"
+                    )
                 else:
                     if not log_entry.check_in_time:
                         log_entry.check_in_time = current_time
                     else:
-                        log_entry.notes = (log_entry.notes or '') + f" | Qayta tekshirildi: {current_time.strftime('%H:%M:%S')}."
+                        log_entry.notes = (
+                            (log_entry.notes or '') +
+                            f" | Qayta tekshiruv: {current_time.strftime('%H:%M:%S')} — {face_note}"
+                        )
 
-                if image_file:
-                    log_entry.face_snapshot = image_file
+                log_entry.face_snapshot = image_file
                 log_entry.latitude = user_lat
                 log_entry.longitude = user_lon
                 log_entry.distance_meters = distance
@@ -712,14 +821,17 @@ def staff_check_in_api(request):
 
             return JsonResponse({
                 'success': True,
+                'face_verified': True,
                 'within_geofence': True,
                 'distance': distance,
+                'face_distance': round(face_distance, 4),
                 'time': current_time.strftime('%H:%M:%S'),
                 'status': log_entry.get_status_display(),
-                'message': f"Face ID va Geofencing muvaffaqiyatli tasdiqlandi! Masofa: {distance:.1f}m."
+                'message': f"{face_message} GPS masofa: {distance:.1f}m.",
             })
 
         except Exception as e:
+            logger.exception("staff_check_in_api xatosi: %s", e)
             return JsonResponse({'success': False, 'message': f"Server xatosi: {str(e)}"}, status=500)
 
     return JsonResponse({'success': False, 'message': 'Invalid request'}, status=405)
