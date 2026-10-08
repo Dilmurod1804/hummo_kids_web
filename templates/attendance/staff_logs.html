@@ -1,12 +1,14 @@
 {% extends 'base.html' %}
 
-{% block title %}Xodimlar Davomat Jurnali — Humo Kids{% endblock %}
+{% block title %}Xodimlar Davomat Jurnali & Face ID Nazorati — Humo Kids{% endblock %}
 
 {% block content %}
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
     <div>
-        <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">Xodimlar Geofencing & Face ID Jurnali</h2>
-        <p style="font-size: 13px; color: var(--text-muted);">Tarbiyachilar va xodimlarning GPS koordinatalari hamda yuz tasvirlari monitoringi</p>
+        <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">Xodimlar Face ID & GPS Davomat Nazorati</h2>
+        <p style="font-size: 13px; color: var(--text-muted);">
+            Kunlik Face ID'dan o'tganlar va hali o'tmaganlar (kelmaganlar) monitoringi hamda to'liq GPS jurnali
+        </p>
     </div>
 
     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
@@ -17,12 +19,156 @@
     </div>
 </div>
 
+<!-- Stats Counter Pills -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
+    <div class="glass-card" style="padding: 18px; display: flex; align-items: center; gap: 16px;">
+        <div style="width: 48px; height: 48px; border-radius: 14px; background: rgba(168,85,247,0.15); border: 1px solid rgba(168,85,247,0.3); display: flex; align-items: center; justify-content: center;">
+            <i data-lucide="users" style="width: 24px; height: 24px; color: #c084fc;"></i>
+        </div>
+        <div>
+            <div style="font-size: 12px; color: var(--text-muted);">Jami Faol Xodimlar</div>
+            <div style="font-size: 24px; font-weight: 800; color: white; font-family: 'Outfit', sans-serif;">{{ staff_total_count }}</div>
+        </div>
+    </div>
+
+    <div class="glass-card" style="padding: 18px; display: flex; align-items: center; gap: 16px;">
+        <div style="width: 48px; height: 48px; border-radius: 14px; background: rgba(52,211,153,0.15); border: 1px solid rgba(52,211,153,0.3); display: flex; align-items: center; justify-content: center;">
+            <i data-lucide="user-check" style="width: 24px; height: 24px; color: #34d399;"></i>
+        </div>
+        <div>
+            <div style="font-size: 12px; color: var(--text-muted);">Face ID'dan O'tganlar (Kelgan)</div>
+            <div style="font-size: 24px; font-weight: 800; color: #34d399; font-family: 'Outfit', sans-serif;">{{ staff_passed_count }}</div>
+        </div>
+    </div>
+
+    <div class="glass-card" style="padding: 18px; display: flex; align-items: center; gap: 16px;">
+        <div style="width: 48px; height: 48px; border-radius: 14px; background: rgba(244,63,94,0.15); border: 1px solid rgba(244,63,94,0.3); display: flex; align-items: center; justify-content: center;">
+            <i data-lucide="user-x" style="width: 24px; height: 24px; color: #fb7185;"></i>
+        </div>
+        <div>
+            <div style="font-size: 12px; color: var(--text-muted);">Hali O'tmaganlar (Kelmagan)</div>
+            <div style="font-size: 24px; font-weight: 800; color: #fb7185; font-family: 'Outfit', sans-serif;">{{ staff_pending_count }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- Two Columns: Passed (Kelganlar) VS Pending (Kelmaganlar) -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px; margin-bottom: 28px;">
+    
+    <!-- 1. Face ID'dan Muvaffaqiyatli O'tganlar -->
+    <div class="glass-card" style="padding: 22px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="width: 10px; height: 10px; border-radius: 50%; background: #34d399; box-shadow: 0 0 10px #34d399;"></span>
+                <h3 style="font-size: 16px; font-weight: 700; color: white;">
+                    Face ID'dan O'tganlar (Kelganlar)
+                </h3>
+            </div>
+            <span style="font-size: 12px; font-weight: 700; color: #34d399; background: rgba(52,211,153,0.15); padding: 4px 10px; border-radius: 20px;">
+                {{ staff_passed_count }} nafar
+            </span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px; max-height: 420px; overflow-y: auto; padding-right: 4px;">
+            {% for item in staff_passed_list %}
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(52,211,153,0.25); border-radius: var(--radius-sm); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(52,211,153,0.15); border: 2px solid #34d399; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                        {% if item.staff.avatar %}
+                        <img src="{{ item.staff.avatar.url }}" alt="avatar" style="width: 100%; height: 100%; object-fit: cover;">
+                        {% else %}
+                        <i data-lucide="user" style="width: 20px; height: 20px; color: #34d399;"></i>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <div style="font-weight: 700; color: white; font-size: 14px;">{{ item.staff.get_full_name|default:item.staff.username }}</div>
+                        <div style="font-size: 12px; color: var(--text-dim);">
+                            {{ item.staff.position_display }}
+                            {% if item.staff.phone_number %} &bull; {{ item.staff.phone_number }}{% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div style="text-align: right; flex-shrink: 0;">
+                    <div style="font-size: 14px; font-weight: 800; color: #34d399; font-family: monospace;">
+                        {{ item.log.check_in_time|time:"H:i:s" }}
+                    </div>
+                    <div style="display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px;">
+                        <span class="badge badge-present" style="font-size: 10px; padding: 2px 6px;">
+                            {{ item.log.get_status_display }}
+                        </span>
+                        <span style="font-size: 10px; color: var(--text-dim); background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px;">
+                            {{ item.log.distance_meters|floatformat:0 }}m
+                        </span>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div style="text-align: center; color: var(--text-dim); padding: 36px 12px; font-size: 13px;">
+                Tanlangan sanada hali birorta ham xodim Face ID'dan o'tmadi.
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 2. Hali Face ID'dan O'tmaganlar (Kelmaganlar) -->
+    <div class="glass-card" style="padding: 22px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="width: 10px; height: 10px; border-radius: 50%; background: #fb7185; box-shadow: 0 0 10px #fb7185;"></span>
+                <h3 style="font-size: 16px; font-weight: 700; color: white;">
+                    Hali Face ID'dan O'tmaganlar (Kelmaganlar)
+                </h3>
+            </div>
+            <span style="font-size: 12px; font-weight: 700; color: #fb7185; background: rgba(244,63,94,0.15); padding: 4px 10px; border-radius: 20px;">
+                {{ staff_pending_count }} nafar
+            </span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px; max-height: 420px; overflow-y: auto; padding-right: 4px;">
+            {% for staff in staff_pending_list %}
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(244,63,94,0.25); border-radius: var(--radius-sm); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 42px; height: 42px; border-radius: 50%; background: rgba(244,63,94,0.1); border: 2px dashed rgba(244,63,94,0.5); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                        {% if staff.avatar %}
+                        <img src="{{ staff.avatar.url }}" alt="avatar" style="width: 100%; height: 100%; object-fit: cover;">
+                        {% else %}
+                        <i data-lucide="user" style="width: 20px; height: 20px; color: #fb7185;"></i>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <div style="font-weight: 700; color: white; font-size: 14px;">{{ staff.get_full_name|default:staff.username }}</div>
+                        <div style="font-size: 12px; color: var(--text-dim);">
+                            {{ staff.position_display }}
+                            {% if staff.phone_number %} &bull; <a href="tel:{{ staff.phone_number }}" style="color: #c084fc; text-decoration: none;">{{ staff.phone_number }}</a>{% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <div style="text-align: right; flex-shrink: 0;">
+                    <span style="font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; background: rgba(244,63,94,0.15); color: #fb7185; display: inline-flex; align-items: center; gap: 4px;">
+                        <i data-lucide="clock" style="width: 12px; height: 12px;"></i>
+                        Kelmadi
+                    </span>
+                    <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">Kutilmoqda</div>
+                </div>
+            </div>
+            {% empty %}
+            <div style="text-align: center; color: #34d399; padding: 36px 12px; font-size: 13px;">
+                🎉 Barcha xodimlar bugun Face ID orqali davomatdan muvaffaqiyatli o'tgan!
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+
 <!-- Filters Bar -->
 <div class="glass-card" style="padding: 16px; margin-bottom: 24px;">
     <form method="GET" style="display: flex; gap: 14px; flex-wrap: wrap; align-items: center;">
         <div style="min-width: 180px;">
             <label class="form-label" style="margin-bottom: 4px; font-size: 11px;">Sana bo'yicha:</label>
-            <input type="date" name="date" value="{{ date_filter }}" class="glass-input" onchange="this.form.submit()" style="padding: 8px 14px;">
+            <input type="date" name="date" value="{{ date_filter|default:selected_date|date:'Y-m-d' }}" class="glass-input" onchange="this.form.submit()" style="padding: 8px 14px;">
         </div>
 
         <div style="min-width: 200px;">
@@ -43,20 +189,21 @@
     </form>
 </div>
 
-<!-- Logs Table -->
+<!-- Detailed Audit Logs Table -->
 <div class="glass-card">
     <div class="glass-card-header">
         <h3 class="glass-card-title">
             <i data-lucide="shield-check" style="color: #34d399; width: 20px; height: 20px;"></i>
-            <span>Davomat Qaydlari (Jami: {{ logs.count }})</span>
+            <span>Batafsil GPS & Face ID Qaydlari Jurnali (Jami: {{ logs.count }})</span>
         </h3>
+        <span style="font-size: 12px; color: var(--text-dim);">Sana: {{ selected_date|date:"d.m.Y" }}</span>
     </div>
 
     <div class="glass-table-wrapper">
         <table class="glass-table">
             <thead>
                 <tr>
-                    <th>Xodim (Tarbiyachi)</th>
+                    <th>Xodim</th>
                     <th>Sana</th>
                     <th>Kelgan Vaqti</th>
                     <th>Ketgan Vaqti</th>
@@ -71,14 +218,14 @@
                 <tr>
                     <td>
                         <div style="font-weight: 700; color: white;">{{ log.teacher.get_full_name|default:log.teacher.username }}</div>
-                        <div style="font-size: 11px; color: var(--text-dim);">{{ log.teacher.get_role_display }}</div>
+                        <div style="font-size: 11px; color: var(--text-dim);">{{ log.teacher.position_display }}</div>
                     </td>
                     <td>{{ log.date|date:"d.m.Y" }}</td>
                     <td><strong style="color: white;">{{ log.check_in_time|time:"H:i:s"|default:"—" }}</strong></td>
                     <td><strong style="color: white;">{{ log.check_out_time|time:"H:i:s"|default:"—" }}</strong></td>
                     <td>
                         <span style="font-weight: 700; color: {% if log.is_within_geofence %}#34d399{% else %}#fb7185{% endif %};">
-                            {{ log.distance_meters|default:0 }} metr
+                            {{ log.distance_meters|default:0|floatformat:1 }} metr
                         </span>
                     </td>
                     <td>

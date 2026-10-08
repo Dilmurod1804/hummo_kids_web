@@ -107,11 +107,11 @@
                                     <i data-lucide="{% if st.is_active %}user-x{% else %}user-check{% endif %}" style="width: 16px; height: 16px;"></i>
                                 </button>
                             </form>
-                            {% if user.is_director %}
-                            <!-- Hard delete (director only) -->
-                            <form method="POST" action="{% url 'staff_delete' st.id %}" style="display:inline;" onsubmit="return confirm('O\'chirishga ishonchingiz komilmi?');">
+                            {% if user.can_manage_all %}
+                            <!-- Hard delete (bazadan butunlay o'chirish) -->
+                            <form method="POST" action="{% url 'staff_delete' st.id %}" style="display:inline;" onsubmit="return confirm('DIQQAT! Ushbu xodim va unga tegishli barcha davomat yozuvlari bazadan BUTUNLAY o\'chiriladi. Bu amalni qaytarib bo\'lmaydi! Davom etasizmi?');">
                                 {% csrf_token %}
-                                <button type="submit" class="btn-glass" style="color: #ef4444; padding: 6px; border: none; background: transparent; cursor: pointer;" title="O'chirish">
+                                <button type="submit" class="btn-glass" style="color: #ef4444; padding: 6px; border: none; background: transparent; cursor: pointer;" title="Bazadan butunlay o'chirish">
                                     <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
                                 </button>
                             </form>
@@ -185,6 +185,23 @@
                 <div class="form-group">
                     <label class="form-label">Lavozim nomi (ixtiyoriy)</label>
                     {{ form.custom_position }}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">
+                        Login (ixtiyoriy)
+                        <span style="font-size: 11px; color: var(--text-dim); font-weight: normal;">— bo'sh qolsa avto tuziladi</span>
+                    </label>
+                    {{ form.custom_username }}
+                </div>
+                <div class="form-group">
+                    <label class="form-label">
+                        Parol (ixtiyoriy)
+                        <span style="font-size: 11px; color: var(--text-dim); font-weight: normal;">— bo'sh qolsa avto tuziladi</span>
+                    </label>
+                    {{ form.custom_password }}
                 </div>
             </div>
 

@@ -20,8 +20,34 @@
          data-k-lat="{{ settings.latitude }}" 
          data-k-lng="{{ settings.longitude }}" 
          data-k-radius="{{ settings.geofence_radius_meters }}"
+         data-has-checked-in="{% if has_checked_in %}true{% else %}false{% endif %}"
+         data-has-checked-out="{% if has_checked_out %}true{% else %}false{% endif %}"
          style="padding: 28px; margin-bottom: 24px;">
         
+        <!-- Check-in State Badge (if already checked in today) -->
+        {% if has_checked_in %}
+        <div style="background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 12px; padding: 12px 18px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px; color: #34d399; font-weight: 700; font-size: 14px;">
+                <i data-lucide="check-circle-2" style="width: 20px; height: 20px;"></i>
+                <span>Bugun kelgan vaqtingiz: <b>{{ latest_log.check_in_time|time:"H:i:s" }}</b></span>
+            </div>
+            {% if has_checked_out %}
+            <span style="font-size: 13px; color: #38bdf8; font-weight: 600;">
+                ✓ Ketish ham qayd etilgan ({{ latest_log.check_out_time|time:"H:i:s" }})
+            </span>
+            {% else %}
+            <span style="font-size: 12px; color: #fbbf24;">
+                Ish yakunida pastdagi <b>'Ketdim (Check-Out)'</b> tugmasini bosing
+            </span>
+            {% endif %}
+        </div>
+        {% else %}
+        <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 12px; padding: 10px 16px; margin-bottom: 18px; text-align: center; color: #c084fc; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <i data-lucide="sparkles" style="width: 16px; height: 16px;"></i>
+            <span><b>Avtomatik Skanerlash Faol:</b> Yuzingizni kameraga qarating, tizim avtomatik taniydi.</span>
+        </div>
+        {% endif %}
+
         <!-- Live Camera Viewport with Face Guide & Scanning Laser -->
         <div class="scanner-viewport">
             <video id="cameraVideo" autoplay playsinline muted></video>
@@ -30,20 +56,33 @@
         </div>
 
         <!-- Scanner Status Message -->
-        <div id="scannerStatus" style="text-align: center; margin: 18px 0; font-size: 14px; min-height: 24px;">
+        <div id="scannerStatus" style="text-align: center; margin: 18px 0; font-size: 14px; min-height: 28px;">
             <span style="color: var(--text-dim);">Kamera va GPS yuklanmoqda...</span>
         </div>
 
         <!-- Action Buttons -->
-        <div style="display: flex; justify-content: center; gap: 14px; flex-wrap: wrap;">
-            <button type="button" id="btnSubmitCheckIn" onclick="captureAndSubmitAttendance('check_in')" class="btn-glass btn-emerald" style="padding: 12px 24px; font-size: 15px;">
-                <i data-lucide="camera" style="width: 18px; height: 18px;"></i>
-                <span>Keldim (Check-In)</span>
+        <div style="display: flex; justify-content: center; align-items: center; gap: 14px; flex-wrap: wrap;">
+            {% if has_checked_in %}
+            <!-- Ishdan ketish uchun maxsus KETDIM tugmasi -->
+            <button type="button" id="btnSubmitCheckOut" onclick="triggerManualCheck('check_out')" class="btn-glass pulse-glow-btn" style="padding: 14px 34px; font-size: 16px; font-weight: 800; background: linear-gradient(135deg, #f43f5e 0%, #e11d48 100%); color: white; border: none; border-radius: 14px; display: inline-flex; align-items: center; gap: 10px; cursor: pointer;">
+                <i data-lucide="log-out" style="width: 20px; height: 20px;"></i>
+                <span>Ketdim (Check-Out)</span>
             </button>
-            <button type="button" id="btnSubmitCheckOut" onclick="captureAndSubmitAttendance('check_out')" class="btn-glass btn-secondary" style="padding: 12px 24px; font-size: 15px;">
+            <button type="button" id="btnSubmitCheckIn" onclick="triggerManualCheck('check_in')" class="btn-glass btn-secondary" style="padding: 12px 18px; font-size: 13px;">
+                <i data-lucide="refresh-cw" style="width: 15px; height: 15px;"></i>
+                <span>Qayta Keldim</span>
+            </button>
+            {% else %}
+            <!-- Kelish uchun avtomatik ishlaydi, qo'shimcha qo'lda tugmalar -->
+            <button type="button" id="btnSubmitCheckIn" onclick="triggerManualCheck('check_in')" class="btn-glass btn-emerald" style="padding: 12px 24px; font-size: 15px;">
+                <i data-lucide="camera" style="width: 18px; height: 18px;"></i>
+                <span>Qo'lda Keldim (Check-In)</span>
+            </button>
+            <button type="button" id="btnSubmitCheckOut" onclick="triggerManualCheck('check_out')" class="btn-glass btn-secondary" style="padding: 12px 24px; font-size: 15px;">
                 <i data-lucide="log-out" style="width: 18px; height: 18px;"></i>
                 <span>Ketdim (Check-Out)</span>
             </button>
+            {% endif %}
         </div>
 
         <!-- GPS Geofence Radar Card -->
@@ -95,7 +134,7 @@
                     <tr>
                         <td><strong>{{ log.check_in_time|time:"H:i:s"|default:"—" }}</strong></td>
                         <td><strong>{{ log.check_out_time|time:"H:i:s"|default:"—" }}</strong></td>
-                        <td>{{ log.distance_meters|default:0 }}m</td>
+                        <td>{{ log.distance_meters|default:0|floatformat:1 }}m</td>
                         <td>
                             {% if log.is_within_geofence %}
                             <span class="badge badge-present">✓ 50m ichida</span>
@@ -108,7 +147,7 @@
                     {% empty %}
                     <tr>
                         <td colspan="5" style="text-align: center; color: var(--text-dim); padding: 20px;">
-                            Bugun hali davomat belgilanmagan. Yuqoridagi tugma orqali tasdiqlang.
+                            Bugun hali davomat belgilanmagan. Kamera orqali yuzingizni skanerlang.
                         </td>
                     </tr>
                     {% endfor %}

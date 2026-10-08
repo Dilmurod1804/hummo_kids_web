@@ -120,7 +120,7 @@ def dashboard(request):
 @login_required
 @user_passes_test(is_director_or_manager)
 def admin_dashboard(request):
-    today = timezone.now().date()
+    today = timezone.localtime(timezone.now()).date()
     current_month = today.month
     current_year = today.year
 
@@ -137,8 +137,32 @@ def admin_dashboard(request):
     
     attendance_rate = round((present_count / total_children * 100), 1) if total_children > 0 else 0
 
-    # Staff on duty today
-    staff_on_duty_count = StaffAttendance.objects.filter(date=today, is_within_geofence=True).values('teacher').distinct().count()
+    # Staff on duty today & Face ID breakdown
+    all_active_staff = User.objects.filter(is_active=True).exclude(role='DIRECTOR').order_by('role', 'first_name')
+    today_staff_logs = StaffAttendance.objects.filter(date=today).select_related('teacher')
+    
+    present_logs_map = {}
+    for log in today_staff_logs:
+        if log.is_within_geofence and log.check_in_time:
+            if log.teacher_id not in present_logs_map:
+                present_logs_map[log.teacher_id] = log
+
+    staff_passed_list = []
+    staff_pending_list = []
+
+    for staff in all_active_staff:
+        if staff.id in present_logs_map:
+            staff_passed_list.append({
+                'staff': staff,
+                'log': present_logs_map[staff.id],
+            })
+        else:
+            staff_pending_list.append(staff)
+
+    staff_passed_count = len(staff_passed_list)
+    staff_pending_count = len(staff_pending_list)
+    staff_total_count = len(all_active_staff)
+    staff_on_duty_count = staff_passed_count
 
     # Finance metrics for current month
     monthly_invoices = MonthlyInvoice.objects.filter(month=current_month, year=current_year)
@@ -168,6 +192,11 @@ def admin_dashboard(request):
         'unexcused_count': unexcused_count,
         'total_marked': total_marked,
         'staff_on_duty_count': staff_on_duty_count,
+        'staff_passed_list': staff_passed_list,
+        'staff_pending_list': staff_pending_list,
+        'staff_passed_count': staff_passed_count,
+        'staff_pending_count': staff_pending_count,
+        'staff_total_count': staff_total_count,
         'total_expected_revenue': total_expected_revenue,
         'total_collected_revenue': total_collected_revenue,
         'total_debt': total_debt,
@@ -180,7 +209,7 @@ def admin_dashboard(request):
 
 @login_required
 def teacher_dashboard(request):
-    today = timezone.now().date()
+    today = timezone.localtime(timezone.now()).date()
     user = request.user
 
     # Find teacher's assigned groups
@@ -315,19 +344,33 @@ def staff_create(request):
         form = StaffForm(request.POST, request.FILES)
         if form.is_valid():
             user = form.save(commit=False)
-            # Auto-generate login & password for every new staff member
-            auto_login, auto_password = generate_staff_credentials(
-                user.first_name, user.last_name
-            )
-            user.username = auto_login
-            user.set_password(auto_password)
-            user.initial_password = auto_password  # Store readable copy for admin panel
+            
+            # Check if director supplied custom credentials
+            c_user = form.cleaned_data.get('custom_username', '').strip()
+            c_pass = form.cleaned_data.get('custom_password', '').strip()
+
+            if c_user:
+                final_login = c_user
+                if User.objects.filter(username=final_login).exists():
+                    import random
+                    final_login = f"{c_user}_{random.randint(10, 99)}"
+            else:
+                final_login, _ = generate_staff_credentials(user.first_name, user.last_name)
+
+            final_password = c_pass if c_pass else generate_staff_credentials(user.first_name, user.last_name)[1]
+
+            user.username = final_login
+            user.set_password(final_password)
+            user.initial_password = final_password  # Store readable copy for admin panel
             user.is_active = True
+            if user.role in ['MANAGER', 'DIRECTOR']:
+                user.is_staff = True
             user.save()
+
             messages.success(
                 request,
-                f"Xodim '{user.get_full_name()}' qo'shildi. "
-                f"Login: {auto_login} | Parol: {auto_password}"
+                f"Xodim '{user.get_full_name() or user.username}' muvaffaqiyatli qo'shildi. "
+                f"Login: {final_login} | Parol: {final_password}"
             )
             return redirect('staff_list')
 
@@ -368,15 +411,51 @@ def staff_reset_password(request, pk):
     return redirect('staff_list')
 
 @login_required
-@user_passes_test(is_director_only)
+@user_passes_test(is_director_or_manager)
 def staff_delete(request, pk):
+    """
+    Xodimni bazadan butunlay o'chirish (Hard Delete).
+    Barcha bog'liq davomat yozuvlari (CASCADE) va diskdagi fayllari (avatar, face snapshotlar) to'liq tozalanadi.
+    """
     staff_member = get_object_or_404(User, pk=pk)
     if request.method == 'POST':
-        if staff_member != request.user and not staff_member.is_superuser:
-            # Deactivate instead of hard-delete to preserve audit trail
-            staff_member.is_active = False
-            staff_member.save()
-            messages.success(request, f"{staff_member.get_full_name()} tizimdan bloklandi.")
+        # Himoya: O'zini o'zi, superuser yoki direktorni o'chirish taqiqlanadi
+        if staff_member == request.user:
+            messages.error(request, "O'zingizning profilingizni o'chira olmaysiz!")
+            return redirect('staff_list')
+
+        if staff_member.is_superuser or staff_member.username in ['direktor2026', 'director']:
+            messages.error(request, "Bosh direktor hisobini o'chirish taqiqlangan!")
+            return redirect('staff_list')
+
+        if request.user.role == 'MANAGER' and staff_member.role == 'DIRECTOR':
+            messages.error(request, "Menejer direktor hisobini o'chira olmaydi!")
+            return redirect('staff_list')
+
+        staff_name = staff_member.get_full_name() or staff_member.username
+
+        # 1. Xodimga tegishli Face ID davomat rasmlarini diskdan tozalash
+        for att in staff_member.staff_attendances.all():
+            if att.face_snapshot:
+                try:
+                    att.face_snapshot.delete(save=False)
+                except Exception as e:
+                    logger.warning("Face snapshot faylini o'chirishda xatolik: %s", e)
+
+        # 2. Xodimning profil rasmini (avatar) diskdan tozalash
+        if staff_member.avatar:
+            try:
+                staff_member.avatar.delete(save=False)
+            except Exception as e:
+                logger.warning("Avatar faylini o'chirishda xatolik: %s", e)
+
+        # 3. Bazadan BUTUNLAY O'CHIRISH (Hard Delete)
+        staff_member.delete()
+
+        messages.success(
+            request,
+            f"Xodim '{staff_name}' va unga bog'liq barcha ma'lumotlar bazadan butunlay o'chirildi."
+        )
     return redirect('staff_list')
 
 @login_required
@@ -472,7 +551,7 @@ def child_delete(request, pk):
 # --- Daily Child Attendance ---
 @login_required
 def attendance_daily(request):
-    today = timezone.now().date()
+    today = timezone.localtime(timezone.now()).date()
     selected_date_str = request.GET.get('date', today.strftime('%Y-%m-%d'))
     try:
         selected_date = datetime.strptime(selected_date_str, '%Y-%m-%d').date()
@@ -587,11 +666,15 @@ def _current_attendance_mode(settings_obj):
 # --- Staff Face ID & GPS Geofencing Module ---
 @login_required
 def staff_attendance_portal(request):
-    today = timezone.now().date()
+    today = timezone.localtime(timezone.now()).date()
     settings = KindergartenSettings.get_settings()
     user_today_logs = StaffAttendance.objects.filter(teacher=request.user, date=today).order_by('-is_within_geofence', '-created_at')
     windows = _get_attendance_windows(settings)
     current_mode = _current_attendance_mode(settings)
+
+    latest_log = user_today_logs.filter(is_within_geofence=True).first()
+    has_checked_in = bool(latest_log and latest_log.check_in_time)
+    has_checked_out = bool(latest_log and latest_log.check_out_time)
 
     return render(request, 'attendance/staff_portal.html', {
         'today': today,
@@ -599,6 +682,9 @@ def staff_attendance_portal(request):
         'user_today_logs': user_today_logs,
         'windows': windows,
         'current_mode': current_mode,
+        'latest_log': latest_log,
+        'has_checked_in': has_checked_in,
+        'has_checked_out': has_checked_out,
     })
 
 @csrf_exempt
@@ -664,7 +750,7 @@ def staff_check_in_api(request):
 
             if not face_match:
                 # Yuz mos kelmadi — bazaga REJECTED yozuv yozib, 400 qaytarish
-                now_rej = timezone.now()
+                now_rej = timezone.localtime(timezone.now())
                 today_rej = now_rej.date()
                 try:
                     fname = f"face_rejected_{user.id}_{today_rej.strftime('%Y%m%d')}_{now_rej.strftime('%H%M%S')}.jpg"
@@ -706,7 +792,7 @@ def staff_check_in_api(request):
             radius_limit = settings.geofence_radius_meters
 
             distance = haversine_distance(user_lat, user_lon, k_lat, k_lon)
-            now = timezone.now()
+            now = timezone.localtime(timezone.now())
             today = now.date()
             current_time = now.time()
 
@@ -819,8 +905,17 @@ def staff_check_in_api(request):
                     log_entry.status = 'ON_TIME' if current_time.hour < 9 else 'LATE'
                 log_entry.save()
 
+            full_name = f"{user.first_name} {user.last_name}".strip() or user.get_full_name().strip() or user.username
+            greeting = "Xush kelibsiz" if action_type == 'check_in' else "Xayr"
+
             return JsonResponse({
                 'success': True,
+                'first_name': user.first_name or '',
+                'last_name': user.last_name or '',
+                'full_name': full_name,
+                'employee_name': full_name,
+                'action': action_type,
+                'greeting': f"{greeting}, {full_name}!",
                 'face_verified': True,
                 'within_geofence': True,
                 'distance': distance,
@@ -839,22 +934,58 @@ def staff_check_in_api(request):
 @login_required
 @user_passes_test(is_director_or_manager)
 def staff_attendance_logs(request):
-    today = timezone.now().date()
+    today = timezone.localtime(timezone.now()).date()
     date_filter = request.GET.get('date', '')
     status_filter = request.GET.get('status', '')
 
+    selected_date = today
+    if date_filter:
+        try:
+            selected_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
+        except ValueError:
+            selected_date = today
+
     logs = StaffAttendance.objects.select_related('teacher').all()
     if date_filter:
-        logs = logs.filter(date=date_filter)
+        logs = logs.filter(date=selected_date)
     if status_filter:
         logs = logs.filter(status=status_filter)
 
     logs = logs.order_by('-date', '-created_at')
 
+    # Xodimlarning tanlangan sana bo'yicha Face ID'dan o'tgan / o'tmagan holati
+    all_active_staff = User.objects.filter(is_active=True).exclude(role='DIRECTOR').order_by('role', 'first_name')
+    date_staff_logs = StaffAttendance.objects.filter(date=selected_date).select_related('teacher')
+    
+    present_logs_map = {}
+    for log in date_staff_logs:
+        if log.is_within_geofence and log.check_in_time:
+            if log.teacher_id not in present_logs_map:
+                present_logs_map[log.teacher_id] = log
+
+    staff_passed_list = []
+    staff_pending_list = []
+
+    for staff in all_active_staff:
+        if staff.id in present_logs_map:
+            staff_passed_list.append({
+                'staff': staff,
+                'log': present_logs_map[staff.id],
+            })
+        else:
+            staff_pending_list.append(staff)
+
     return render(request, 'attendance/staff_logs.html', {
         'logs': logs,
         'date_filter': date_filter,
         'status_filter': status_filter,
+        'selected_date': selected_date,
+        'today': today,
+        'staff_passed_list': staff_passed_list,
+        'staff_pending_list': staff_pending_list,
+        'staff_passed_count': len(staff_passed_list),
+        'staff_pending_count': len(staff_pending_list),
+        'staff_total_count': len(all_active_staff),
     })
 
 
@@ -862,7 +993,7 @@ def staff_attendance_logs(request):
 @login_required
 @user_passes_test(is_director_or_manager)
 def finance_dashboard(request):
-    today = timezone.now().date()
+    today = timezone.localtime(timezone.now()).date()
     month = int(request.GET.get('month', today.month))
     year = int(request.GET.get('year', today.year))
     status_filter = request.GET.get('status', 'all')
@@ -1083,22 +1214,39 @@ def settings_view(request):
             new_settings = form.save()
             managers = User.objects.filter(role='MANAGER')
 
-            # Update manager username if it changed
             new_uname = form.cleaned_data.get('new_manager_username', '').strip()
-            if new_uname and new_settings.manager_username != old_manager_username:
-                for i, manager in enumerate(managers):
-                    # If multiple managers exist, append index to keep usernames unique
-                    uname = new_uname if i == 0 else f"{new_uname}{i + 1}"
-                    manager.username = uname
-                    manager.save()
-
-            # Update manager password if it changed
             new_pw = form.cleaned_data.get('new_manager_password')
-            if new_pw and new_settings.manager_password != old_manager_password:
-                for manager in User.objects.filter(role='MANAGER'):
-                    manager.set_password(new_settings.manager_password)
-                    manager.save()
 
+            if not managers.exists():
+                # Agar tizimda hali bitta ham menejer foydalanuvchisi bo'lmasa, avtomatik yaratish
+                mgr = User.objects.create(
+                    username=new_settings.manager_username or 'manager',
+                    role='MANAGER',
+                    first_name='Menejer',
+                    last_name='Humo Kids',
+                    is_staff=True,
+                    is_active=True,
+                    initial_password=new_settings.manager_password,
+                )
+                mgr.set_password(new_settings.manager_password)
+                mgr.save()
+            else:
+                # Mavjud menejerlarning loginini yangilash
+                if new_uname and new_settings.manager_username != old_manager_username:
+                    for i, manager in enumerate(managers):
+                        uname = new_uname if i == 0 else f"{new_uname}{i + 1}"
+                        manager.username = uname
+                        manager.save()
+
+                # Mavjud menejerlarning parolini yangilash
+                if new_pw and new_settings.manager_password != old_manager_password:
+                    for manager in managers:
+                        manager.set_password(new_settings.manager_password)
+                        manager.initial_password = new_settings.manager_password
+                        manager.is_staff = True
+                        manager.save()
+
+            messages.success(request, "Tizim va menejer xavfsizlik sozlamalari muvaffaqiyatli saqlandi.")
             return redirect('settings')
     else:
         form = SettingsForm(instance=settings_obj)

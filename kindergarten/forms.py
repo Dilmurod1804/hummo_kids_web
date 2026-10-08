@@ -213,6 +213,23 @@ def generate_staff_credentials(first_name, last_name=''):
 
 
 class StaffForm(forms.ModelForm):
+    custom_username = forms.CharField(
+        required=False,
+        label="Login (ixtiyoriy)",
+        widget=forms.TextInput(attrs={
+            'class': 'glass-input',
+            'placeholder': 'Ixtiyoriy login (bo\'sh qolsa avtomatik generatsiya bo\'ladi)'
+        })
+    )
+    custom_password = forms.CharField(
+        required=False,
+        label="Parol (ixtiyoriy)",
+        widget=forms.TextInput(attrs={
+            'class': 'glass-input',
+            'placeholder': 'Ixtiyoriy parol (bo\'sh qolsa avtomatik generatsiya bo\'ladi)'
+        })
+    )
+
     class Meta:
         model = User
         fields = ['first_name', 'last_name', 'phone_number', 'role', 'custom_position', 'salary', 'avatar']
