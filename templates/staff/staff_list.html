@@ -93,6 +93,15 @@
                     {% if user.can_manage_all %}
                     <td style="padding: 12px; text-align: right;">
                         <div style="display: flex; gap: 4px; justify-content: flex-end;">
+                            <!-- Face ID Ro'yxatdan O'tkazish -->
+                            <button
+                                onclick="openFaceModal({{ st.id }}, '{{ st.get_full_name|default:st.username }}')"
+                                class="btn-glass"
+                                style="color: {% if st.face_image %}#34d399{% else %}#94a3b8{% endif %}; padding: 6px; border: none; background: transparent; cursor: pointer;"
+                                title="{% if st.face_image %}Face ID yangilash{% else %}Yuz ro'yxatdan o'tkazish{% endif %}"
+                            >
+                                <i data-lucide="scan-face" style="width: 16px; height: 16px;"></i>
+                            </button>
                             <!-- Reset password -->
                             <form method="POST" action="{% url 'staff_reset_password' st.id %}" style="display:inline;" onsubmit="return confirm('Yangi parol yaratilsinmi?');">
                                 {% csrf_token %}
@@ -217,5 +226,308 @@
         </form>
     </div>
 </div>
+{% endif %}
+
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     FACE ID RO'YXATDAN O'TKAZISH MODALI
+     ════════════════════════════════════════════════════════════════════════ -->
+{% if user.can_manage_all %}
+<div id="modalFaceReg" class="glass-modal-backdrop" style="display:none;">
+    <div class="glass-modal" style="max-width: 520px; width: 100%;">
+
+        <!-- Sarlavha -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <div style="width:40px; height:40px; border-radius:12px; background:linear-gradient(135deg,#6366f1,#8b5cf6); display:flex; align-items:center; justify-content:center;">
+                    <i data-lucide="scan-face" style="width:20px; height:20px; color:white;"></i>
+                </div>
+                <div>
+                    <h3 style="font-family:'Outfit',sans-serif; font-size:18px; font-weight:700; color:white; margin:0;">Yuz Ro'yxatdan O'tkazish</h3>
+                    <p id="faceRegStaffName" style="font-size:12px; color:#a855f7; margin:0;">Xodim: —</p>
+                </div>
+            </div>
+            <button onclick="closeFaceModal()" style="background:transparent; border:none; color:var(--text-dim); cursor:pointer;">
+                <i data-lucide="x" style="width:20px; height:20px;"></i>
+            </button>
+        </div>
+
+        <!-- Yo'riqnoma -->
+        <div style="padding:10px 14px; background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.25); border-radius:10px; margin-bottom:18px; font-size:12px; color:#a5b4fc; display:flex; align-items:flex-start; gap:8px;">
+            <i data-lucide="info" style="width:14px; height:14px; flex-shrink:0; margin-top:2px;"></i>
+            <span>Xodimning yuzini kadrga to'g'rilang va <strong>Yuzni Saqlash</strong> tugmasini bosing. Bu rasm Face ID davomat tizimida etalon sifatida ishlatiladi.</span>
+        </div>
+
+        <!-- Kamera oynasi (MySport Uslubi) -->
+        <div class="mysport-scanner-container" style="height:360px; margin-bottom:16px; border-radius:20px;">
+            <video id="faceVideo" autoplay playsinline muted class="mysport-video"></video>
+            <canvas id="faceCanvas" style="display:none;"></canvas>
+
+            <!-- Yuz oval ramkasi -->
+            <div id="faceOverlayRing" class="mysport-oval-frame scanning"></div>
+
+            <!-- Interaktiv Real-Time Yo'riqnoma Matni (Guidance Pill) -->
+            <div id="staffListGuidance" class="face-guidance-pill">
+                <i data-lucide="scan" style="width:14px; height:14px; color:#38bdf8;"></i>
+                <span id="staffListGuidanceText">Yuzingizni markazga qo'ying</span>
+            </div>
+
+            <!-- Holat overlay (yuklash/xato/muvaffaqiyat) -->
+            <div id="faceStatusOverlay" style="position:absolute; inset:0; background:rgba(0,0,0,0.8); display:none; align-items:center; justify-content:center; flex-direction:column; gap:12px; border-radius:20px; z-index:20;">
+                <div id="faceStatusIcon" style="width:52px; height:52px; border-radius:50%; display:flex; align-items:center; justify-content:center;"></div>
+                <p id="faceStatusText" style="color:white; font-size:14px; font-weight:700; text-align:center; padding:0 20px; margin:0;"></p>
+            </div>
+        </div>
+
+        <!-- Preview rasm (saqlangandan keyin ko'rsatiladi) -->
+        <div id="facePreviewWrap" style="display:none; margin-bottom:16px; border-radius:12px; overflow:hidden; border:2px solid rgba(52,211,153,0.4); position:relative;">
+            <img id="facePreviewImg" src="" alt="Saqlangan yuz" style="width:100%; object-fit:cover; max-height:180px;">
+            <div style="position:absolute; top:8px; left:8px; background:rgba(52,211,153,0.2); border:1px solid rgba(52,211,153,0.4); border-radius:20px; padding:4px 10px; font-size:11px; color:#34d399; font-weight:600; display:flex; align-items:center; gap:4px;">
+                <i data-lucide="check-circle-2" style="width:12px; height:12px;"></i> Face ID Saqlandi
+            </div>
+        </div>
+
+        <!-- Xabar zonasi -->
+        <div id="faceRegMessage" style="display:none; border-radius:10px; padding:12px 16px; font-size:13px; margin-bottom:14px; display:flex; align-items:center; gap:10px;"></div>
+
+        <!-- Tugmalar -->
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button onclick="closeFaceModal()" class="btn-glass btn-secondary" id="faceCancelBtn">Bekor qilish</button>
+            <button onclick="captureAndRegisterFace()" class="btn-glass btn-primary" id="faceCaptureBtn"
+                    style="background:linear-gradient(135deg,#6366f1,#8b5cf6); color:white; display:flex; align-items:center; gap:8px;">
+                <i data-lucide="camera" style="width:16px; height:16px;"></i>
+                Yuzni Saqlash
+            </button>
+            <button onclick="retakeFacePhoto()" class="btn-glass" id="faceRetakeBtn" style="display:none; color:#fbbf24; display:none; align-items:center; gap:8px;">
+                <i data-lucide="refresh-cw" style="width:16px; height:16px;"></i>
+                Qayta olish
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+//  FACE ID RO'YXATDAN O'TKAZISH — JavaScript moduli
+// ─────────────────────────────────────────────────────────────────────────────
+(function() {
+    let _stream = null;          // MediaStream
+    let _currentStaffId = null;  // Hozirgi xodim ID
+    let _capturedBase64 = null;  // Olingan rasm base64
+    let _staffGuidanceTimer = null;
+
+    function setStaffGuidance(text, color = '#38bdf8') {
+        const textEl = document.getElementById('staffListGuidanceText');
+        const pillEl = document.getElementById('staffListGuidance');
+        if (textEl) textEl.textContent = text;
+        if (pillEl) pillEl.style.borderColor = color;
+    }
+
+    // Modal ochish
+    window.openFaceModal = function(staffId, staffName) {
+        _currentStaffId = staffId;
+        _capturedBase64 = null;
+
+        document.getElementById('faceRegStaffName').textContent = 'Xodim: ' + staffName;
+        document.getElementById('modalFaceReg').style.display = 'flex';
+        document.getElementById('faceStatusOverlay').style.display = 'none';
+        document.getElementById('facePreviewWrap').style.display = 'none';
+        document.getElementById('faceRegMessage').style.display = 'none';
+
+        const ring = document.getElementById('faceOverlayRing');
+        if (ring) ring.className = 'mysport-oval-frame scanning';
+
+        setStaffGuidance("Yuzingizni markazga qo'ying", '#38bdf8');
+        if (_staffGuidanceTimer) clearTimeout(_staffGuidanceTimer);
+        _staffGuidanceTimer = setTimeout(() => {
+            setStaffGuidance("Biroz yaqinroq keling va harakatsiz turing", '#818cf8');
+        }, 2200);
+
+        // Tugmalar boshlang'ich holati
+        document.getElementById('faceCaptureBtn').style.display = 'flex';
+        document.getElementById('faceRetakeBtn').style.display = 'none';
+
+        _startCamera();
+        lucide.createIcons();
+    };
+
+    // Modal yopish
+    window.closeFaceModal = function() {
+        _stopCamera();
+        if (_staffGuidanceTimer) clearTimeout(_staffGuidanceTimer);
+        document.getElementById('modalFaceReg').style.display = 'none';
+        _currentStaffId = null;
+        _capturedBase64 = null;
+    };
+
+    // Kamerani yoqish
+    function _startCamera() {
+        const video = document.getElementById('faceVideo');
+        if (_stream) {
+            video.srcObject = _stream;
+            return;
+        }
+        navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+            audio: false
+        })
+        .then(stream => {
+            _stream = stream;
+            video.srcObject = stream;
+        })
+        .catch(err => {
+            _showMessage('error', 'Kameraga ruxsat berilmadi yoki topilmadi: ' + err.message);
+        });
+    }
+
+    // Kamerani o'chirish
+    function _stopCamera() {
+        if (_stream) {
+            _stream.getTracks().forEach(t => t.stop());
+            _stream = null;
+        }
+        const video = document.getElementById('faceVideo');
+        video.srcObject = null;
+    }
+
+    // Snapshot olish va serverga yuborish
+    window.captureAndRegisterFace = function() {
+        const video = document.getElementById('faceVideo');
+        const canvas = document.getElementById('faceCanvas');
+        const ring = document.getElementById('faceOverlayRing');
+
+        if (!video.srcObject || video.readyState < 2) {
+            _showMessage('error', 'Kamera hali tayyor emas. Bir lahza kuting.');
+            return;
+        }
+
+        // Canvas ga kadr yozish
+        canvas.width  = video.videoWidth  || 640;
+        canvas.height = video.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        _capturedBase64 = canvas.toDataURL('image/jpeg', 0.92);
+
+        // Yuklash animatsiyasi
+        _showOverlay('loading', '⏳ Yuz tekshirilmoqda va saqlanmoqda...');
+        setStaffGuidance("OpenCV orqali tekshirilmoqda...", '#fbbf24');
+        document.getElementById('faceCaptureBtn').style.display = 'none';
+        document.getElementById('faceRetakeBtn').style.display = 'none';
+
+        // API ga yuborish
+        fetch('/staff/' + _currentStaffId + '/register-face/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': _getCsrf(),
+            },
+            body: JSON.stringify({ face_image: _capturedBase64 })
+        })
+        .then(r => r.json())
+        .then(data => {
+            _hideOverlay();
+            if (data.success) {
+                // ✅ Muvaffaqiyat
+                if (ring) ring.className = 'mysport-oval-frame valid';
+                setStaffGuidance("Muvaffaqiyatli saqlandi!", '#34d399');
+                _showOverlay('success', '✅ Yuz muvaffaqiyatli ro\'yxatdan o\'tkazildi!');
+
+                // Preview rasm
+                document.getElementById('facePreviewImg').src = _capturedBase64;
+                document.getElementById('facePreviewWrap').style.display = 'block';
+
+                _showMessage('success', data.message || 'Yuz muvaffaqiyatli ro\'yxatdan o\'tkazildi!');
+
+                // 2.5 soniyadan keyin modal yopiladi va sahifani yangilaydi
+                setTimeout(() => {
+                    closeFaceModal();
+                    location.reload();
+                }, 2500);
+            } else {
+                // ❌ Xato
+                if (ring) ring.className = 'mysport-oval-frame warning';
+                setStaffGuidance("Qayta urinib ko'ring", '#f43f5e');
+                _hideOverlay();
+                _showMessage('error', data.message || 'Xatolik yuz berdi. Qayta urinib ko\'ring.');
+                document.getElementById('faceCaptureBtn').style.display = 'flex';
+            }
+        })
+        .catch(err => {
+            _hideOverlay();
+            setStaffGuidance("Server xatosi", '#f43f5e');
+            _showMessage('error', 'Server bilan aloqa o\'rnatilmadi: ' + err.message);
+            document.getElementById('faceCaptureBtn').style.display = 'flex';
+        });
+    };
+
+    // Qayta olish
+    window.retakeFacePhoto = function() {
+        _capturedBase64 = null;
+        document.getElementById('facePreviewWrap').style.display = 'none';
+        document.getElementById('faceRegMessage').style.display = 'none';
+        document.getElementById('faceRetakeBtn').style.display = 'none';
+        document.getElementById('faceCaptureBtn').style.display = 'flex';
+        _hideOverlay();
+    };
+
+    // ── Yordamchi funksiyalar ──────────────────────────────────────────────────
+
+    function _showOverlay(type, text) {
+        const overlay = document.getElementById('faceStatusOverlay');
+        const icon    = document.getElementById('faceStatusIcon');
+        const txt     = document.getElementById('faceStatusText');
+        const ring    = document.getElementById('faceOverlayRing');
+
+        txt.textContent = text;
+        overlay.style.display = 'flex';
+
+        if (type === 'loading') {
+            icon.innerHTML = '<div style="width:48px;height:48px;border:4px solid rgba(99,102,241,0.3);border-top-color:#6366f1;border-radius:50%;animation:faceSpin 0.9s linear infinite;"></div>';
+            ring.style.borderColor = 'rgba(99,102,241,0.7)';
+        } else if (type === 'success') {
+            icon.innerHTML = '<div style="width:64px;height:64px;border-radius:50%;background:rgba(52,211,153,0.2);display:flex;align-items:center;justify-content:center;font-size:30px;">✅</div>';
+            ring.style.borderColor = 'rgba(52,211,153,0.8)';
+        } else {
+            icon.innerHTML = '<div style="width:64px;height:64px;border-radius:50%;background:rgba(244,63,94,0.2);display:flex;align-items:center;justify-content:center;font-size:30px;">❌</div>';
+            ring.style.borderColor = 'rgba(244,63,94,0.7)';
+        }
+    }
+
+    function _hideOverlay() {
+        document.getElementById('faceStatusOverlay').style.display = 'none';
+        document.getElementById('faceOverlayRing').style.borderColor = 'rgba(99,102,241,0.7)';
+    }
+
+    function _showMessage(type, text) {
+        const box = document.getElementById('faceRegMessage');
+        const isSuccess = type === 'success';
+        box.style.cssText = `
+            display: flex; align-items: center; gap: 10px;
+            border-radius: 10px; padding: 12px 16px; font-size: 13px; margin-bottom: 14px;
+            background: ${isSuccess ? 'rgba(52,211,153,0.12)' : 'rgba(244,63,94,0.12)'};
+            border: 1px solid ${isSuccess ? 'rgba(52,211,153,0.3)' : 'rgba(244,63,94,0.3)'};
+            color: ${isSuccess ? '#34d399' : '#fb7185'};
+        `;
+        box.innerHTML = `<span style="font-size:18px;">${isSuccess ? '✅' : '❌'}</span><span>${text}</span>`;
+    }
+
+    function _getCsrf() {
+        const cookie = document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='));
+        return cookie ? cookie.trim().split('=')[1] : '';
+    }
+
+    // Backdrop ni bosib yopish
+    document.getElementById('modalFaceReg').addEventListener('click', function(e) {
+        if (e.target === this) closeFaceModal();
+    });
+})();
+</script>
+
+<style>
+@keyframes faceSpin {
+    to { transform: rotate(360deg); }
+}
+</style>
 {% endif %}
 {% endblock %}

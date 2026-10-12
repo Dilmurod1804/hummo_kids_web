@@ -143,7 +143,20 @@ async function initAttendanceScanner() {
         return;
     }
 
-    // 3. Agar bugun hali Kelish (Check-In) qilinmagan bo'lsa => AVTOMATIK SKANERLASHNI BOSHLASH
+    // 3. Agar yuz ro'yxatdan o'tmagan bo'lsa => Ogohlantirish va to'xtatish
+    const hasFaceEnrolled = container ? container.dataset.hasFaceEnrolled !== 'false' : true;
+    if (!hasFaceEnrolled) {
+        if (statusElem) {
+            statusElem.innerHTML = `
+                <div style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 10px; padding: 12px 18px; color: #fbbf24; font-weight: 700; display: inline-flex; align-items: center; gap: 8px;">
+                    <span>⚠️ Oldin yuzingizni ro'yxatdan o'tkazing! Yuqoridagi tugmani bosing.</span>
+                </div>
+            `;
+        }
+        return;
+    }
+
+    // 4. Agar bugun hali Kelish (Check-In) qilinmagan bo'lsa => AVTOMATIK SKANERLASHNI BOSHLASH
     if (!hasCheckedInToday) {
         if (statusElem) {
             statusElem.innerHTML = `
@@ -280,7 +293,7 @@ async function executeFaceScan(actionType = 'check_in', isAuto = false) {
                             🎉 <span>${greeting},</span> <span style="color: #34d399; font-weight: 800;">${fullName}</span>!
                         </div>
                         <div style="font-size: 13px; font-weight: normal; color: #cbd5e1;">
-                            ✓ Shaxs tasdiqlandi &bull; Qayd vaqti: <strong style="color: white;">${result.time}</strong> &bull; Holat: <strong style="color: #38bdf8;">${result.status}</strong>
+                            ✓ Shaxs tasdiqlandi ${result.similarity_score !== undefined ? `&bull; O'xshashlik: <strong style="color: #34d399;">${result.similarity_score}%</strong> ` : ''}&bull; Qayd vaqti: <strong style="color: white;">${result.time}</strong> &bull; Holat: <strong style="color: #38bdf8;">${result.status}</strong>
                         </div>
                     </div>
                 `;

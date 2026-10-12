@@ -33,6 +33,8 @@ urlpatterns = [
     path('staff/<int:pk>/toggle-active/', views.staff_toggle_active, name='staff_toggle_active'),
     path('staff/<int:pk>/reset-password/', views.staff_reset_password, name='staff_reset_password'),
     path('staff/<int:pk>/delete/', views.staff_delete, name='staff_delete'),
+    path('staff/<int:pk>/register-face/', views.register_face_api, name='register_face_api'),
+    path('staff/enroll-my-face/', views.enroll_my_face_api, name='enroll_my_face_api'),
 
     # Attendance (Children)
     path('attendance/daily/', views.attendance_daily, name='attendance_daily'),

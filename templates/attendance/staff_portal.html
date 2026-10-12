@@ -15,6 +15,25 @@
         </p>
     </div>
 
+    {% if not has_face_enrolled %}
+    <!-- Yuz Ro'yxatdan O'tmagan Holat Ogohlantirish Kartasi (State Management) -->
+    <div class="glass-card" style="padding: 24px 28px; margin-bottom: 24px; border: 1px solid rgba(251, 191, 36, 0.4); background: rgba(251, 191, 36, 0.08); text-align: center;">
+        <div style="width: 58px; height: 58px; border-radius: 50%; background: rgba(251, 191, 36, 0.18); display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; color: #fbbf24;">
+            <i data-lucide="scan-face" style="width: 32px; height: 32px;"></i>
+        </div>
+        <h3 style="font-size: 19px; font-weight: 800; color: white; margin-bottom: 6px;">
+            Yuzingiz Hali Ro'yxatdan O'tkazilmagan!
+        </h3>
+        <p style="font-size: 13px; color: #cbd5e1; max-width: 520px; margin: 0 auto 18px; line-height: 1.5;">
+            Face ID orqali davomat qilish uchun avval yuzingizni tizimga etalon sifatida kiritishingiz (Enrollment) shart.
+        </p>
+        <button type="button" onclick="openSelfEnrollModal()" class="btn-glass" style="background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%); color: white; font-weight: 800; padding: 12px 28px; border-radius: 12px; font-size: 14px; border: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 4px 20px rgba(56, 189, 248, 0.4);">
+            <i data-lucide="camera" style="width: 18px; height: 18px;"></i>
+            <span>Yuzni Ro'yxatdan O'tkazish (Enrollment)</span>
+        </button>
+    </div>
+    {% endif %}
+
     <!-- Scanner Container -->
     <div class="glass-card" id="attendanceScannerContainer" 
          data-k-lat="{{ settings.latitude }}" 
@@ -22,6 +41,7 @@
          data-k-radius="{{ settings.geofence_radius_meters }}"
          data-has-checked-in="{% if has_checked_in %}true{% else %}false{% endif %}"
          data-has-checked-out="{% if has_checked_out %}true{% else %}false{% endif %}"
+         data-has-face-enrolled="{% if has_face_enrolled %}true{% else %}false{% endif %}"
          style="padding: 28px; margin-bottom: 24px;">
         
         <!-- Check-in State Badge (if already checked in today) -->
@@ -40,6 +60,11 @@
                 Ish yakunida pastdagi <b>'Ketdim (Check-Out)'</b> tugmasini bosing
             </span>
             {% endif %}
+        </div>
+        {% elif not has_face_enrolled %}
+        <div style="background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 12px; padding: 10px 16px; margin-bottom: 18px; text-align: center; color: #fbbf24; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <i data-lucide="alert-circle" style="width: 16px; height: 16px;"></i>
+            <span><b>Diqqat:</b> Davomat qilishdan oldin yuzingizni ro'yxatdan o'tkazing.</span>
         </div>
         {% else %}
         <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 12px; padding: 10px 16px; margin-bottom: 18px; text-align: center; color: #c084fc; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px;">
@@ -157,6 +182,78 @@
     </div>
 
 </div>
+
+<!-- ========================================================================= -->
+<!--  FACE ID RO'YXATDAN O'TKAZISH MODALI (MYSPORT USLUBI)                     -->
+<!-- ========================================================================= -->
+<div id="modalSelfEnroll" class="glass-modal-backdrop" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.85); backdrop-filter:blur(12px); align-items:center; justify-content:center; padding:16px;">
+    <div class="glass-modal" style="max-width:500px; width:100%; border-radius:24px; padding:24px; border:1px solid rgba(56, 189, 248, 0.3); background:#0b0f19; box-shadow:0 25px 60px rgba(0,0,0,0.8);">
+        
+        <!-- Modal sarlavhasi -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <div style="width:42px; height:42px; border-radius:12px; background:linear-gradient(135deg, #0284c7, #38bdf8); display:flex; align-items:center; justify-content:center; box-shadow:0 0 15px rgba(56, 189, 248, 0.4);">
+                    <i data-lucide="scan-face" style="width:22px; height:22px; color:white;"></i>
+                </div>
+                <div>
+                    <h3 style="font-family:'Outfit',sans-serif; font-size:18px; font-weight:800; color:white; margin:0;">Yuz Ro'yxatdan O'tkazish</h3>
+                    <p style="font-size:12px; color:#38bdf8; margin:0; font-weight:600;">MySport Face Enrollment</p>
+                </div>
+            </div>
+            <button type="button" onclick="closeSelfEnrollModal()" style="background:transparent; border:none; color:var(--text-dim); cursor:pointer; padding:6px;">
+                <i data-lucide="x" style="width:20px; height:20px;"></i>
+            </button>
+        </div>
+
+        <!-- Yo'riqnoma ko'rsatmasi -->
+        <div style="padding:10px 14px; background:rgba(56, 189, 248, 0.08); border:1px solid rgba(56, 189, 248, 0.25); border-radius:12px; margin-bottom:16px; font-size:12px; color:#bae6fd; display:flex; align-items:flex-start; gap:8px;">
+            <i data-lucide="info" style="width:16px; height:16px; flex-shrink:0; margin-top:1px;"></i>
+            <span>Yuzingizni doiraviy (oval) ramka markaziga to'g'rilang va <strong>'Yuzni Saqlash'</strong> tugmasini bosing.</span>
+        </div>
+
+        <!-- Kamera oynasi (MySport Oval Guide bilan) -->
+        <div class="mysport-scanner-container" style="height:360px; margin-bottom:16px; border-radius:20px;">
+            <video id="selfEnrollVideo" autoplay playsinline muted class="mysport-video"></video>
+            <canvas id="selfEnrollCanvas" style="display:none;"></canvas>
+
+            <!-- Oval ramka -->
+            <div id="selfEnrollOvalRing" class="mysport-oval-frame scanning"></div>
+
+            <!-- Interaktiv Real-Time Yo'riqnoma Matni (Guidance Pill) -->
+            <div id="selfEnrollGuidance" class="face-guidance-pill">
+                <i data-lucide="scan" style="width:14px; height:14px; color:#38bdf8;"></i>
+                <span id="selfEnrollGuidanceText">Yuzingizni markazga qo'ying</span>
+            </div>
+
+            <!-- Yuklash / Holat overlay -->
+            <div id="selfEnrollOverlay" style="position:absolute; inset:0; background:rgba(0,0,0,0.8); display:none; align-items:center; justify-content:center; flex-direction:column; gap:12px; z-index:20;">
+                <div id="selfEnrollSpinner" style="width:48px; height:48px; border:4px solid rgba(56, 189, 248, 0.2); border-top-color:#38bdf8; border-radius:50%; animation:faceSpin 0.8s linear infinite;"></div>
+                <p id="selfEnrollStatusText" style="color:white; font-size:14px; font-weight:700; text-align:center; padding:0 20px; margin:0;"></p>
+            </div>
+        </div>
+
+        <!-- Preview rasmi (Muvaffaqiyatli saqlanganda ko'rinadi) -->
+        <div id="selfEnrollPreviewWrap" style="display:none; margin-bottom:16px; border-radius:14px; overflow:hidden; border:2px solid #34d399; position:relative;">
+            <img id="selfEnrollPreviewImg" src="" alt="Etalon Yuz" style="width:100%; object-fit:cover; max-height:180px;">
+            <div style="position:absolute; top:8px; left:8px; background:rgba(16, 185, 129, 0.85); backdrop-filter:blur(8px); border-radius:20px; padding:4px 10px; font-size:11px; color:white; font-weight:700; display:flex; align-items:center; gap:4px;">
+                <i data-lucide="check-circle-2" style="width:13px; height:13px;"></i> Face ID Saqlandi
+            </div>
+        </div>
+
+        <!-- Xatolik / Muvaffaqiyat xabari -->
+        <div id="selfEnrollMsg" style="display:none; border-radius:12px; padding:12px 16px; font-size:13px; margin-bottom:14px;"></div>
+
+        <!-- Tugmalar -->
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+            <button type="button" onclick="closeSelfEnrollModal()" class="btn-glass btn-secondary" style="padding:10px 18px; font-size:13px;">Bekor qilish</button>
+            <button type="button" onclick="captureAndRegisterSelfFace()" id="btnSelfEnrollCapture" class="btn-glass" style="background:linear-gradient(135deg, #0284c7, #38bdf8); color:white; font-weight:700; padding:10px 22px; font-size:13px; border:none; display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+                <i data-lucide="camera" style="width:16px; height:16px;"></i>
+                <span>Yuzni Saqlash</span>
+            </button>
+        </div>
+
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -167,6 +264,150 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 window.addEventListener("beforeunload", function() {
     stopCameraStream();
+    stopSelfCamera();
 });
+
+// ── Self Face Enrollment Script (MySport Uslubi) ──────────────────────────
+let _selfStream = null;
+let _guidanceTimer = null;
+
+function setGuidance(text, color = '#38bdf8') {
+    const textEl = document.getElementById('selfEnrollGuidanceText');
+    const pillEl = document.getElementById('selfEnrollGuidance');
+    if (textEl) textEl.textContent = text;
+    if (pillEl) pillEl.style.borderColor = color;
+}
+
+window.openSelfEnrollModal = function() {
+    const modal = document.getElementById('modalSelfEnroll');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    document.getElementById('selfEnrollOverlay').style.display = 'none';
+    document.getElementById('selfEnrollPreviewWrap').style.display = 'none';
+    document.getElementById('selfEnrollMsg').style.display = 'none';
+    document.getElementById('btnSelfEnrollCapture').disabled = false;
+
+    const ring = document.getElementById('selfEnrollOvalRing');
+    if (ring) ring.className = 'mysport-oval-frame scanning';
+
+    setGuidance("Yuzingizni markazga qo'ying", '#38bdf8');
+    startSelfCamera();
+    if (window.lucide) lucide.createIcons();
+
+    // Dinamik yo'riqnoma: 2 soniyadan keyin yaqinroq kelishni so'rash
+    if (_guidanceTimer) clearTimeout(_guidanceTimer);
+    _guidanceTimer = setTimeout(() => {
+        setGuidance("Biroz yaqinroq keling va harakatsiz turing", '#818cf8');
+    }, 2200);
+};
+
+window.closeSelfEnrollModal = function() {
+    stopSelfCamera();
+    if (_guidanceTimer) clearTimeout(_guidanceTimer);
+    const modal = document.getElementById('modalSelfEnroll');
+    if (modal) modal.style.display = 'none';
+};
+
+function startSelfCamera() {
+    const video = document.getElementById('selfEnrollVideo');
+    if (!video) return;
+    navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+        audio: false
+    })
+    .then(stream => {
+        _selfStream = stream;
+        video.srcObject = stream;
+    })
+    .catch(err => {
+        showSelfMessage('error', 'Kameraga ulanishda xatolik: ' + err.message);
+    });
+}
+
+function stopSelfCamera() {
+    if (_selfStream) {
+        _selfStream.getTracks().forEach(t => t.stop());
+        _selfStream = null;
+    }
+    const video = document.getElementById('selfEnrollVideo');
+    if (video) video.srcObject = null;
+}
+
+window.captureAndRegisterSelfFace = function() {
+    const video = document.getElementById('selfEnrollVideo');
+    const canvas = document.getElementById('selfEnrollCanvas');
+    const ring = document.getElementById('selfEnrollOvalRing');
+    const btn = document.getElementById('btnSelfEnrollCapture');
+
+    if (!video || !video.srcObject || video.readyState < 2) {
+        showSelfMessage('error', 'Kamera hali tayyor emas. Bir lahza kuting.');
+        return;
+    }
+
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const b64 = canvas.toDataURL('image/jpeg', 0.92);
+
+    const overlay = document.getElementById('selfEnrollOverlay');
+    const statusText = document.getElementById('selfEnrollStatusText');
+    overlay.style.display = 'flex';
+    statusText.textContent = "OpenCV orqali yuz tekshirilmoqda...";
+    setGuidance("Yuz tekshirilmoqda...", '#fbbf24');
+    btn.disabled = true;
+
+    fetch('/staff/enroll-my-face/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken') || getCsrfToken(),
+        },
+        body: JSON.stringify({ face_image: b64 })
+    })
+    .then(r => r.json())
+    .then(data => {
+        overlay.style.display = 'none';
+        if (data.success) {
+            if (ring) ring.className = 'mysport-oval-frame valid';
+            setGuidance("Muvaffaqiyatli saqlandi!", '#34d399');
+            document.getElementById('selfEnrollPreviewImg').src = b64;
+            document.getElementById('selfEnrollPreviewWrap').style.display = 'block';
+            showSelfMessage('success', data.message || "Yuzingiz muvaffaqiyatli saqlandi!");
+            if (typeof playSuccessChime === 'function') playSuccessChime();
+
+            setTimeout(() => {
+                closeSelfEnrollModal();
+                window.location.reload();
+            }, 2000);
+        } else {
+            if (ring) ring.className = 'mysport-oval-frame warning';
+            btn.disabled = false;
+            setGuidance("Qayta urinib ko'ring", '#f43f5e');
+            showSelfMessage('error', data.message || "Yuzni aniqlab bo'lmadi.");
+        }
+    })
+    .catch(err => {
+        overlay.style.display = 'none';
+        btn.disabled = false;
+        showSelfMessage('error', "Server bilan bog'lanishda xatolik: " + err.message);
+    });
+};
+
+function showSelfMessage(type, text) {
+    const el = document.getElementById('selfEnrollMsg');
+    if (!el) return;
+    el.style.display = 'block';
+    if (type === 'success') {
+        el.style.background = 'rgba(52, 211, 153, 0.15)';
+        el.style.border = '1px solid rgba(52, 211, 153, 0.4)';
+        el.style.color = '#34d399';
+    } else {
+        el.style.background = 'rgba(244, 63, 94, 0.15)';
+        el.style.border = '1px solid rgba(244, 63, 94, 0.4)';
+        el.style.color = '#fb7185';
+    }
+    el.innerHTML = text;
+}
 </script>
 {% endblock %}

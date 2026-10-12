@@ -683,6 +683,83 @@ body {
     animation: pulseGlow 2s infinite ease-in-out;
 }
 
+/* MySport Style Face Scanner & Enrollment Frame */
+.mysport-scanner-container {
+    position: relative;
+    width: 100%;
+    max-width: 440px;
+    height: 440px;
+    margin: 0 auto;
+    border-radius: 28px;
+    overflow: hidden;
+    background: #000000;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7), 0 0 30px rgba(56, 189, 248, 0.2);
+    border: 2px solid rgba(56, 189, 248, 0.3);
+}
+
+.mysport-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+}
+
+.mysport-oval-frame {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 230px;
+    height: 310px;
+    border-radius: 50%;
+    border: 3px solid #38bdf8;
+    box-shadow: 0 0 25px rgba(56, 189, 248, 0.5), inset 0 0 15px rgba(56, 189, 248, 0.3), 0 0 0 9999px rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+    transition: all 0.3s ease;
+}
+
+.mysport-oval-frame.valid {
+    border-color: #34d399;
+    box-shadow: 0 0 30px rgba(52, 211, 153, 0.7), inset 0 0 20px rgba(52, 211, 153, 0.4), 0 0 0 9999px rgba(0, 0, 0, 0.55);
+}
+
+.mysport-oval-frame.warning {
+    border-color: #fbbf24;
+    box-shadow: 0 0 30px rgba(251, 191, 36, 0.7), inset 0 0 20px rgba(251, 191, 36, 0.4), 0 0 0 9999px rgba(0, 0, 0, 0.55);
+}
+
+.mysport-oval-frame.scanning {
+    animation: ovalPulse 2s infinite ease-in-out;
+}
+
+@keyframes ovalPulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); border-color: #38bdf8; }
+    50% { transform: translate(-50%, -50%) scale(1.02); border-color: #818cf8; }
+}
+
+.face-guidance-pill {
+    position: absolute;
+    bottom: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #f8fafc;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    padding: 10px 22px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    z-index: 10;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    transition: all 0.25s ease;
+}
+
 @keyframes pulseGlow {
     0%, 100% { box-shadow: 0 0 15px rgba(244, 63, 94, 0.4); }
     50% { box-shadow: 0 0 30px rgba(244, 63, 94, 0.8); }

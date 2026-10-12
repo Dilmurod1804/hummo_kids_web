@@ -19,6 +19,7 @@ class User(AbstractUser):
     salary = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name="Oylik Maosh")
     phone_number = models.CharField(max_length=25, blank=True, null=True)
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
+    face_image = models.ImageField(upload_to='face_registrations/', blank=True, null=True, verbose_name="Face ID Etalon Rasm")
     initial_password = models.CharField(max_length=128, blank=True, null=True, verbose_name="Berilgan boshlang'ich parol")
     created_at = models.DateTimeField(auto_now_add=True)
 

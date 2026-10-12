@@ -59,24 +59,67 @@ def decode_base64_image(face_b64: str) -> bytes:
     return base64.b64decode(encoded)
 
 
+def validate_face_image(image_bytes: bytes) -> Tuple[bool, str]:
+    """
+    Ro'yxatdan o'tkazish (Enrollment) kadrida yuz borligini va sifatini tekshiradi.
+    Haar Cascade klassifikatori orqali yuz mavjudligini, sonini va o'lchamini tekshiradi.
+    """
+    if BACKEND == 'none':
+        return True, "Yuz tekshiruv moduli faol emas."
+
+    classifier, err = _get_cascade_classifier()
+    if classifier is None:
+        return True, "Klassifikator topilmadi, tekshiruv o'tkazib yuborildi."
+
+    try:
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img   = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return False, "Rasm faylini o'qib bo'lmadi (noto'g'ri tasvir formati)."
+
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        scale_flag = getattr(cv2, 'CASCADE_SCALE_IMAGE', 2)
+        faces = classifier.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(80, 80),
+            flags=scale_flag,
+        )
+        if len(faces) == 0:
+            return False, "Kadrda yuz aniqlanmadi! Iltimos, yuzingizni kameraning oval ramkasiga to'g'ri qarating."
+        if len(faces) > 1:
+            return False, "Kadrda bir nechta yuz aniqlandi! Kadrda faqat bitta xodim bo'lishi kerak."
+
+        x, y, w, h = faces[0]
+        img_h, img_w = gray.shape
+        if w < (img_w * 0.16) or h < (img_h * 0.16):
+            return False, "Yuz juda uzoqda! Iltimos, kameraga biroz yaqinroq keling."
+
+        return True, "Yuz muvaffaqiyatli aniqlandi."
+    except Exception as e:
+        logger.error("validate_face_image xatosi: %s", e, exc_info=True)
+        return False, f"Yuzni tahlil qilishda xatolik yuz berdi: {e}"
+
+
 def verify_face(
     incoming_image_bytes: bytes,
     stored_avatar_path: str,
-) -> Tuple[bool, str, float]:
+) -> Tuple[bool, str, float, float]:
     """
-    Kameradan kelgan rasm bilan bazadagi avatar rasmini taqqoslaydi.
+    Kameradan kelgan rasm bilan bazadagi etalon rasmni taqqoslaydi.
 
     Returns:
-        (is_match: bool, message: str, distance: float)
+        (is_match: bool, message: str, distance: float, similarity_pct: float)
     """
     if BACKEND == 'none':
         return False, (
             "Yuz taqqoslash tizimi faol emas. "
             "O'rnatish: pip install opencv-python-headless"
-        ), 1.0
+        ), 1.0, 0.0
 
     if not os.path.isfile(stored_avatar_path):
-        return False, f"Avatar fayli topilmadi: {stored_avatar_path}", 1.0
+        return False, f"Avatar fayli topilmadi: {stored_avatar_path}", 1.0, 0.0
 
     if BACKEND == 'deepface':
         return _verify_deepface(incoming_image_bytes, stored_avatar_path)
@@ -89,7 +132,7 @@ def verify_face(
 def _verify_deepface(
     incoming_bytes: bytes,
     avatar_path: str,
-) -> Tuple[bool, str, float]:
+) -> Tuple[bool, str, float, float]:
     tmp_file = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -111,18 +154,18 @@ def _verify_deepface(
         verified  = bool(result.get('verified', False))
         threshold = float(result.get('threshold', DEEPFACE_THRESHOLD))
         is_match  = verified and distance < max(threshold, DEEPFACE_THRESHOLD)
+        pct = round((1.0 - distance / max(threshold, 0.001)) * 100, 1)
+        pct = min(max(pct, 0.0), 100.0)
 
         if is_match:
-            pct = round((1.0 - distance / max(threshold, 0.001)) * 100, 1)
-            pct = min(max(pct, 0.0), 100.0)
             return True, (
                 f"Yuz tasdiqlandi ({pct:.1f}% aniqlik, d={distance:.4f})."
-            ), distance
+            ), distance, pct
         return False, (
             f"Yuz mos kelmadi! "
             f"Boshqa odam yoki yuz berkitilgan. "
             f"(d={distance:.4f}, limit={threshold:.4f})"
-        ), distance
+        ), distance, pct
 
     except ValueError as e:
         msg = str(e).lower()
@@ -130,11 +173,11 @@ def _verify_deepface(
             return False, (
                 "Rasmda yuz aniqlanmadi! "
                 "Yuzingizni to'g'ri kameraga qarating."
-            ), 1.0
-        return False, f"deepface xatosi: {e}", 1.0
+            ), 1.0, 0.0
+        return False, f"deepface xatosi: {e}", 1.0, 0.0
     except Exception as e:
         logger.error("_verify_deepface xato: %s", e, exc_info=True)
-        return False, f"Yuz taqqoslashda server xatosi: {e}", 1.0
+        return False, f"Yuz taqqoslashda server xatosi: {e}", 1.0, 0.0
     finally:
         if tmp_file and os.path.isfile(tmp_file):
             try:
@@ -234,35 +277,35 @@ def _hist_similarity(face1, face2) -> float:
 def _verify_opencv(
     incoming_bytes: bytes,
     avatar_path: str,
-) -> Tuple[bool, str, float]:
+) -> Tuple[bool, str, float, float]:
     try:
         # Kelgan rasmdan yuz ajratish
         face_new, err = _load_gray_face(incoming_bytes)
         if face_new is None:
-            return False, f"Kelgan rasmda muammo: {err}", 1.0
+            return False, f"Kelgan rasmda muammo: {err}", 1.0, 0.0
 
         # Avatar rasmdan yuz ajratish
         with open(avatar_path, 'rb') as f:
             avatar_bytes = f.read()
         face_ref, err = _load_gray_face(avatar_bytes)
         if face_ref is None:
-            return False, f"Avatar rasmida muammo: {err}", 1.0
+            return False, f"Avatar rasmida muammo: {err}", 1.0, 0.0
 
         similarity = _hist_similarity(face_new, face_ref)
         # distance = 1 - similarity (0.0 => bir xil, 1.0 => mutlaqo boshqa)
         distance   = round(1.0 - similarity, 4)
+        pct        = round(max(0.0, min(100.0, similarity * 100)), 1)
 
         is_match = similarity >= OPENCV_HIST_THRESHOLD
         if is_match:
-            pct = round(similarity * 100, 1)
             return True, (
                 f"Yuz tasdiqlandi ({pct:.1f}% o'xshashlik)."
-            ), distance
+            ), distance, pct
         return False, (
             f"Yuz mos kelmadi! "
             f"Boshqa odam yoki yuz berkitilgan. "
             f"(O'xshashlik: {similarity:.2%}, Talab: {OPENCV_HIST_THRESHOLD:.0%})"
-        ), distance
+        ), distance, pct
     except Exception as e:
         logger.error("_verify_opencv xatosi: %s", e, exc_info=True)
-        return False, f"OpenCV orqali tekshirishda xatolik: {e}", 1.0
+        return False, f"OpenCV orqali tekshirishda xatolik: {e}", 1.0, 0.0

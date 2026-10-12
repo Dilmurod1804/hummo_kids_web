@@ -25,7 +25,7 @@ from .forms import (
     StaffForm, TeacherReplaceForm, generate_staff_credentials
 )
 from .haversine import haversine_distance
-from .face_utils import verify_face, decode_base64_image, FACE_RECOGNITION_AVAILABLE
+from .face_utils import verify_face, decode_base64_image, validate_face_image, FACE_RECOGNITION_AVAILABLE
 from .excel_reports import (
     generate_children_excel, generate_attendance_excel,
     generate_staff_attendance_excel, generate_finance_excel
@@ -458,6 +458,127 @@ def staff_delete(request, pk):
         )
     return redirect('staff_list')
 
+
+# --- Face ID Registration API ---
+@csrf_exempt
+@login_required
+@user_passes_test(is_director_or_manager)
+def register_face_api(request, pk):
+    """
+    Rahbar/menejer tomonidan xodimning Face ID etalon rasmini ro'yxatdan o'tkazish API.
+
+    POST body (JSON):
+        { "face_image": "data:image/jpeg;base64,..." }
+
+    OpenCV / Haar Cascade yordamida yuz mavjudligi tekshiriladi va bazaga saqlanadi.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': "Faqat POST so'rov qabul qilinadi."}, status=405)
+
+    staff_member = get_object_or_404(User, pk=pk)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': "JSON formati noto'g'ri."}, status=400)
+
+    face_b64 = data.get('face_image', '').strip()
+    if not face_b64:
+        return JsonResponse({'success': False, 'message': "face_image maydoni bo'sh yuborildi."}, status=400)
+
+    # Base64 → bytes
+    try:
+        image_bytes = decode_base64_image(face_b64)
+    except Exception:
+        return JsonResponse({'success': False, 'message': "Rasm base64 formatida noto'g'ri."}, status=400)
+
+    if len(image_bytes) < 1000:
+        return JsonResponse({'success': False, 'message': "Rasm fayli juda kichik yoki bo'sh."}, status=400)
+
+    # OpenCV / Haar Cascade yordamida kadrda yuz borligini tekshirish
+    is_valid_face, face_err = validate_face_image(image_bytes)
+    if not is_valid_face:
+        return JsonResponse({'success': False, 'message': face_err}, status=400)
+
+    # Eski face_image ni diskdan o'chirish (fayllar to'planib qolmasligi uchun)
+    if staff_member.face_image:
+        try:
+            staff_member.face_image.delete(save=False)
+        except Exception:
+            pass
+
+    # Yangi rasmni saqlash
+    fname = f"face_reg_{staff_member.id}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+    staff_member.face_image.save(fname, ContentFile(image_bytes), save=True)
+
+    logger.info(
+        "Face ID ro'yxatdan o'tkazildi: xodim=%s (id=%d), fayl=%s",
+        staff_member.username, staff_member.id, fname
+    )
+
+    return JsonResponse({
+        'success': True,
+        'message': "Yuz muvaffaqiyatli ro'yxatdan o'tkazildi!",
+        'face_image_url': staff_member.face_image.url,
+        'staff_id': staff_member.id,
+        'staff_name': staff_member.get_full_name() or staff_member.username,
+    })
+
+
+@csrf_exempt
+@login_required
+def enroll_my_face_api(request):
+    """
+    Xodimning o'z yuzini ro'yxatdan o'tkazishi (Self-Enrollment) API.
+    Davomat portalida yuz ro'yxatdan o'tmagan bo'lsa xodim o'zi kamerada skanerlaydi.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': "Faqat POST so'rov qabul qilinadi."}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': "JSON formati noto'g'ri."}, status=400)
+
+    face_b64 = data.get('face_image', '').strip()
+    if not face_b64:
+        return JsonResponse({'success': False, 'message': "face_image maydoni bo'sh yuborildi."}, status=400)
+
+    try:
+        image_bytes = decode_base64_image(face_b64)
+    except Exception:
+        return JsonResponse({'success': False, 'message': "Rasm base64 formatida noto'g'ri."}, status=400)
+
+    if len(image_bytes) < 1000:
+        return JsonResponse({'success': False, 'message': "Rasm fayli juda kichik yoki bo'sh."}, status=400)
+
+    # OpenCV orqali yuz borligini va sifatini tekshirish
+    is_valid_face, face_err = validate_face_image(image_bytes)
+    if not is_valid_face:
+        return JsonResponse({'success': False, 'message': face_err}, status=400)
+
+    user = request.user
+    if user.face_image:
+        try:
+            user.face_image.delete(save=False)
+        except Exception:
+            pass
+
+    fname = f"face_reg_{user.id}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+    user.face_image.save(fname, ContentFile(image_bytes), save=True)
+
+    logger.info("Xodim o'z yuzini ro'yxatdan o'tkazdi: %s (id=%d)", user.username, user.id)
+
+    return JsonResponse({
+        'success': True,
+        'message': "Yuzingiz muvaffaqiyatli ro'yxatdan o'tkazildi!",
+        'face_image_url': user.face_image.url,
+        'staff_id': user.id,
+        'staff_name': user.get_full_name() or user.username,
+    })
+
+
+
 @login_required
 @user_passes_test(is_director_or_manager)
 def group_replace_teacher(request, pk):
@@ -675,6 +796,7 @@ def staff_attendance_portal(request):
     latest_log = user_today_logs.filter(is_within_geofence=True).first()
     has_checked_in = bool(latest_log and latest_log.check_in_time)
     has_checked_out = bool(latest_log and latest_log.check_out_time)
+    has_face_enrolled = bool((request.user.face_image and request.user.face_image.name) or (request.user.avatar and request.user.avatar.name))
 
     return render(request, 'attendance/staff_portal.html', {
         'today': today,
@@ -685,6 +807,7 @@ def staff_attendance_portal(request):
         'latest_log': latest_log,
         'has_checked_in': has_checked_in,
         'has_checked_out': has_checked_out,
+        'has_face_enrolled': has_face_enrolled,
     })
 
 @csrf_exempt
@@ -696,7 +819,7 @@ def staff_check_in_api(request):
     Xavfsizlik qatlamlari (tartib bo'yicha):
       1. face_image mavjudligi tekshiruvi
       2. Xodimda avatar (etalon rasm) borligini tekshirish
-      3. Haqiqiy yuz taqqoslash (face_recognition)
+      3. Haqiqiy yuz taqqoslash (face_recognition / OpenCV)
       4. GPS / Geofence tekshiruvi
       5. Davomat yozuvi yaratish/yangilash
     """
@@ -715,14 +838,18 @@ def staff_check_in_api(request):
                     'message': "Yuz rasmi (face_image) yuborilmadi. Kamera ruxsati berilganligini tekshiring."
                 }, status=400)
 
-            # ── 2. Xodimda etalon avatar borligini tekshirish ─────────────────────
+            # ── 2. Xodimda etalon yuz rasmi borligini tekshirish ─────────────────
+            # Ustuvorlik: face_image (maxsus Face ID rasm) > avatar (profil rasmi)
             user = request.user
-            if not user.avatar or not user.avatar.name:
+            has_face_image = bool(user.face_image and user.face_image.name)
+            has_avatar = bool(user.avatar and user.avatar.name)
+
+            if not has_face_image and not has_avatar:
                 return JsonResponse({
                     'success': False,
                     'message': (
-                        "Xodimning tizimda etalon yuzi (avatar) saqlanmagan! "
-                        "Iltimos, administrator bilan bog'laning."
+                        "Xodimning tizimda etalon yuzi saqlanmagan! "
+                        "Iltimos, 'Yuz Ro'yxatdan O'tkazish' tugmasini bosib yuzingizni ro'yxatdan o'tkazing."
                     )
                 }, status=400)
 
@@ -736,16 +863,20 @@ def staff_check_in_api(request):
                 }, status=400)
 
             try:
-                avatar_path = user.avatar.path  # Django FileField.path => mutlaq yo'l
+                # face_image (Face ID maxsus rasm) ustunlik qiladi
+                if has_face_image:
+                    reference_path = user.face_image.path
+                else:
+                    reference_path = user.avatar.path
             except Exception:
                 return JsonResponse({
                     'success': False,
-                    'message': "Avatar faylini o'qib bo'lmadi. Administrator bilan bog'laning."
+                    'message': "Etalon yuz faylini o'qib bo'lmadi. Administrator bilan bog'laning."
                 }, status=400)
 
-            face_match, face_message, face_distance = verify_face(
+            face_match, face_message, face_distance, similarity_pct = verify_face(
                 incoming_image_bytes=incoming_bytes,
-                stored_avatar_path=avatar_path,
+                stored_avatar_path=reference_path,
             )
 
             if not face_match:
@@ -759,7 +890,7 @@ def staff_check_in_api(request):
                         teacher=user, date=today_rej
                     ).order_by('-is_within_geofence', 'id').first()
 
-                    rejection_note = f"FACE_ID_REJECTED: {face_message}"
+                    rejection_note = f"FACE_ID_REJECTED ({similarity_pct:.1f}%): {face_message}"
                     if existing_rej and not existing_rej.is_within_geofence:
                         existing_rej.face_snapshot = rej_image
                         existing_rej.notes = rejection_note
@@ -782,6 +913,7 @@ def staff_check_in_api(request):
                     'success': False,
                     'face_verified': False,
                     'face_distance': round(face_distance, 4),
+                    'similarity_score': similarity_pct,
                     'message': face_message,
                 }, status=400)
 
@@ -917,6 +1049,7 @@ def staff_check_in_api(request):
                 'action': action_type,
                 'greeting': f"{greeting}, {full_name}!",
                 'face_verified': True,
+                'similarity_score': similarity_pct,
                 'within_geofence': True,
                 'distance': distance,
                 'face_distance': round(face_distance, 4),
