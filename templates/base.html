@@ -2,7 +2,7 @@
 <html lang="uz">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{% block title %}Humo Kids — Zamonaviy Bog'cha Boshqaruv Tizimi{% endblock %}</title>
     
     <!-- Google Fonts -->
@@ -46,70 +46,95 @@
 
             <p class="nav-section-title">ASOSIY MENYU</p>
             <ul class="nav-menu">
-                {% if user.can_manage_all or user.is_teacher %}
+                {% if user.can_manage_all %}
+                <!-- DIREKTOR / ADMIN MENULARI -->
                 <li>
-                    <a href="{% url 'dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' or request.resolver_match.url_name == 'admin_dashboard' or request.resolver_match.url_name == 'teacher_dashboard' %}active{% endif %}">
+                    <a href="{% url 'dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'admin_dashboard' %}active{% endif %}">
                         <i data-lucide="layout-dashboard" style="width: 18px; height: 18px;"></i>
                         <span>Boshqaruv Paneli</span>
                     </a>
                 </li>
-                {% endif %}
-
-                {% if user.can_manage_all %}
                 <li>
-                    <a href="{% url 'groups_list' %}" class="nav-link {% if 'groups' in request.path %}active{% endif %}">
+                    <a href="{% url 'groups_list' %}" class="nav-link {% if 'groups' in request.path and 'finance' not in request.path %}active{% endif %}">
                         <i data-lucide="layers" style="width: 18px; height: 18px;"></i>
                         <span>Guruhlar</span>
                     </a>
                 </li>
                 <li>
-                    <a href="{% url 'staff_list' %}" class="nav-link {% if 'staff' in request.path and 'attendance' not in request.path %}active{% endif %}">
+                    <a href="{% url 'staff_list' %}" class="nav-link {% if request.resolver_match.url_name == 'staff_list' %}active{% endif %}">
                         <i data-lucide="users" style="width: 18px; height: 18px;"></i>
-                        <span>Xodimlar</span>
+                        <span>Xodimlar Boshqaruvi</span>
                     </a>
                 </li>
-                {% endif %}
-
-                {% if user.can_manage_all or user.is_teacher %}
                 <li>
-                    <a href="{% url 'children_list' %}" class="nav-link {% if 'children' in request.path %}active{% endif %}">
+                    <a href="{% url 'late_staff_list' %}" class="nav-link {% if request.resolver_match.url_name == 'late_staff_list' %}active{% endif %}">
+                        <i data-lucide="clock-alert" style="width: 18px; height: 18px; color: #fb7185;"></i>
+                        <span>Kechikkanlar Ro'yxati</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'staff_payroll' %}" class="nav-link {% if request.resolver_match.url_name == 'staff_payroll' %}active{% endif %}">
+                        <i data-lucide="badge-dollar-sign" style="width: 18px; height: 18px; color: #34d399;"></i>
+                        <span>Oylik Maoshlar (Döküm)</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'children_list' %}" class="nav-link {% if request.resolver_match.url_name == 'children_list' %}active{% endif %}">
                         <i data-lucide="smile" style="width: 18px; height: 18px;"></i>
                         <span>Bolalar Ro'yxati</span>
                     </a>
                 </li>
-
                 <li>
                     <a href="{% url 'attendance_daily' %}" class="nav-link {% if 'attendance/daily' in request.path %}active{% endif %}">
                         <i data-lucide="calendar-check-2" style="width: 18px; height: 18px;"></i>
-                        <span>Kunlik Davomat</span>
+                        <span>Bolalar Davomati</span>
                     </a>
                 </li>
-                {% endif %}
-
                 <li>
-                    <a href="{% url 'staff_attendance_portal' %}" class="nav-link {% if 'staff-portal' in request.path %}active{% endif %}">
-                        <i data-lucide="scan-face" style="width: 18px; height: 18px;"></i>
-                        <span>Face ID & GPS Davomat</span>
+                    <a href="{% url 'groups_finance' %}" class="nav-link {% if request.resolver_match.url_name == 'groups_finance' %}active{% endif %}">
+                        <i data-lucide="pie-chart" style="width: 18px; height: 18px; color: #38bdf8;"></i>
+                        <span>Guruhlar To'lovi</span>
                     </a>
                 </li>
-
-                {% if user.can_manage_all %}
+                <li>
+                    <a href="{% url 'finance_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'finance_dashboard' %}active{% endif %}">
+                        <i data-lucide="credit-card" style="width: 18px; height: 18px;"></i>
+                        <span>Umumiy Moliya</span>
+                    </a>
+                </li>
                 <li>
                     <a href="{% url 'staff_attendance_logs' %}" class="nav-link {% if 'staff-logs' in request.path %}active{% endif %}">
                         <i data-lucide="map-pin" style="width: 18px; height: 18px;"></i>
-                        <span>Xodimlar Geofencing Jurnali</span>
+                        <span>Geofencing Jurnali</span>
                     </a>
                 </li>
                 <li>
-                    <a href="{% url 'finance_dashboard' %}" class="nav-link {% if 'finance' in request.path %}active{% endif %}">
-                        <i data-lucide="credit-card" style="width: 18px; height: 18px;"></i>
-                        <span>Moliya & Qayta Hisoblash</span>
+                    <a href="{% url 'audit_logs' %}" class="nav-link {% if request.resolver_match.url_name == 'audit_logs' %}active{% endif %}">
+                        <i data-lucide="history" style="width: 18px; height: 18px; color: #f59e0b;"></i>
+                        <span>Tizim Tarixi (Audit Log)</span>
                     </a>
                 </li>
-                {% endif %}
 
-                <p class="nav-section-title">ALOQA & TIZIM</p>
-                {% if user.can_manage_all or user.is_teacher %}
+                {% elif user.has_assigned_group %}
+                <!-- GURUH BIRIKTIRILGAN TARBIYACHI MENULARI -->
+                <li>
+                    <a href="{% url 'teacher_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'teacher_dashboard' or request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+                        <i data-lucide="layout-dashboard" style="width: 18px; height: 18px;"></i>
+                        <span>Tarbiyachi Paneli</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'attendance_daily' %}" class="nav-link {% if 'attendance/daily' in request.path %}active{% endif %}">
+                        <i data-lucide="calendar-check-2" style="width: 18px; height: 18px;"></i>
+                        <span>Guruh Bolalar Davomati</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'staff_attendance_portal' %}" class="nav-link {% if 'staff-portal' in request.path %}active{% endif %}">
+                        <i data-lucide="scan-face" style="width: 18px; height: 18px;"></i>
+                        <span>Face ID Davomat</span>
+                    </a>
+                </li>
                 <li>
                     <a href="{% url 'chat_view' %}" class="nav-link {% if 'chat' in request.path %}active{% endif %}">
                         <i data-lucide="messages-square" style="width: 18px; height: 18px;"></i>
@@ -119,8 +144,40 @@
                         {% endif %}
                     </a>
                 </li>
+
+                {% else %}
+                <!-- GURUH BIRIKTIRILMAGAN XODIM (Boshqa xodimlar) -->
+                <li>
+                    <a href="{% url 'staff_attendance_portal' %}" class="nav-link {% if 'staff-portal' in request.path %}active{% endif %}">
+                        <i data-lucide="scan-face" style="width: 18px; height: 18px;"></i>
+                        <span>Face ID Davomat</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'staff_profile' %}" class="nav-link {% if request.resolver_match.url_name == 'staff_profile' or request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
+                        <i data-lucide="user-check" style="width: 18px; height: 18px;"></i>
+                        <span>Xodimlar Paneli (Shaxsiy Profil)</span>
+                    </a>
+                </li>
                 {% endif %}
 
+                {% if user.can_manage_all %}
+                <p class="nav-section-title">ALOQA & TIZIM</p>
+                <li>
+                    <a href="{% url 'staff_attendance_portal' %}" class="nav-link {% if 'staff-portal' in request.path %}active{% endif %}">
+                        <i data-lucide="scan-face" style="width: 18px; height: 18px;"></i>
+                        <span>Face ID & GPS Davomat</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'chat_view' %}" class="nav-link {% if 'chat' in request.path %}active{% endif %}">
+                        <i data-lucide="messages-square" style="width: 18px; height: 18px;"></i>
+                        <span>Ichki Chat</span>
+                        {% if unread_chat_count > 0 %}
+                        <span class="nav-badge">{{ unread_chat_count }}</span>
+                        {% endif %}
+                    </a>
+                </li>
                 {% if user.is_director %}
                 <li>
                     <a href="{% url 'settings' %}" class="nav-link {% if 'settings' in request.path %}active{% endif %}">
@@ -128,6 +185,7 @@
                         <span>Bog'cha Sozlamalari</span>
                     </a>
                 </li>
+                {% endif %}
                 {% endif %}
             </ul>
 

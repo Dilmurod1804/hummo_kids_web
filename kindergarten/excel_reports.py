@@ -212,14 +212,15 @@ def generate_finance_excel(month=None, year=None):
     headers = [
         "№", "Bola F.I.SH", "Guruh", "Davr (Oy/Yil)", "Asosiy To'lov (UZS)", 
         "Sababli Qoldirilgan (Kun)", "Qayta Hisoblash Chegirmasi (UZS)", 
-        "Jami To'lanishi Kerak (UZS)", "To'langan Summa (UZS)", "Qarzdorlik / Holat"
+        "Jami To'lanishi Kerak (UZS)", "Naqd To'lov (UZS)", "Karta / Bank To'lov (UZS)",
+        "Jami To'langan (UZS)", "Qarzdorlik / Holat"
     ]
     ws.row_dimensions[3].height = 26
     for col_num, header in enumerate(headers, 1):
         cell = ws.cell(row=3, column=col_num)
         apply_header_style(cell, header, "6B21A8")
 
-    invoices = MonthlyInvoice.objects.select_related('child', 'child__group').order_by('-year', '-month', 'child__first_name')
+    invoices = MonthlyInvoice.objects.select_related('child', 'child__group').prefetch_related('payments').order_by('-year', '-month', 'child__first_name')
     if month:
         invoices = invoices.filter(month=month)
     if year:
@@ -229,13 +230,18 @@ def generate_finance_excel(month=None, year=None):
     total_base = 0
     total_recalc = 0
     total_final = 0
+    total_cash = 0
+    total_card = 0
     total_paid = 0
 
     for idx, inv in enumerate(invoices, 1):
+        inv_cash = float(sum(p.amount for p in inv.payments.all() if p.payment_method == 'CASH'))
+        inv_card = float(sum(p.amount for p in inv.payments.all() if p.payment_method in ['CARD', 'BANK_TRANSFER', 'CLICK_PAYME']))
+
         ws.row_dimensions[row_idx].height = 22
         ws.cell(row=row_idx, column=1, value=idx).alignment = Alignment(horizontal="center")
         ws.cell(row=row_idx, column=2, value=inv.child.full_name)
-        ws.cell(row=row_idx, column=3, value=inv.child.group.name)
+        ws.cell(row=row_idx, column=3, value=inv.child.group.name if inv.child.group else "-")
         ws.cell(row=row_idx, column=4, value=f"{inv.month:02d}/{inv.year}").alignment = Alignment(horizontal="center")
         
         c5 = ws.cell(row=row_idx, column=5, value=float(inv.base_fee))
@@ -250,10 +256,16 @@ def generate_finance_excel(month=None, year=None):
         c8 = ws.cell(row=row_idx, column=8, value=float(inv.total_amount))
         c8.number_format = '#,##0'
         
-        c9 = ws.cell(row=row_idx, column=9, value=float(inv.paid_amount))
+        c9 = ws.cell(row=row_idx, column=9, value=inv_cash)
         c9.number_format = '#,##0'
 
-        debt_cell = ws.cell(row=row_idx, column=10)
+        c10 = ws.cell(row=row_idx, column=10, value=inv_card)
+        c10.number_format = '#,##0'
+
+        c11 = ws.cell(row=row_idx, column=11, value=float(inv.paid_amount))
+        c11.number_format = '#,##0'
+
+        debt_cell = ws.cell(row=row_idx, column=12)
         debt_cell.alignment = Alignment(horizontal="center")
         if inv.status == 'PAID':
             debt_cell.value = "To'liq To'langan"
@@ -271,6 +283,8 @@ def generate_finance_excel(month=None, year=None):
         total_base += float(inv.base_fee)
         total_recalc += float(inv.recalculation_amount)
         total_final += float(inv.total_amount)
+        total_cash += inv_cash
+        total_card += inv_card
         total_paid += float(inv.paid_amount)
         row_idx += 1
 
@@ -282,13 +296,13 @@ def generate_finance_excel(month=None, year=None):
     tot_label.fill = PatternFill(start_color="1E1B4B", end_color="1E1B4B", fill_type="solid")
     tot_label.alignment = Alignment(horizontal="right", vertical="center")
 
-    for c_idx, val in [(5, total_base), (7, total_recalc), (8, total_final), (9, total_paid)]:
+    for c_idx, val in [(5, total_base), (7, total_recalc), (8, total_final), (9, total_cash), (10, total_card), (11, total_paid)]:
         tc = ws.cell(row=row_idx, column=c_idx, value=val)
         tc.number_format = '#,##0'
         tc.font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
         tc.fill = PatternFill(start_color="1E1B4B", end_color="1E1B4B", fill_type="solid")
 
-    tot_remain = ws.cell(row=row_idx, column=10, value=f"Qarz: {total_final - total_paid:,.0f} UZS")
+    tot_remain = ws.cell(row=row_idx, column=12, value=f"Qarz: {total_final - total_paid:,.0f} UZS")
     tot_remain.font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
     tot_remain.fill = PatternFill(start_color="1E1B4B", end_color="1E1B4B", fill_type="solid")
     tot_remain.alignment = Alignment(horizontal="center")

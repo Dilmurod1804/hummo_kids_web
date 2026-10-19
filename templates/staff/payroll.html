@@ -1,0 +1,337 @@
+{% extends 'base.html' %}
+
+{% block title %}Oylik Maoshlar Dökümi — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="max-width: 1200px; margin: 0 auto;">
+    
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white; margin: 0;">
+                    Oylik Maosh Hisob-kitobi & Döküm
+                </h2>
+                <span class="badge" style="background: rgba(52, 211, 153, 0.2); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.4); font-size: 12px; font-weight: 800;">
+                    Har oyning 10-sanasigacha tayyor döküm
+                </span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+                Formula: <strong style="color: #c084fc;">Yakuniy Oylik = Asosiy Maosh - (Barcha Shtraflar) + (Bonuslar)</strong>
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{% url 'late_staff_list' %}" class="btn-glass btn-rose">
+                <i data-lucide="clock-alert" style="width: 16px; height: 16px;"></i>
+                <span>Kechikkanlar Ro'yxati</span>
+            </a>
+            <button type="button" onclick="openBonusModal()" class="btn-glass btn-emerald" style="padding: 10px 18px; font-weight: 700;">
+                <i data-lucide="award" style="width: 18px; height: 18px;"></i>
+                <span>+ Bonus / Rag'batlantirish Berish</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Month & Year Filter Bar -->
+    <div class="glass-card" style="padding: 16px 20px; margin-bottom: 24px;">
+        <form method="GET" style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+            <div style="min-width: 160px;">
+                <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Hisob Oyi:</label>
+                <select name="month" class="glass-select" onchange="this.form.submit()" style="padding: 8px 12px;">
+                    {% for m in months_range %}
+                    <option value="{{ m }}" {% if month == m %}selected{% endif %}>{{ m }}-oy</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div style="min-width: 140px;">
+                <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Yil:</label>
+                <select name="year" class="glass-select" onchange="this.form.submit()" style="padding: 8px 12px;">
+                    <option value="2026" {% if year == 2026 %}selected{% endif %}>2026</option>
+                    <option value="2025" {% if year == 2025 %}selected{% endif %}>2025</option>
+                </select>
+            </div>
+
+            <div style="margin-left: auto; font-size: 12px; color: var(--text-dim); text-align: right;">
+                Döküm holati: <strong style="color: #38bdf8;">{{ month }}/{{ year }} oyi to'liq avtomatik hisoblangan</strong>
+            </div>
+        </form>
+    </div>
+
+    <!-- KPI Summary Cards Grid -->
+    <div class="stats-grid" style="margin-bottom: 24px;">
+        <div class="stat-card">
+            <div>
+                <p class="stat-label">Jami Asosiy Maosh Fondi</p>
+                <h3 class="stat-value" style="font-size: 20px;">{{ total_base_payroll|floatformat:0 }} <span style="font-size: 12px;">UZS</span></h3>
+                <p class="stat-subtext">{{ payrolls|length }} ta xodim bo'yicha</p>
+            </div>
+            <div class="stat-icon-wrapper icon-blue">
+                <i data-lucide="wallet" style="width: 22px; height: 22px;"></i>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div>
+                <p class="stat-label">Jami Ushlab Qolingan Shtraflar</p>
+                <h3 class="stat-value" style="font-size: 20px; color: #fb7185;">-{{ total_penalties|floatformat:0 }} <span style="font-size: 12px;">UZS</span></h3>
+                <p class="stat-subtext" style="color: #fb7185;">Kechikishlar va ushlab qolishlar</p>
+            </div>
+            <div class="stat-icon-wrapper icon-rose">
+                <i data-lucide="clock-alert" style="width: 22px; height: 22px;"></i>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div>
+                <p class="stat-label">Jami Berilgan Bonuslar</p>
+                <h3 class="stat-value" style="font-size: 20px; color: #34d399;">+{{ total_bonuses|floatformat:0 }} <span style="font-size: 12px;">UZS</span></h3>
+                <p class="stat-subtext" style="color: #34d399;">Erta kelganlik va faollik uchun</p>
+            </div>
+            <div class="stat-icon-wrapper icon-emerald">
+                <i data-lucide="award" style="width: 22px; height: 22px;"></i>
+            </div>
+        </div>
+
+        <div class="stat-card" style="border-color: rgba(168, 85, 247, 0.4); background: rgba(168, 85, 247, 0.08);">
+            <div>
+                <p class="stat-label" style="color: #c084fc; font-weight: 700;">Yakuniy To'lanadigan Sof Fond</p>
+                <h3 class="stat-value" style="font-size: 22px; color: white;">{{ total_net_payroll|floatformat:0 }} <span style="font-size: 12px; color: #c084fc;">UZS</span></h3>
+                <p class="stat-subtext">10-sanagacha to'lanadigan summa</p>
+            </div>
+            <div class="stat-icon-wrapper icon-purple">
+                <i data-lucide="calculator" style="width: 22px; height: 22px;"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Payroll Table -->
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <h3 class="glass-card-title">
+                <i data-lucide="users" style="color: #34d399; width: 20px; height: 20px;"></i>
+                <span>{{ month }}/{{ year }} Oylik Maoshlar Dökümi (Har bir xodim bo'yicha)</span>
+            </h3>
+        </div>
+
+        <div class="glass-table-wrapper">
+            <table class="glass-table">
+                <thead>
+                    <tr>
+                        <th>Xodim F.I.Sh</th>
+                        <th>Lavozimi</th>
+                        <th>Asosiy Maosh</th>
+                        <th>Barcha Shtraflar</th>
+                        <th>Bonuslar</th>
+                        <th>Yakuniy Oylik Maosh</th>
+                        <th>To'lov Holati</th>
+                        <th style="text-align: right;">Amallar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in payrolls %}
+                    <tr>
+                        <td>
+                            <strong style="color: white; font-size: 14px;">{{ p.staff.get_full_name|default:p.staff.username }}</strong>
+                            <div style="font-size: 11px; color: var(--text-dim);">Login: {{ p.staff.username }}</div>
+                        </td>
+                        <td>
+                            <span class="badge" style="background: rgba(255, 255, 255, 0.05); color: #cbd5e1; font-size: 11px;">
+                                {{ p.staff.position_display }}
+                            </span>
+                        </td>
+                        <td>
+                            <span style="font-weight: 600; color: white;">{{ p.base_salary|floatformat:0 }} UZS</span>
+                        </td>
+                        <td>
+                            {% if p.total_penalties > 0 %}
+                            <strong style="color: #fb7185;">-{{ p.total_penalties|floatformat:0 }} UZS</strong>
+                            {% else %}
+                            <span style="color: var(--text-dim);">0 UZS</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if p.total_bonuses > 0 %}
+                            <strong style="color: #34d399;">+{{ p.total_bonuses|floatformat:0 }} UZS</strong>
+                            {% else %}
+                            <span style="color: var(--text-dim);">0 UZS</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong style="font-size: 16px; color: #38bdf8; background: rgba(56, 189, 248, 0.1); padding: 4px 10px; border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.25);">
+                                {{ p.net_salary|floatformat:0 }} UZS
+                            </strong>
+                        </td>
+                        <td>
+                            {% if p.status == 'PAID' %}
+                            <span class="badge badge-paid">✓ To'langan ({{ p.paid_at|date:"d.m.Y" }})</span>
+                            {% else %}
+                            <span class="badge" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3);">
+                                ⏳ 10-sanagacha kutilmoqda
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: right;">
+                            <div style="display: inline-flex; gap: 6px;">
+                                <button type="button" onclick="openBonusModalForStaff({{ p.staff.id }}, '{{ p.staff.get_full_name|default:p.staff.username }}')" class="btn-glass btn-secondary" style="padding: 6px 10px; font-size: 11px;" title="Bonus qo'shish">
+                                    + Bonus
+                                </button>
+                                {% if p.status != 'PAID' %}
+                                <button type="button" onclick="markPaid({{ p.id }}, '{{ p.staff.get_full_name|default:p.staff.username }}', '{{ p.net_salary|floatformat:0 }}')" class="btn-glass btn-emerald" style="padding: 6px 10px; font-size: 11px;" title="To'landi deb belgilash">
+                                    ✓ To'landi
+                                </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 36px;">
+                            Xodimlar ma'lumotlari topilmadi.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- Modal: Add Bonus or Custom Penalty -->
+<div id="modalBonus" class="glass-modal-backdrop">
+    <div class="glass-modal" style="max-width: 520px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 800; color: white;">
+                Xodimga Bonus / Rag'batlantirish Berish
+            </h3>
+            <button onclick="document.getElementById('modalBonus').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form id="formBonus" onsubmit="submitBonusPenalty(event)">
+            {% csrf_token %}
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">Xodimni tanlang:</label>
+                <select name="staff_id" id="modalStaffId" class="glass-select" required style="width: 100%;">
+                    {% for s in all_staff %}
+                    <option value="{{ s.id }}">{{ s.get_full_name|default:s.username }} ({{ s.position_display }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">Bonus / Harakat turi:</label>
+                <select name="record_type" id="modalRecordType" class="glass-select" required style="width: 100%;">
+                    <option value="BONUS_EARLY">🌟 Erta kelganlik bonusi</option>
+                    <option value="BONUS_PERFORMANCE">🏆 Faollik va maxsus xizmat bonusi</option>
+                    <option value="OTHER_DEDUCTION">⚠️ Boshqa sababli ushlab qolish (Jarima)</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">Summa (UZS):</label>
+                <input type="number" name="amount" id="modalAmount" class="glass-input" placeholder="Masalan: 100000" min="1000" step="1000" required style="width: 100%;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label class="form-label">Izoh / Sabab:</label>
+                <input type="text" name="description" id="modalDescription" class="glass-input" placeholder="Masalan: 07:30 da kelib guruhni tayyorladi" required style="width: 100%;">
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" onclick="document.getElementById('modalBonus').style.display='none'" class="btn-glass btn-secondary">
+                    Bekor Qilish
+                </button>
+                <button type="submit" id="btnSaveBonus" class="btn-glass btn-emerald" style="font-weight: 700;">
+                    Saqlash va Maoshga Qo'shish
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function openBonusModal() {
+        document.getElementById('formBonus').reset();
+        document.getElementById('modalBonus').style.display = 'flex';
+    }
+
+    function openBonusModalForStaff(staffId, staffName) {
+        document.getElementById('modalBonus').style.display = 'flex';
+        document.getElementById('modalStaffId').value = staffId;
+    }
+
+    async function submitBonusPenalty(e) {
+        e.preventDefault();
+        const staffId = document.getElementById('modalStaffId').value;
+        const recordType = document.getElementById('modalRecordType').value;
+        const amount = document.getElementById('modalAmount').value;
+        const description = document.getElementById('modalDescription').value;
+        const btn = document.getElementById('btnSaveBonus');
+
+        btn.disabled = true;
+        btn.innerText = "Saqlanmoqda...";
+
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const res = await fetch("{% url 'add_bonus_penalty_api' %}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                },
+                body: JSON.stringify({
+                    staff_id: staffId,
+                    record_type: recordType,
+                    amount: amount,
+                    description: description
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(data.message);
+                window.location.reload();
+            } else {
+                alert("Xatolik: " + data.message);
+            }
+        } catch (err) {
+            alert("Aloqa xatosi: " + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Saqlash va Maoshga Qo'shish";
+        }
+    }
+
+    async function markPaid(payrollId, staffName, amount) {
+        if (!confirm(`${staffName} uchun ${amount} UZS oylik maosh to'langan deb tasdiqlansinmi?`)) {
+            return;
+        }
+
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const res = await fetch("{% url 'mark_payroll_paid_api' %}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                },
+                body: JSON.stringify({
+                    payroll_id: payrollId
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(data.message);
+                window.location.reload();
+            } else {
+                alert("Xatolik: " + data.message);
+            }
+        } catch (err) {
+            alert("Aloqa xatosi: " + err.message);
+        }
+    }
+</script>
+{% endblock %}

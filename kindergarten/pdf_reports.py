@@ -1,0 +1,201 @@
+import io
+from decimal import Decimal
+from django.utils import timezone
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from .models import MonthlyInvoice, Payment, KindergartenSettings, TemporaryChild
+
+def generate_finance_pdf(month=None, year=None):
+    """
+    Generate professional PDF report for Finance with separate Cash and Card columns.
+    """
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=landscape(A4),
+        leftMargin=20,
+        rightMargin=20,
+        topMargin=20,
+        bottomMargin=20
+    )
+
+    settings = KindergartenSettings.get_settings()
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'DocTitle',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=16,
+        leading=20,
+        textColor=colors.HexColor('#1E1B4B'),
+        alignment=0
+    )
+
+    subtitle_style = ParagraphStyle(
+        'DocSubtitle',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=10,
+        leading=13,
+        textColor=colors.HexColor('#64748B'),
+        alignment=0
+    )
+
+    th_style = ParagraphStyle(
+        'TH',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=8,
+        leading=10,
+        textColor=colors.white,
+        alignment=1
+    )
+
+    cell_style = ParagraphStyle(
+        'TD',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=8,
+        leading=10,
+        alignment=0
+    )
+
+    cell_center = ParagraphStyle(
+        'TDCenter',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=8,
+        leading=10,
+        alignment=1
+    )
+
+    cell_right = ParagraphStyle(
+        'TDRight',
+        parent=styles['Normal'],
+        fontName='Helvetica',
+        fontSize=8,
+        leading=10,
+        alignment=2
+    )
+
+    cell_bold_right = ParagraphStyle(
+        'TDBoldRight',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=8,
+        leading=10,
+        alignment=2
+    )
+
+    story = []
+
+    # Title & Subtitle
+    period_str = f"{int(month):02d}/{year}" if month and year else "Barcha Davrlar"
+    story.append(Paragraph(f"<b>{settings.name}</b> — Moliya va Qayta Hisoblash Hisoboti", title_style))
+    story.append(Paragraph(f"Hisobot Davri: <b>{period_str}</b> | Sanasi: {timezone.now().strftime('%Y-%m-%d %H:%M')} | Kunlik ovqatlanish normasi: {settings.daily_meal_rate:,.0f} UZS", subtitle_style))
+    story.append(Spacer(1, 14))
+
+    # Query Invoices
+    invoices = MonthlyInvoice.objects.select_related('child', 'child__group').prefetch_related('payments').order_by('-year', '-month', 'child__first_name')
+    if month:
+        invoices = invoices.filter(month=month)
+    if year:
+        invoices = invoices.filter(year=year)
+
+    # Table Header
+    headers = [
+        Paragraph("№", th_style),
+        Paragraph("Bola F.I.SH", th_style),
+        Paragraph("Guruh", th_style),
+        Paragraph("Davr", th_style),
+        Paragraph("Asosiy<br/>Badal (UZS)", th_style),
+        Paragraph("Sababli<br/>(Kun)", th_style),
+        Paragraph("Qayta Hisoblash<br/>(UZS)", th_style),
+        Paragraph("Jami Kerak<br/>(UZS)", th_style),
+        Paragraph("Naqd To'lov<br/>(UZS)", th_style),
+        Paragraph("Karta / Bank<br/>(UZS)", th_style),
+        Paragraph("Jami To'langan<br/>(UZS)", th_style),
+        Paragraph("Holati / Qarz", th_style),
+    ]
+
+    table_data = [headers]
+
+    total_base = Decimal('0.00')
+    total_recalc = Decimal('0.00')
+    total_expected = Decimal('0.00')
+    total_cash = Decimal('0.00')
+    total_card = Decimal('0.00')
+    total_paid = Decimal('0.00')
+    total_debt = Decimal('0.00')
+
+    for idx, inv in enumerate(invoices, 1):
+        # Calculate Cash and Card paid for this invoice
+        inv_cash = sum(p.amount for p in inv.payments.all() if p.payment_method == 'CASH')
+        inv_card = sum(p.amount for p in inv.payments.all() if p.payment_method in ['CARD', 'BANK_TRANSFER', 'CLICK_PAYME'])
+
+        total_base += inv.base_fee
+        total_recalc += inv.recalculation_amount
+        total_expected += inv.total_amount
+        total_cash += inv_cash
+        total_card += inv_card
+        total_paid += inv.paid_amount
+        total_debt += inv.remaining_debt
+
+        status_text = "To'langan" if inv.status == 'PAID' else (f"Qisman ({inv.remaining_debt:,.0f})" if inv.status == 'PARTIAL' else f"Qarzdor ({inv.remaining_debt:,.0f})")
+
+        row = [
+            Paragraph(str(idx), cell_center),
+            Paragraph(inv.child.full_name, cell_style),
+            Paragraph(inv.child.group.name if inv.child.group else "-", cell_style),
+            Paragraph(f"{inv.month:02d}/{inv.year}", cell_center),
+            Paragraph(f"{inv.base_fee:,.0f}", cell_right),
+            Paragraph(str(inv.excused_days_count), cell_center),
+            Paragraph(f"-{inv.recalculation_amount:,.0f}" if inv.recalculation_amount > 0 else "0", cell_right),
+            Paragraph(f"{inv.total_amount:,.0f}", cell_bold_right),
+            Paragraph(f"{inv_cash:,.0f}", cell_right),
+            Paragraph(f"{inv_card:,.0f}", cell_right),
+            Paragraph(f"{inv.paid_amount:,.0f}", cell_bold_right),
+            Paragraph(status_text, cell_center),
+        ]
+        table_data.append(row)
+
+    # Summary Row
+    summary_row = [
+        Paragraph("JAMI", th_style),
+        Paragraph(f"{len(invoices)} ta o'quvchi", th_style),
+        Paragraph("", th_style),
+        Paragraph("", th_style),
+        Paragraph(f"{total_base:,.0f}", th_style),
+        Paragraph("", th_style),
+        Paragraph(f"-{total_recalc:,.0f}", th_style),
+        Paragraph(f"{total_expected:,.0f}", th_style),
+        Paragraph(f"{total_cash:,.0f}", th_style),
+        Paragraph(f"{total_card:,.0f}", th_style),
+        Paragraph(f"{total_paid:,.0f}", th_style),
+        Paragraph(f"Qarz: {total_debt:,.0f}", th_style),
+    ]
+    table_data.append(summary_row)
+
+    # Column widths (Total ~ 802pt for Landscape A4 with 20pt margins)
+    col_widths = [24, 110, 80, 45, 65, 42, 68, 70, 72, 72, 74, 80]
+
+    t = Table(table_data, colWidths=col_widths, repeatRows=1)
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6B21A8')),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#F8FAFC')]),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#1E1B4B')),
+        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
+    ]))
+
+    story.append(t)
+    doc.build(story)
+    buf.seek(0)
+    return buf

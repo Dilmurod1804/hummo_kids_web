@@ -1,110 +1,252 @@
 {% extends 'base.html' %}
 
-{% block title %}Bolalar Ro'yxati — Humo Kids{% endblock %}
+{% block title %}Bolalar Ro'yxati va Sinov Boshqaruvi — Humo Kids{% endblock %}
 
 {% block content %}
 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
     <div>
-        <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">Bolalar Ro'yxati</h2>
-        <p style="font-size: 13px; color: var(--text-muted);">Jami: {{ children.count }} ta tarbiyalanuvchi</p>
+        <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">Bolalar Boshqaruvi</h2>
+        <p style="font-size: 13px; color: var(--text-muted);">
+            Doimiy guruhdagi tarbiyalanuvchilar va sinov muddatidagi (vaqtinchalik) bolalar ro'yxati
+        </p>
     </div>
 
     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
         {% if user.can_manage_all %}
+        <!-- Requirement 3: + Vaqtinchalik Bolani Ro'yxatga Olish tugmasi -->
+        <button type="button" onclick="openAddTrialModal()" class="btn-glass btn-primary" style="background: linear-gradient(135deg, #a855f7, #ec4899); box-shadow: 0 4px 14px rgba(168, 85, 247, 0.4);">
+            <i data-lucide="sparkles" style="width: 16px; height: 16px;"></i>
+            <span>+ Vaqtinchalik Bolani Ro'yxatga Olish</span>
+        </button>
+
         <a href="{% url 'export_children' %}" class="btn-glass btn-excel">
             <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px;"></i>
             <span>Excel Yuklab Olish</span>
         </a>
-        <button onclick="document.getElementById('modalAddChild').style.display='flex'" class="btn-glass btn-primary">
+
+        <button onclick="document.getElementById('modalAddChild').style.display='flex'" class="btn-glass btn-secondary">
             <i data-lucide="user-plus" style="width: 16px; height: 16px;"></i>
-            <span>Yangi Bola Qo'shish</span>
+            <span>+ Doimiy Bola Qo'shish</span>
         </button>
         {% endif %}
     </div>
 </div>
 
-<!-- Filters Bar -->
-<div class="glass-card" style="padding: 16px; margin-bottom: 24px;">
-    <form method="GET" action="{% url 'children_list' %}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
-        <div style="flex-grow: 1; min-width: 200px;">
-            <input type="text" name="q" value="{{ query }}" placeholder="Ism, familiya yoki telefon..." class="glass-input" style="padding: 8px 14px;">
-        </div>
-
-        <div style="min-width: 180px;">
-            <select name="group" class="glass-select" style="padding: 8px 14px;">
-                <option value="">Barcha Guruhlar</option>
-                {% for g in groups %}
-                <option value="{{ g.id }}" {% if group_filter == g.id|stringformat:"s" %}selected{% endif %}>{{ g.name }}</option>
-                {% endfor %}
-            </select>
-        </div>
-
-        <div style="min-width: 150px;">
-            <select name="status" class="glass-select" style="padding: 8px 14px;">
-                <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Faqat Faollar</option>
-                <option value="all" {% if status_filter == 'all' %}selected{% endif %}>Barcha Bolalar</option>
-                <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Nofaollar</option>
-            </select>
-        </div>
-
-        <button type="submit" class="btn-glass btn-secondary" style="padding: 8px 16px;">
-            <i data-lucide="filter" style="width: 14px; height: 14px;"></i>
-            <span>Filtrlash</span>
-        </button>
-    </form>
+<!-- Tabs: Asosiy vs Vaqtinchalik -->
+<div style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 12px; flex-wrap: wrap;">
+    <button type="button" id="tabBtnMain" onclick="switchKidsTab('main')" class="btn-glass" style="background: rgba(168, 85, 247, 0.25); border-color: rgba(168, 85, 247, 0.5); color: white; font-weight: 700; padding: 8px 18px;">
+        <i data-lucide="users" style="width: 16px; height: 16px;"></i>
+        <span>Doimiy Bolalar ({{ children.count }})</span>
+    </button>
+    <button type="button" id="tabBtnTrial" onclick="switchKidsTab('trial')" class="btn-glass" style="background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); color: var(--text-dim); font-weight: 600; padding: 8px 18px;">
+        <i data-lucide="clock" style="width: 16px; height: 16px;"></i>
+        <span>Vaqtinchalik (Sinov) Bolalar ({{ trial_children.count }})</span>
+    </button>
 </div>
 
-<!-- Children Cards Grid -->
-<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">
-    {% for child in children %}
-    <div class="glass-card" style="padding: 20px; display: flex; flex-direction: column;">
-        <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 14px;">
-            <div style="width: 52px; height: 52px; border-radius: 16px; background: linear-gradient(135deg, #ec4899, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; color: white; box-shadow: 0 0 15px rgba(236, 72, 153, 0.3);">
-                {{ child.first_name|slice:":1" }}{{ child.last_name|slice:":1" }}
+<!-- SECTION 1: DOIMIY BOLALAR (MAIN TAB) -->
+<div id="sectionMainKids">
+    <!-- Filters Bar -->
+    <div class="glass-card" style="padding: 16px; margin-bottom: 24px;">
+        <form method="GET" action="{% url 'children_list' %}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+            <div style="flex-grow: 1; min-width: 200px;">
+                <input type="text" name="q" value="{{ query }}" placeholder="Ism, familiya yoki telefon..." class="glass-input" style="padding: 8px 14px;">
             </div>
-            <div>
-                <a href="{% url 'child_detail' child.id %}" style="font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 700; color: white; text-decoration: none;">
-                    {{ child.full_name }}
-                </a>
-                <div style="font-size: 12px; color: #a855f7; font-weight: 600;">
-                    {{ child.group.name }} · {{ child.age }} yosh
+
+            <div style="min-width: 180px;">
+                <select name="group" class="glass-select" style="padding: 8px 14px;">
+                    <option value="">Barcha Guruhlar</option>
+                    {% for g in groups %}
+                    <option value="{{ g.id }}" {% if group_filter == g.id|stringformat:"s" %}selected{% endif %}>{{ g.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div style="min-width: 150px;">
+                <select name="status" class="glass-select" style="padding: 8px 14px;">
+                    <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Faqat Faollar</option>
+                    <option value="all" {% if status_filter == 'all' %}selected{% endif %}>Barcha Bolalar</option>
+                    <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Nofaollar</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn-glass btn-secondary" style="padding: 8px 16px;">
+                <i data-lucide="filter" style="width: 14px; height: 14px;"></i>
+                <span>Filtrlash</span>
+            </button>
+        </form>
+    </div>
+
+    <!-- Children Cards Grid -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">
+        {% for child in children %}
+        <div class="glass-card" style="padding: 20px; display: flex; flex-direction: column;">
+            <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 14px;">
+                <div style="width: 52px; height: 52px; border-radius: 16px; background: linear-gradient(135deg, #ec4899, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; color: white; box-shadow: 0 0 15px rgba(236, 72, 153, 0.3);">
+                    {{ child.first_name|slice:":1" }}{{ child.last_name|slice:":1" }}
+                </div>
+                <div>
+                    <a href="{% url 'child_detail' child.id %}" style="font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 700; color: white; text-decoration: none;">
+                        {{ child.full_name }}
+                    </a>
+                    <div style="font-size: 12px; color: #a855f7; font-weight: 600;">
+                        {{ child.group.name }} · {{ child.age }} yosh
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div style="font-size: 13px; color: var(--text-muted); display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; flex-grow: 1;">
-            <div>👤 <strong>Ota-onasi:</strong> {{ child.parent_full_name }}</div>
-            <div>📞 <strong>Telefon:</strong> <a href="tel:{{ child.parent_phone }}" style="color: #60a5fa; text-decoration: none;">{{ child.parent_phone }}</a></div>
-            {% if child.medical_notes %}
-            <div style="background: rgba(244, 63, 94, 0.12); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 8px; padding: 6px 10px; color: #fca5a5; font-size: 12px; margin-top: 4px;">
-                ⚠️ {{ child.medical_notes }}
+            <div style="font-size: 13px; color: var(--text-muted); display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; flex-grow: 1;">
+                <div>👤 <strong>Ota-onasi:</strong> {{ child.parent_full_name }}</div>
+                <div>📞 <strong>Telefon:</strong> <a href="tel:{{ child.parent_phone }}" style="color: #60a5fa; text-decoration: none;">{{ child.parent_phone }}</a></div>
+                {% if child.medical_notes %}
+                <div style="background: rgba(244, 63, 94, 0.12); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 8px; padding: 6px 10px; color: #fca5a5; font-size: 12px; margin-top: 4px;">
+                    ⚠️ {{ child.medical_notes }}
+                </div>
+                {% endif %}
             </div>
-            {% endif %}
-        </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
-            <span class="badge {% if child.is_active %}badge-present{% else %}badge-unexcused{% endif %}">
-                {% if child.is_active %}Faol{% else %}Nofaol{% endif %}
-            </span>
-            <a href="{% url 'child_detail' child.id %}" class="btn-glass btn-secondary" style="padding: 6px 14px; font-size: 12px;">
-                Profilni ochish &rarr;
-            </a>
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+                <span class="badge {% if child.is_active %}badge-present{% else %}badge-unexcused{% endif %}">
+                    {% if child.is_active %}Faol{% else %}Nofaol{% endif %}
+                </span>
+                <a href="{% url 'child_detail' child.id %}" class="btn-glass btn-secondary" style="padding: 6px 14px; font-size: 12px;">
+                    Profilni ochish &rarr;
+                </a>
+            </div>
         </div>
+        {% empty %}
+        <div class="glass-card" style="grid-column: 1 / -1; text-align: center; padding: 48px; color: var(--text-dim);">
+            <i data-lucide="search-x" style="width: 48px; height: 48px; margin: 0 auto 12px auto;"></i>
+            <p style="font-size: 16px;">Kiritilgan parametrlar bo'yicha bolalar topilmadi.</p>
+        </div>
+        {% endfor %}
     </div>
-    {% empty %}
-    <div class="glass-card" style="grid-column: 1 / -1; text-align: center; padding: 48px; color: var(--text-dim);">
-        <i data-lucide="search-x" style="width: 48px; height: 48px; margin: 0 auto 12px auto;"></i>
-        <p style="font-size: 16px;">Kiritilgan parametrlar bo'yicha bolalar topilmadi.</p>
-    </div>
-    {% endfor %}
 </div>
 
-<!-- Add Child Modal -->
+<!-- SECTION 2: VAQTINCHALIK (SINOV) BOLALAR (TRIAL TAB) -->
+<div id="sectionTrialKids" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+        <div>
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white;">
+                Vaqtinchalik (Sinov Muddatidagi) Bolalar Bo'limi
+            </h3>
+            <p style="font-size: 13px; color: var(--text-muted);">
+                Ushbu bolalar bog'chaga tanishuv / sinov muddatiga kelgan. Sinov yakunlangach, bitta tugma orqali rasmiy guruhga o'tkaziladi.
+            </p>
+        </div>
+        <button type="button" onclick="openAddTrialModal()" class="btn-glass btn-primary" style="padding: 8px 16px; font-size: 13px;">
+            <i data-lucide="user-plus" style="width: 15px; height: 15px;"></i>
+            <span>+ Vaqtinchalik Bola Qo'shish</span>
+        </button>
+    </div>
+
+    {% if trial_children %}
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 20px;">
+        {% for trial in trial_children %}
+        <div class="glass-card" style="padding: 20px; display: flex; flex-direction: column; justify-content: space-between; border-left: 4px solid #f59e0b;">
+            <div>
+                <!-- Header -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;">
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <div style="width: 48px; height: 48px; border-radius: 14px; background: linear-gradient(135deg, #f59e0b, #ec4899); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; color: white; box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);">
+                            {{ trial.first_name|slice:":1" }}{{ trial.last_name|slice:":1" }}
+                        </div>
+                        <div>
+                            <h4 style="font-family: 'Outfit', sans-serif; font-size: 17px; font-weight: 700; color: white; margin: 0;">{{ trial.full_name }}</h4>
+                            <div style="font-size: 12px; color: #fbbf24; display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+                                <i data-lucide="phone" style="width: 12px; height: 12px;"></i>
+                                <a href="tel:{{ trial.parent_phone }}" style="color: #fbbf24; text-decoration: none;">{{ trial.parent_phone }}</a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        {% if trial.is_expired %}
+                        <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4);">
+                            Muddat tugagan
+                        </span>
+                        {% else %}
+                        <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.4);">
+                            {{ trial.days_remaining }} kun qoldi
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Info Box -->
+                <div style="background: rgba(0, 0, 0, 0.22); border-radius: 12px; padding: 14px; margin-bottom: 16px; font-size: 13px; display: flex; flex-direction: column; gap: 8px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-dim);">Kelgan sanasi:</span>
+                        <strong style="color: white;">{{ trial.start_date|date:"d.m.Y" }}</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-dim);">Sinov muddati:</span>
+                        <strong style="color: #fbbf24;">{{ trial.trial_days }} kun</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-dim);">Kunlik badal:</span>
+                        <strong style="color: #c084fc;">{{ trial.daily_fee|floatformat:0 }} UZS/kun</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 8px;">
+                        <span style="color: var(--text-dim);">Jami hisoblangan:</span>
+                        <strong style="color: white;">{{ trial.total_fee|floatformat:0 }} UZS</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-dim);">To'langan / Qarz:</span>
+                        <div>
+                            <span style="color: #34d399; font-weight: 700;">{{ trial.paid_amount|floatformat:0 }} UZS</span>
+                            {% if trial.remaining_fee > 0 %}
+                            <span style="color: #fb7185; font-weight: 600; margin-left: 4px;">(Qarz: {{ trial.remaining_fee|floatformat:0 }})</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if trial.target_group %}
+                    <div style="display: flex; justify-content: space-between; margin-top: 2px;">
+                        <span style="color: var(--text-dim);">Mo'ljaldagi guruh:</span>
+                        <span style="color: #60a5fa; font-weight: 600;">{{ trial.target_group.name }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button type="button" onclick="openTrialPaymentModal({{ trial.id }}, '{{ trial.full_name }}', {{ trial.remaining_fee }})" class="btn-glass" style="flex: 1; padding: 8px 12px; font-size: 12px; background: rgba(52, 211, 153, 0.15); border-color: rgba(52, 211, 153, 0.3); color: #6ee7b7; text-align: center; justify-content: center;">
+                    <i data-lucide="credit-card" style="width: 14px; height: 14px;"></i>
+                    <span>+ To'lov</span>
+                </button>
+
+                <button type="button" onclick="openPromoteTrialModal({{ trial.id }}, '{{ trial.full_name }}', '{{ trial.target_group.id|default:'' }}', '{{ trial.parent_phone }}', '{{ trial.parent_full_name|default:'' }}', '{{ trial.gender|default:'M' }}')" class="btn-glass btn-primary" style="flex: 1.4; padding: 8px 12px; font-size: 12px; text-align: center; justify-content: center; background: linear-gradient(135deg, #10b981, #06b6d4);">
+                    <i data-lucide="user-check" style="width: 14px; height: 14px;"></i>
+                    <span>Guruhga O'tkazish</span>
+                </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="glass-card" style="text-align: center; padding: 48px 24px; color: var(--text-dim);">
+        <i data-lucide="sparkles" style="width: 48px; height: 48px; margin: 0 auto 12px auto; color: #a855f7;"></i>
+        <h4 style="font-size: 18px; color: white; margin-bottom: 6px;">Hozirda sinov muddatidagi bolalar yo'q</h4>
+        <p style="font-size: 13px; margin-bottom: 20px;">
+            Yangi kelgan bolani 3 kun yoki 1 haftalik sinov muddatiga ro'yxatga olishingiz mumkin.
+        </p>
+        <button type="button" onclick="openAddTrialModal()" class="btn-glass btn-primary" style="padding: 9px 20px;">
+            <i data-lucide="user-plus" style="width: 16px; height: 16px;"></i>
+            <span>+ Vaqtinchalik Bolani Ro'yxatga Olish</span>
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ================= MODALLAR ================= -->
+
+<!-- Add Permanent Child Modal -->
 {% if user.can_manage_all %}
 <div id="modalAddChild" class="glass-modal-backdrop" {% if show_modal %}style="display: flex;"{% endif %}>
     <div class="glass-modal">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white;">Yangi Bola Ro'yxatga Olish</h3>
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white;">Yangi Doimiy Bola Ro'yxatga Olish</h3>
             <button onclick="document.getElementById('modalAddChild').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
                 <i data-lucide="x" style="width: 20px; height: 20px;"></i>
             </button>
@@ -184,5 +326,406 @@
         </form>
     </div>
 </div>
+
+<!-- Modal: Vaqtinchalik Bola Qo'shish -->
+<div id="modalAddTrial" class="glass-modal-backdrop">
+    <div class="glass-modal" style="max-width: 560px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #a855f7, #ec4899); display: flex; align-items: center; justify-content: center; color: white;">
+                    <i data-lucide="sparkles" style="width: 18px; height: 18px;"></i>
+                </div>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white; margin: 0;">Vaqtinchalik Bolani Ro'yxatga Olish</h3>
+            </div>
+            <button onclick="document.getElementById('modalAddTrial').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form id="formAddTrial" onsubmit="submitAddTrial(event)">
+            {% csrf_token %}
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Ismi *</label>
+                    <input type="text" id="trialFirstName" required class="glass-input" placeholder="Masalan: Sardor">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Familiyasi *</label>
+                    <input type="text" id="trialLastName" required class="glass-input" placeholder="Masalan: Karimov">
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Ota-onasi F.I.SH</label>
+                    <input type="text" id="trialParentName" class="glass-input" placeholder="Masalan: Karimov Jasur">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Ota-ona Telefoni *</label>
+                    <input type="text" id="trialParentPhone" required class="glass-input" placeholder="+998 90 123 45 67">
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Kelgan Sanasi *</label>
+                    <input type="date" id="trialStartDate" required class="glass-input" value="{% now 'Y-m-d' %}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Sinov Muddatining Kunlari *</label>
+                    <select id="trialDays" class="glass-select" onchange="calculateTrialTotal()">
+                        <option value="3">3 kunlik sinov</option>
+                        <option value="5">5 kun (1 ish haftasi)</option>
+                        <option value="7">7 kun (1 to'liq hafta)</option>
+                        <option value="10">10 kun</option>
+                        <option value="14">14 kun (2 hafta)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Kunlik Badal To'lovi (UZS) *</label>
+                    <input type="number" id="trialDailyFee" required class="glass-input" value="{{ default_trial_daily|default:100000 }}" oninput="calculateTrialTotal()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mo'ljaldagi Guruh</label>
+                    <select id="trialTargetGroup" class="glass-select">
+                        <option value="">Guruh tanlanmagan</option>
+                        {% for g in all_groups %}
+                        <option value="{{ g.id }}">{{ g.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div style="background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 12px; color: var(--text-dim);">Jami sinov badali summasi:</span>
+                <strong id="trialTotalPreview" style="color: #c084fc; font-size: 16px;">— UZS</strong>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Qo'shimcha Izoh</label>
+                <input type="text" id="trialNotes" class="glass-input" placeholder="Allergiyalar, qiziqishlari yoki shartlar...">
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+                <button type="button" onclick="document.getElementById('modalAddTrial').style.display='none'" class="btn-glass btn-secondary">Bekor qilish</button>
+                <button type="submit" class="btn-glass btn-primary">Saqlash va Ro'yxatga Olish</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Vaqtinchalik Bola To'lovi -->
+<div id="modalTrialPayment" class="glass-modal-backdrop">
+    <div class="glass-modal">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white;">Vaqtinchalik Bola To'lovi</h3>
+            <button onclick="document.getElementById('modalTrialPayment').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form id="formTrialPayment" onsubmit="submitTrialPayment(event)">
+            {% csrf_token %}
+            <input type="hidden" id="trialPayId">
+
+            <div style="background: rgba(255, 255, 255, 0.04); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 18px; border: 1px solid rgba(255, 255, 255, 0.08);">
+                <div style="font-size: 12px; color: var(--text-dim);">Vaqtinchalik bola:</div>
+                <div id="trialPayName" style="font-weight: 700; font-size: 16px; color: white; margin-bottom: 6px;">—</div>
+                <div style="font-size: 12px; color: var(--text-dim);">Qolgan Qarz: <strong id="trialPayRemaining" style="color: #fb7185;">0 UZS</strong></div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">To'lov Summasi (UZS) *</label>
+                <input type="number" id="trialPayAmount" required class="glass-input" placeholder="Summani kiriting...">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">To'lov Usuli *</label>
+                <select id="trialPayMethod" class="glass-select">
+                    <option value="CASH">💵 Naqd pul</option>
+                    <option value="CARD">💳 Plastik Karta (Uzcard / Humo)</option>
+                    <option value="CLICK_PAYME">⚡ Click / Payme Online</option>
+                    <option value="BANK_TRANSFER">🏦 Bank O'tkazmasi</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Chek Raqami / Tranzaksiya ID</label>
+                <input type="text" id="trialPayTransId" class="glass-input" placeholder="Chek raqami...">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Izoh</label>
+                <input type="text" id="trialPayNotes" class="glass-input" placeholder="To'lov bo'yicha qo'shimcha izoh...">
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+                <button type="button" onclick="document.getElementById('modalTrialPayment').style.display='none'" class="btn-glass btn-secondary">Bekor qilish</button>
+                <button type="submit" class="btn-glass btn-primary">To'lovni Tasdiqlash</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Guruhga O'tkazish -->
+<div id="modalPromoteTrial" class="glass-modal-backdrop">
+    <div class="glass-modal" style="max-width: 520px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #10b981, #06b6d4); display: flex; align-items: center; justify-content: center; color: white;">
+                    <i data-lucide="user-check" style="width: 18px; height: 18px;"></i>
+                </div>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white; margin: 0;">Rasmiy Guruhga O'tkazish</h3>
+            </div>
+            <button onclick="document.getElementById('modalPromoteTrial').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form id="formPromoteTrial" onsubmit="submitPromoteTrial(event)">
+            {% csrf_token %}
+            <input type="hidden" id="promoteTrialId">
+
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 18px;">
+                <div style="font-size: 12px; color: var(--text-dim);">Bola:</div>
+                <div id="promoteChildName" style="font-weight: 700; font-size: 16px; color: white;">—</div>
+                <div style="font-size: 12px; color: #a7f3d0; margin-top: 4px;">
+                    Ushbu harakat bolani doimiy guruhga o'tkazadi va oylik badal tizimiga qo'shadi.
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Biriktiriladigan Guruh *</label>
+                <select id="promoteGroupId" required class="glass-select">
+                    {% for g in all_groups %}
+                    <option value="{{ g.id }}">{{ g.name }} (Oylik badal: {{ g.monthly_fee|floatformat:0 }} UZS)</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                <div class="form-group">
+                    <label class="form-label">Tug'ilgan Sanasi *</label>
+                    <input type="date" id="promoteBirthDate" required class="glass-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Jinsi *</label>
+                    <select id="promoteGender" class="glass-select">
+                        <option value="M">O'g'il bola</option>
+                        <option value="F">Qiz bola</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Ota-onasi F.I.SH</label>
+                <input type="text" id="promoteParentName" class="glass-input" placeholder="Ota-onaning to'liq ismi...">
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+                <button type="button" onclick="document.getElementById('modalPromoteTrial').style.display='none'" class="btn-glass btn-secondary">Bekor qilish</button>
+                <button type="submit" class="btn-glass btn-primary" style="background: linear-gradient(135deg, #10b981, #059669);">
+                    ✓ Guruhga O'tkazishni Tasdiqlash
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function switchKidsTab(tab) {
+    const secMain = document.getElementById('sectionMainKids');
+    const secTrial = document.getElementById('sectionTrialKids');
+    const btnMain = document.getElementById('tabBtnMain');
+    const btnTrial = document.getElementById('tabBtnTrial');
+
+    if (tab === 'trial') {
+        secMain.style.display = 'none';
+        secTrial.style.display = 'block';
+        btnTrial.style.background = 'rgba(168, 85, 247, 0.25)';
+        btnTrial.style.borderColor = 'rgba(168, 85, 247, 0.5)';
+        btnTrial.style.color = 'white';
+        btnMain.style.background = 'rgba(255, 255, 255, 0.05)';
+        btnMain.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+        btnMain.style.color = 'var(--text-dim)';
+    } else {
+        secMain.style.display = 'block';
+        secTrial.style.display = 'none';
+        btnMain.style.background = 'rgba(168, 85, 247, 0.25)';
+        btnMain.style.borderColor = 'rgba(168, 85, 247, 0.5)';
+        btnMain.style.color = 'white';
+        btnTrial.style.background = 'rgba(255, 255, 255, 0.05)';
+        btnTrial.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+        btnTrial.style.color = 'var(--text-dim)';
+    }
+}
+
+function openAddTrialModal() {
+    document.getElementById('modalAddTrial').style.display = 'flex';
+    calculateTrialTotal();
+}
+
+function calculateTrialTotal() {
+    const days = parseInt(document.getElementById('trialDays')?.value || 3);
+    const daily = parseFloat(document.getElementById('trialDailyFee')?.value || 0);
+    const total = days * daily;
+    const previewEl = document.getElementById('trialTotalPreview');
+    if (previewEl) {
+        previewEl.innerText = Number(total).toLocaleString() + " UZS";
+    }
+}
+
+async function submitAddTrial(e) {
+    e.preventDefault();
+    const firstName = document.getElementById('trialFirstName').value;
+    const lastName = document.getElementById('trialLastName').value;
+    const parentName = document.getElementById('trialParentName').value;
+    const phone = document.getElementById('trialParentPhone').value;
+    const startDate = document.getElementById('trialStartDate').value;
+    const days = document.getElementById('trialDays').value;
+    const dailyFee = document.getElementById('trialDailyFee').value;
+    const targetGroup = document.getElementById('trialTargetGroup').value;
+    const notes = document.getElementById('trialNotes').value;
+    const csrfToken = document.querySelector('#formAddTrial [name=csrfmiddlewaretoken]')?.value || '';
+
+    try {
+        const res = await fetch("{% url 'trial_child_create_api' %}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken
+            },
+            body: JSON.stringify({
+                first_name: firstName,
+                last_name: lastName,
+                parent_full_name: parentName,
+                parent_phone: phone,
+                start_date: startDate,
+                trial_days: days,
+                daily_fee: dailyFee,
+                target_group_id: targetGroup,
+                notes: notes
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert("✓ " + data.message);
+            window.location.reload();
+        } else {
+            alert("Xatolik: " + data.message);
+        }
+    } catch (err) {
+        alert("Aloqa xatoligi: " + err.message);
+    }
+}
+
+function openTrialPaymentModal(trialId, childName, remainingDebt) {
+    document.getElementById('trialPayId').value = trialId;
+    document.getElementById('trialPayName').innerText = childName;
+    document.getElementById('trialPayRemaining').innerText = Number(remainingDebt).toLocaleString() + " UZS";
+    document.getElementById('trialPayAmount').value = remainingDebt > 0 ? remainingDebt : '';
+    document.getElementById('modalTrialPayment').style.display = 'flex';
+}
+
+async function submitTrialPayment(e) {
+    e.preventDefault();
+    const trialId = document.getElementById('trialPayId').value;
+    const amount = document.getElementById('trialPayAmount').value;
+    const method = document.getElementById('trialPayMethod').value;
+    const transId = document.getElementById('trialPayTransId').value;
+    const notes = document.getElementById('trialPayNotes').value;
+    const csrfToken = document.querySelector('#formTrialPayment [name=csrfmiddlewaretoken]')?.value || '';
+
+    try {
+        const res = await fetch("{% url 'trial_child_payment_api' %}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken
+            },
+            body: JSON.stringify({
+                trial_id: trialId,
+                amount: amount,
+                payment_method: method,
+                transaction_id: transId,
+                notes: notes
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert("✓ " + data.message);
+            window.location.reload();
+        } else {
+            alert("Xatolik: " + data.message);
+        }
+    } catch (err) {
+        alert("Aloqa xatoligi: " + err.message);
+    }
+}
+
+function openPromoteTrialModal(trialId, childName, targetGroupId, phone, parentName, gender) {
+    document.getElementById('promoteTrialId').value = trialId;
+    document.getElementById('promoteChildName').innerText = childName;
+    if (targetGroupId) {
+        document.getElementById('promoteGroupId').value = targetGroupId;
+    }
+    if (parentName) {
+        document.getElementById('promoteParentName').value = parentName;
+    }
+    if (gender) {
+        document.getElementById('promoteGender').value = gender;
+    }
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 4);
+    document.getElementById('promoteBirthDate').value = d.toISOString().split('T')[0];
+    document.getElementById('modalPromoteTrial').style.display = 'flex';
+}
+
+async function submitPromoteTrial(e) {
+    e.preventDefault();
+    const trialId = document.getElementById('promoteTrialId').value;
+    const groupId = document.getElementById('promoteGroupId').value;
+    const birthDate = document.getElementById('promoteBirthDate').value;
+    const gender = document.getElementById('promoteGender').value;
+    const parentName = document.getElementById('promoteParentName').value;
+    const csrfToken = document.querySelector('#formPromoteTrial [name=csrfmiddlewaretoken]')?.value || '';
+
+    try {
+        const res = await fetch("{% url 'trial_child_promote_api' %}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken
+            },
+            body: JSON.stringify({
+                trial_id: trialId,
+                group_id: groupId,
+                birth_date: birthDate,
+                gender: gender,
+                parent_full_name: parentName
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert("✓ " + data.message);
+            window.location.reload();
+        } else {
+            alert("Xatolik: " + data.message);
+        }
+    } catch (err) {
+        alert("Aloqa xatoligi: " + err.message);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.lucide) lucide.createIcons();
+    calculateTrialTotal();
+});
+</script>
 {% endblock %}

@@ -1,3 +1,72 @@
 from django.contrib import admin
+from .models import (
+    User, KindergartenSettings, Group, Child, ChildAttendance,
+    StaffAttendance, MonthlyInvoice, Payment, ChatMessage,
+    StaffBonusPenalty, StaffMonthlySalary, AuditLog, TemporaryChild
+)
 
-# Register your models here.
+@admin.register(User)
+class UserAdmin(admin.ModelAdmin):
+    list_display = ('username', 'first_name', 'last_name', 'role', 'salary', 'phone_number', 'is_active')
+    list_filter = ('role', 'is_active')
+    search_fields = ('username', 'first_name', 'last_name', 'phone_number')
+
+@admin.register(KindergartenSettings)
+class KindergartenSettingsAdmin(admin.ModelAdmin):
+    list_display = ('name', 'work_start_time', 'work_end_time', 'default_monthly_fee', 'daily_meal_rate')
+
+@admin.register(Group)
+class GroupAdmin(admin.ModelAdmin):
+    list_display = ('name', 'age_category', 'monthly_fee', 'primary_teacher', 'assistant_teacher')
+
+@admin.register(Child)
+class ChildAdmin(admin.ModelAdmin):
+    list_display = ('full_name', 'group', 'parent_full_name', 'parent_phone', 'is_active')
+    list_filter = ('group', 'is_active')
+    search_fields = ('first_name', 'last_name', 'parent_full_name', 'parent_phone')
+
+@admin.register(ChildAttendance)
+class ChildAttendanceAdmin(admin.ModelAdmin):
+    list_display = ('child', 'date', 'status', 'marked_by')
+    list_filter = ('status', 'date')
+
+@admin.register(StaffAttendance)
+class StaffAttendanceAdmin(admin.ModelAdmin):
+    list_display = ('teacher', 'date', 'check_in_time', 'check_out_time', 'status', 'is_late', 'late_minutes', 'penalty_amount')
+    list_filter = ('status', 'is_late', 'date')
+    search_fields = ('teacher__username', 'teacher__first_name', 'teacher__last_name')
+
+@admin.register(MonthlyInvoice)
+class MonthlyInvoiceAdmin(admin.ModelAdmin):
+    list_display = ('child', 'month', 'year', 'total_amount', 'paid_amount', 'status')
+    list_filter = ('status', 'month', 'year')
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'amount', 'payment_method', 'invoice', 'temporary_child', 'paid_at', 'recorded_by')
+    list_filter = ('payment_method', 'paid_at')
+    search_fields = ('invoice__child__first_name', 'temporary_child__first_name', 'transaction_id', 'notes')
+
+@admin.register(TemporaryChild)
+class TemporaryChildAdmin(admin.ModelAdmin):
+    list_display = ('full_name', 'parent_phone', 'start_date', 'trial_days', 'daily_fee', 'paid_amount', 'status', 'target_group')
+    list_filter = ('status', 'start_date', 'target_group')
+    search_fields = ('first_name', 'last_name', 'parent_phone')
+
+@admin.register(StaffBonusPenalty)
+class StaffBonusPenaltyAdmin(admin.ModelAdmin):
+    list_display = ('staff', 'date', 'record_type', 'late_minutes', 'percentage', 'amount', 'created_by')
+    list_filter = ('record_type', 'date')
+    search_fields = ('staff__username', 'staff__first_name', 'description')
+
+@admin.register(StaffMonthlySalary)
+class StaffMonthlySalaryAdmin(admin.ModelAdmin):
+    list_display = ('staff', 'month', 'year', 'base_salary', 'total_penalties', 'total_bonuses', 'net_salary', 'status', 'paid_at')
+    list_filter = ('status', 'month', 'year')
+    search_fields = ('staff__username', 'staff__first_name')
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ('created_at', 'category', 'user', 'action', 'ip_address')
+    list_filter = ('category', 'created_at')
+    search_fields = ('action', 'description', 'user__username', 'user__first_name')

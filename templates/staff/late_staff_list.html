@@ -1,0 +1,162 @@
+{% extends 'base.html' %}
+
+{% block title %}Kechikkanlar Ro'yxati — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="max-width: 1200px; margin: 0 auto;">
+    
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white; margin: 0;">
+                    Kechikkanlar Ro'yxati
+                </h2>
+                <span class="badge" style="background: rgba(251, 113, 133, 0.2); color: #fb7185; border: 1px solid rgba(251, 113, 133, 0.4); font-size: 12px; font-weight: 800;">
+                    Face ID Avtomatik Hisob
+                </span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+                Ishga 08:00 dan kech kelgan xodimlar ro'yxati, kechikish minutlari, foizlari va ushlab qolingan shtraflar
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <a href="{% url 'staff_payroll' %}" class="btn-glass btn-emerald">
+                <i data-lucide="badge-dollar-sign" style="width: 16px; height: 16px;"></i>
+                <span>Oylik Maoshlar (Döküm) &rarr;</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Shtraflar Qoidasi Eslatma Baneri -->
+    <div class="glass-card" style="padding: 16px 20px; margin-bottom: 24px; border-left: 4px solid #f43f5e; background: rgba(244, 63, 94, 0.06); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 38px; height: 38px; border-radius: 50%; background: rgba(244, 63, 94, 0.15); display: flex; align-items: center; justify-content: center; color: #fb7185;">
+                <i data-lucide="alert-triangle" style="width: 20px; height: 20px;"></i>
+            </div>
+            <div>
+                <h4 style="font-size: 14px; font-weight: 700; color: white; margin: 0 0 2px 0;">Kechikish Shtraflari Qoidasi:</h4>
+                <p style="font-size: 12px; color: #cbd5e1; margin: 0;">
+                    &bull; <b>08:00 gacha:</b> 0% (Shtraf yo'q) &nbsp;&bull;&nbsp; 
+                    <b>08:00 dan 08:05 gacha:</b> har bir minut uchun <b>0.1%</b> &nbsp;&bull;&nbsp; 
+                    <b>08:05 dan keyin:</b> har bir minut uchun <b>1.0%</b> oylik maoshdan ushlab qolinadi.
+                </p>
+            </div>
+        </div>
+        <div style="font-size: 12px; color: var(--text-dim); background: rgba(255, 255, 255, 0.04); padding: 6px 14px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.08);">
+            Face ID ruxsati yopilmaydi &bull; Tizim avtomatik ro'yxatga oladi
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="glass-card" style="padding: 16px 20px; margin-bottom: 24px;">
+        <form method="GET" style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+            <div>
+                <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Aniq Sana bo'yicha:</label>
+                <input type="date" name="date" value="{{ date_filter }}" class="glass-input" onchange="this.form.submit()" style="padding: 8px 12px;">
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 18px;">
+                <a href="{% url 'late_staff_list' %}?date={{ today|date:'Y-m-d' }}" class="btn-glass {% if date_filter == today|date:'Y-m-d' %}btn-primary{% else %}btn-secondary{% endif %}" style="padding: 8px 14px; font-size: 12px;">
+                    Bugun
+                </a>
+            </div>
+
+            <div style="margin-left: auto; display: flex; align-items: center; gap: 14px;">
+                <div style="text-align: right;">
+                    <div style="font-size: 11px; color: var(--text-dim);">Jami Ushlab qolingan Shtraf:</div>
+                    <div style="font-size: 18px; font-weight: 800; color: #fb7185;">{{ total_penalty_sum|floatformat:0 }} UZS</div>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Table -->
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <h3 class="glass-card-title">
+                <i data-lucide="clock-alert" style="color: #fb7185; width: 20px; height: 20px;"></i>
+                <span>Kechikkan Xodimlar Qaydnomasi ({{ logs.count }} ta)</span>
+            </h3>
+        </div>
+
+        <div class="glass-table-wrapper">
+            <table class="glass-table">
+                <thead>
+                    <tr>
+                        <th>Xodim F.I.Sh</th>
+                        <th>Lavozimi</th>
+                        <th>Sana</th>
+                        <th>Kelgan Vaqti</th>
+                        <th>Kechikkan Minutlar</th>
+                        <th>Shtraf Foizi (%)</th>
+                        <th>Ushlab Qolingan Summa</th>
+                        <th>Face ID Holati</th>
+                        <th style="text-align: right;">Profil</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                {% if log.teacher.face_image %}
+                                    <img src="{{ log.teacher.face_image.url }}" alt="Face" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 1px solid #fb7185;">
+                                {% else %}
+                                    <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(251, 113, 133, 0.2); display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fb7185;">
+                                        {{ log.teacher.first_name|slice:":1"|upper }}
+                                    </div>
+                                {% endif %}
+                                <div>
+                                    <strong style="color: white; font-size: 14px;">{{ log.teacher.get_full_name|default:log.teacher.username }}</strong>
+                                    <div style="font-size: 11px; color: var(--text-dim);">Oylik maosh: {{ log.teacher.salary|floatformat:0 }} UZS</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge" style="background: rgba(255, 255, 255, 0.05); color: #cbd5e1; font-size: 11px;">
+                                {{ log.teacher.position_display }}
+                            </span>
+                        </td>
+                        <td><strong>{{ log.date|date:"d.m.Y" }}</strong></td>
+                        <td>
+                            <span style="font-weight: 700; color: white; background: rgba(251, 113, 133, 0.1); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(251, 113, 133, 0.3);">
+                                {{ log.check_in_time|time:"H:i:s" }}
+                            </span>
+                        </td>
+                        <td>
+                            <strong style="color: #fb7185; font-size: 15px;">{{ log.late_minutes }} minut</strong>
+                        </td>
+                        <td>
+                            <span style="font-weight: 700; color: #fb7185;">-{{ log.penalty_percent }}%</span>
+                        </td>
+                        <td>
+                            <strong style="color: #fb7185; font-size: 15px;">-{{ log.penalty_amount|floatformat:0 }} UZS</strong>
+                        </td>
+                        <td>
+                            <span class="badge badge-unpaid">Kechikkan (Face ID Tasdiqlangan)</span>
+                        </td>
+                        <td style="text-align: right;">
+                            <a href="{% url 'staff_list' %}" class="btn-glass btn-secondary" style="padding: 6px 12px; font-size: 12px;">
+                                Maosh & Profil &rarr;
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="9" style="text-align: center; color: var(--text-dim); padding: 40px;">
+                            <i data-lucide="smile" style="width: 32px; height: 32px; color: #34d399; margin-bottom: 8px; display: inline-block;"></i>
+                            <p style="margin: 0; font-size: 14px; color: #34d399; font-weight: 600;">
+                                Ushbu sanada hech qanday xodim ishga kechikmadi. Barchasi vaqtida kelgan!
+                            </p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

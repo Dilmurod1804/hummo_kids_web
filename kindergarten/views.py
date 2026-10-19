@@ -16,9 +16,11 @@ from django.core.files.base import ContentFile
 from django.db.models import Count, Sum, Q, Avg
 from django.utils import timezone
 
+from functools import wraps
 from .models import (
     User, KindergartenSettings, Group, Child, ChildAttendance,
-    StaffAttendance, MonthlyInvoice, Payment, ChatMessage
+    StaffAttendance, MonthlyInvoice, Payment, ChatMessage,
+    StaffBonusPenalty, StaffMonthlySalary, AuditLog, TemporaryChild
 )
 from .forms import (
     LoginForm, ChildForm, GroupForm, PaymentForm, SettingsForm,
@@ -30,13 +32,52 @@ from .excel_reports import (
     generate_children_excel, generate_attendance_excel,
     generate_staff_attendance_excel, generate_finance_excel
 )
+from .pdf_reports import generate_finance_pdf
+from .audit_utils import (
+    log_audit, calculate_late_penalty, sync_staff_monthly_salary
+)
 
-# --- Role Helpers & Decorators ---
+# --- Role Helpers & Custom Decorators ---
 def is_director_or_manager(user):
     return user.is_authenticated and (user.role in ['DIRECTOR', 'MANAGER'] or user.is_superuser)
 
 def is_director_only(user):
     return user.is_authenticated and (user.role == 'DIRECTOR' or user.is_superuser)
+
+def director_or_manager_required(view_func):
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect('login')
+        if not request.user.can_manage_all:
+            messages.error(request, "Ushbu bo'limga kirish faqat Direktor / Menejer uchun ruxsat etilgan!")
+            if request.user.has_assigned_group:
+                return redirect('teacher_dashboard')
+            return redirect('staff_profile')
+        return view_func(request, *args, **kwargs)
+    return _wrapped
+
+def director_only_required(view_func):
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect('login')
+        if not request.user.is_director:
+            messages.error(request, "Ushbu bo'lim faqat Bog'cha Direktori uchun ruxsat etilgan!")
+            return redirect('dashboard')
+        return view_func(request, *args, **kwargs)
+    return _wrapped
+
+def teacher_assigned_or_admin_required(view_func):
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect('login')
+        if not (request.user.can_manage_all or request.user.has_assigned_group):
+            messages.error(request, "Sizga guruh biriktirilmaganligi sababli ushbu bo'lim yopiq!")
+            return redirect('staff_profile')
+        return view_func(request, *args, **kwargs)
+    return _wrapped
 
 # --- Authentication Views ---
 @ensure_csrf_cookie
@@ -59,10 +100,10 @@ def login_view(request):
                 # Redirect directly based on role
                 if user.can_manage_all:
                     return redirect('admin_dashboard')
-                elif user.is_teacher:
+                elif user.has_assigned_group:
                     return redirect('teacher_dashboard')
                 else:
-                    return redirect('staff_attendance_portal')
+                    return redirect('staff_profile')
             else:
                 # Safe fallback for managers sharing the global settings password
                 try:
@@ -95,7 +136,7 @@ def logout_view(request):
     return redirect('login')
 
 @login_required
-@user_passes_test(is_director_only)
+@director_only_required
 def role_switch_demo(request, username):
     """Allows 1-click test switching between roles for seamless demo testing"""
     user = User.objects.filter(username__iexact=username).first()
@@ -112,13 +153,13 @@ def dashboard(request):
     user = request.user
     if user.can_manage_all:
         return redirect('admin_dashboard')
-    if user.is_teacher:
+    if user.has_assigned_group:
         return redirect('teacher_dashboard')
-    # Other staff (NURSE, COOK, SECURITY, etc.) → Face ID portal only
-    return redirect('staff_attendance_portal')
+    # Guruh biriktirilmagan xodim (Boshqa xodimlar) → Faqat shaxsiy profil va Face ID
+    return redirect('staff_profile')
 
 @login_required
-@user_passes_test(is_director_or_manager)
+@director_or_manager_required
 def admin_dashboard(request):
     today = timezone.localtime(timezone.now()).date()
     current_month = today.month
@@ -209,17 +250,26 @@ def admin_dashboard(request):
 
 @login_required
 def teacher_dashboard(request):
-    today = timezone.localtime(timezone.now()).date()
     user = request.user
 
-    # Find teacher's assigned groups
-    assigned_groups = Group.objects.filter(Q(primary_teacher=user) | Q(assistant_teacher=user))
+    # Agar xodimga guruh biriktirilmagan bo'lsa va direktor bo'lmasa, shaxsiy profilga yo'naltiriladi
+    if not user.can_manage_all and not user.has_assigned_group:
+        messages.warning(request, "Sizga guruh biriktirilmaganligi sababli shaxsiy profilingizga yo'naltirildingiz.")
+        return redirect('staff_profile')
+
+    today = timezone.localtime(timezone.now()).date()
+
+    # Tarbiyachiga FAQAT o'ziga biriktirilgan 1 ta guruhni ko'rsatish
+    if not user.can_manage_all and user.has_assigned_group:
+        assigned_groups = Group.objects.filter(id=user.assigned_group.id)
+    else:
+        assigned_groups = Group.objects.filter(Q(primary_teacher=user) | Q(assistant_teacher=user))
     
     # Today's staff attendance record for this teacher
     my_today_log = StaffAttendance.objects.filter(teacher=user, date=today).first()
 
     # Children in teacher's group
-    assigned_children = Child.objects.filter(group__in=assigned_groups, is_active=True)
+    assigned_children = Child.objects.filter(group__in=assigned_groups, is_active=True).order_by('first_name')
     total_group_children = assigned_children.count()
 
     # Today's attendance for group
@@ -243,7 +293,7 @@ def teacher_dashboard(request):
 
 # --- Groups & Children Management ---
 @login_required
-@user_passes_test(is_director_or_manager)
+@director_or_manager_required
 def groups_list(request):
     groups = Group.objects.annotate(
         active_children=Count('children', filter=Q(children__is_active=True))
@@ -255,49 +305,61 @@ def groups_list(request):
     })
 
 @login_required
-@user_passes_test(is_director_or_manager)
+@director_or_manager_required
 def group_create(request):
     if request.method == 'POST':
         form = GroupForm(request.POST)
         if form.is_valid():
-            form.save()
+            g = form.save()
+            log_audit('SYSTEM', f"Yangi guruh yaratildi: {g.name}", f"Guruh: {g.name}, Yosh toifasi: {g.get_age_category_display()}", user=request.user, request=request)
             return redirect('groups_list')
-        # If invalid, pass form to groups_list
         groups = Group.objects.annotate(active_children=Count('children', filter=Q(children__is_active=True))).order_by('name')
         return render(request, 'groups/groups_list.html', {'groups': groups, 'form': form, 'show_modal': True})
     return redirect('groups_list')
 
 @login_required
-@user_passes_test(is_director_or_manager)
+@director_or_manager_required
 def group_update(request, pk):
     group = get_object_or_404(Group, pk=pk)
     if request.method == 'POST':
         form = GroupForm(request.POST, instance=group)
         if form.is_valid():
-            form.save()
+            g = form.save()
+            log_audit('SYSTEM', f"Guruh yangilandi: {g.name}", f"Guruh: {g.name}", user=request.user, request=request)
             return redirect('groups_list')
     else:
         form = GroupForm(instance=group)
     return render(request, 'groups/group_edit.html', {'form': form, 'group': group})
 
 @login_required
-@user_passes_test(is_director_or_manager)
+@director_or_manager_required
 def group_delete(request, pk):
     group = get_object_or_404(Group, pk=pk)
     if request.method == 'POST':
+        name = group.name
         group.delete()
+        log_audit('SYSTEM', f"Guruh o'chirildi: {name}", f"O'chirilgan guruh: {name}", user=request.user, request=request)
     return redirect('groups_list')
 
 @login_required
 def children_list(request):
+    # Guruh biriktirilmagan xodim bolalar ro'yxatiga kira olmaydi
+    if not request.user.can_manage_all and not request.user.has_assigned_group:
+        messages.warning(request, "Bolalar bo'limi siz uchun yopiq.")
+        return redirect('staff_profile')
+
     query = request.GET.get('q', '').strip()
     group_filter = request.GET.get('group', '')
     status_filter = request.GET.get('status', 'active')
 
     children = Child.objects.select_related('group').all()
 
-    if request.user.is_teacher and not request.user.can_manage_all:
-        children = children.filter(Q(group__primary_teacher=request.user) | Q(group__assistant_teacher=request.user))
+    # Tarbiyachiga FAQAT o'ziga biriktirilgan 1 ta guruh bolalarini ko'rsatish
+    if not request.user.can_manage_all and request.user.has_assigned_group:
+        children = children.filter(group=request.user.assigned_group)
+        groups = Group.objects.filter(id=request.user.assigned_group.id)
+    else:
+        groups = Group.objects.all()
 
     if query:
         children = children.filter(
@@ -306,7 +368,7 @@ def children_list(request):
             Q(parent_full_name__icontains=query) |
             Q(parent_phone__icontains=query)
         )
-    if group_filter:
+    if group_filter and request.user.can_manage_all:
         children = children.filter(group_id=group_filter)
     if status_filter == 'active':
         children = children.filter(is_active=True)
@@ -314,12 +376,19 @@ def children_list(request):
         children = children.filter(is_active=False)
 
     children = children.order_by('group__name', 'first_name')
-    groups = Group.objects.all()
     form = ChildForm()
+    
+    kg_settings = KindergartenSettings.get_settings()
+    default_trial_daily = round(kg_settings.default_monthly_fee / Decimal('22.0'), -3)
+    trial_children = TemporaryChild.objects.filter(status='ACTIVE').select_related('target_group', 'registered_by')
+    all_groups = Group.objects.all().order_by('name')
 
     return render(request, 'children/children_list.html', {
         'children': children,
         'groups': groups,
+        'all_groups': all_groups,
+        'trial_children': trial_children,
+        'default_trial_daily': default_trial_daily,
         'form': form,
         'query': query,
         'group_filter': group_filter,
@@ -740,6 +809,14 @@ def attendance_save_ajax(request):
                     )
                 saved_count += 1
 
+            log_audit(
+                category='CHILD_ATTENDANCE',
+                action="Bolalar davomati saqlandi",
+                description=f"Mas'ul {request.user.get_full_name() or request.user.username} tomonidan {att_date} sanasi uchun {saved_count} ta bola davomati belgilandi.",
+                user=request.user,
+                request=request
+            )
+
             return JsonResponse({'success': True, 'saved_count': saved_count, 'message': 'Davomat muvaffaqiyatli saqlandi!'})
         except Exception as e:
             return JsonResponse({'success': False, 'message': str(e)}, status=400)
@@ -992,8 +1069,21 @@ def staff_check_in_api(request):
 
             face_note = f"Face ID tasdiqlandi (masofa: {face_distance:.3f}). GPS: {distance:.1f}m."
 
+            # Ishga kelish vaqti va kechikish shtraflari hisob-kitobi
+            work_start = settings.work_start_time
+            late_minutes, penalty_pct, penalty_amount = 0, Decimal('0.00'), Decimal('0.00')
+            is_late = False
+
+            if action_type != 'check_out':
+                late_minutes, penalty_pct, penalty_amount = calculate_late_penalty(
+                    current_time, work_start, user.salary
+                )
+                is_late = (late_minutes > 0)
+                status_val = 'LATE' if is_late else 'ON_TIME'
+            else:
+                status_val = 'VERIFIED'
+
             if not log_entry:
-                status_val = 'ON_TIME' if current_time.hour < 9 else 'LATE'
                 log_entry = StaffAttendance.objects.create(
                     teacher=user,
                     date=today,
@@ -1005,6 +1095,10 @@ def staff_check_in_api(request):
                     is_within_geofence=True,
                     face_snapshot=image_file,
                     status=status_val,
+                    late_minutes=late_minutes,
+                    penalty_percent=penalty_pct,
+                    penalty_amount=penalty_amount,
+                    is_late=is_late,
                     notes=face_note
                 )
             else:
@@ -1022,6 +1116,11 @@ def staff_check_in_api(request):
                 else:
                     if not log_entry.check_in_time:
                         log_entry.check_in_time = current_time
+                        log_entry.late_minutes = late_minutes
+                        log_entry.penalty_percent = penalty_pct
+                        log_entry.penalty_amount = penalty_amount
+                        log_entry.is_late = is_late
+                        log_entry.status = status_val
                     else:
                         log_entry.notes = (
                             (log_entry.notes or '') +
@@ -1034,11 +1133,51 @@ def staff_check_in_api(request):
                 log_entry.distance_meters = distance
                 log_entry.is_within_geofence = True
                 if log_entry.status == 'REJECTED_GEOFENCE':
-                    log_entry.status = 'ON_TIME' if current_time.hour < 9 else 'LATE'
+                    log_entry.status = status_val
                 log_entry.save()
 
             full_name = f"{user.first_name} {user.last_name}".strip() or user.get_full_name().strip() or user.username
-            greeting = "Xush kelibsiz" if action_type == 'check_in' else "Xayr"
+
+            # Agar kechikkan bo'lsa, avtomatik shtraf yozuvi yaratamiz va oylik hisob-kitobni yangilaymiz
+            if is_late and action_type != 'check_out':
+                StaffBonusPenalty.objects.update_or_create(
+                    staff=user,
+                    date=today,
+                    record_type='PENALTY_LATE',
+                    defaults={
+                        'late_minutes': late_minutes,
+                        'percentage': penalty_pct,
+                        'amount': penalty_amount,
+                        'description': f"Face ID kechikish: {current_time.strftime('%H:%M:%S')}. {late_minutes} minut kechikdi (-{penalty_pct}%).",
+                        'staff_attendance': log_entry,
+                    }
+                )
+                sync_staff_monthly_salary(user, today.month, today.year)
+
+            # Tizim tarixiga (AuditLog) yozish
+            log_audit(
+                category='FACE_ID',
+                action=f"Face ID orqali {action_type} tasdiqlandi",
+                description=f"Xodim: {full_name} ({user.position_display}). Vaqt: {current_time.strftime('%H:%M:%S')}. Holat: {'Kechikkan' if is_late else 'Vaqtida'}. Kechikish: {late_minutes} min, Shtraf: {penalty_amount:,.0f} UZS ({penalty_pct}%). Masofa: {distance:.1f}m.",
+                user=user,
+                request=request
+            )
+            if is_late and action_type != 'check_out':
+                log_audit(
+                    category='PENALTY',
+                    action="Kechikish shtrafi hisoblandi",
+                    description=f"Xodim {full_name} ishga {late_minutes} minut kechikib keldi. Oylik maoshidan {penalty_pct}% ({penalty_amount:,.0f} UZS) ushlab qolindi.",
+                    user=user,
+                    request=request
+                )
+
+            if action_type == 'check_in':
+                if is_late:
+                    greeting = f"Kechikish qayd etildi, {full_name}! {late_minutes} minut kechikdingiz (-{penalty_pct}% shtraf). Kechikkanlar ro'yxatiga kiritildingiz."
+                else:
+                    greeting = f"Xush kelibsiz, {full_name}! Vaqtida keldingiz."
+            else:
+                greeting = f"Xayr, {full_name}!"
 
             return JsonResponse({
                 'success': True,
@@ -1047,7 +1186,7 @@ def staff_check_in_api(request):
                 'full_name': full_name,
                 'employee_name': full_name,
                 'action': action_type,
-                'greeting': f"{greeting}, {full_name}!",
+                'greeting': greeting,
                 'face_verified': True,
                 'similarity_score': similarity_pct,
                 'within_geofence': True,
@@ -1055,7 +1194,11 @@ def staff_check_in_api(request):
                 'face_distance': round(face_distance, 4),
                 'time': current_time.strftime('%H:%M:%S'),
                 'status': log_entry.get_status_display(),
-                'message': f"{face_message} GPS masofa: {distance:.1f}m.",
+                'is_late': is_late,
+                'late_minutes': late_minutes,
+                'penalty_percent': float(penalty_pct),
+                'penalty_amount': float(penalty_amount),
+                'message': f"{face_message} GPS: {distance:.1f}m. {'Kechikish: ' + str(late_minutes) + ' min (' + str(penalty_pct) + '%)' if is_late else 'Vaqtida'}",
             })
 
         except Exception as e:
@@ -1130,16 +1273,55 @@ def finance_dashboard(request):
     month = int(request.GET.get('month', today.month))
     year = int(request.GET.get('year', today.year))
     status_filter = request.GET.get('status', 'all')
+    payment_type_filter = request.GET.get('payment_type', 'all')  # all / cash / card / online
 
-    invoices = MonthlyInvoice.objects.select_related('child', 'child__group').filter(month=month, year=year)
+    kg_settings = KindergartenSettings.get_settings()
+    default_trial_daily = round(kg_settings.default_monthly_fee / Decimal('22.0'), -3)
+
+    invoices = MonthlyInvoice.objects.select_related('child', 'child__group').prefetch_related('payments').filter(month=month, year=year)
 
     if status_filter == 'unpaid':
         invoices = invoices.exclude(status='PAID')
+
+    if payment_type_filter == 'cash':
+        invoices = invoices.filter(payments__payment_method='CASH').distinct()
+    elif payment_type_filter == 'card':
+        invoices = invoices.filter(payments__payment_method__in=['CARD', 'BANK_TRANSFER', 'CLICK_PAYME']).distinct()
 
     total_expected = invoices.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
     total_paid = invoices.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
     total_recalc = invoices.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
     total_debt = max(Decimal('0.00'), total_expected - total_paid)
+
+    # Invoyslar bo'yicha naqd va karta to'lovlarini hisoblash
+    for inv in invoices:
+        inv.cash_paid = sum(p.amount for p in inv.payments.all() if p.payment_method == 'CASH')
+        inv.card_paid = sum(p.amount for p in inv.payments.all() if p.payment_method in ['CARD', 'BANK_TRANSFER', 'CLICK_PAYME'])
+
+    # --- 1. Kunlik Tushum (Bugun) ---
+    today_payments = Payment.objects.filter(paid_at__date=today)
+    daily_total = today_payments.aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    daily_cash = today_payments.filter(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    daily_card = today_payments.exclude(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+
+    # --- 2. Oylik Tushum (Tanlangan oy) ---
+    monthly_payments = Payment.objects.filter(paid_at__year=year, paid_at__month=month)
+    monthly_total = monthly_payments.aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    monthly_cash = monthly_payments.filter(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    monthly_card = monthly_payments.exclude(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+
+    # --- 3. Kassa Balansi (To'lov Turlari bo'yicha - Barcha davrlar yoki jami kassa) ---
+    cash_total = Payment.objects.filter(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    card_total = Payment.objects.filter(payment_method='CARD').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    online_total = Payment.objects.filter(payment_method__in=['CLICK_PAYME', 'BANK_TRANSFER']).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    total_kassa = cash_total + card_total + online_total
+
+    # --- 4. Vaqtinchalik Bolalar ---
+    trial_children = TemporaryChild.objects.filter(status='ACTIVE').select_related('target_group', 'registered_by')
+    all_groups = Group.objects.all().order_by('name')
+
+    # --- 5. Tranzaksiya Tarixi (Oxirgi to'lovlar) ---
+    recent_payments = Payment.objects.select_related('invoice__child', 'temporary_child', 'recorded_by').order_by('-paid_at')[:25]
 
     payment_form = PaymentForm()
 
@@ -1148,12 +1330,33 @@ def finance_dashboard(request):
         'month': month,
         'year': year,
         'status_filter': status_filter,
+        'payment_type_filter': payment_type_filter,
         'total_expected': total_expected,
         'total_paid': total_paid,
         'total_recalc': total_recalc,
         'total_debt': total_debt,
+        # Kunlik
+        'daily_total': daily_total,
+        'daily_cash': daily_cash,
+        'daily_card': daily_card,
+        # Oylik
+        'monthly_total': monthly_total,
+        'monthly_cash': monthly_cash,
+        'monthly_card': monthly_card,
+        # Kassa balansi
+        'cash_total': cash_total,
+        'card_total': card_total,
+        'online_total': online_total,
+        'total_kassa': total_kassa,
+        # Vaqtinchalik bolalar
+        'trial_children': trial_children,
+        'all_groups': all_groups,
+        'default_trial_daily': default_trial_daily,
+        # Tranzaksiyalar
+        'recent_payments': recent_payments,
         'payment_form': payment_form,
         'months_range': range(1, 13),
+        'today': today,
     })
 
 @csrf_exempt
@@ -1219,7 +1422,7 @@ def recalculate_invoices_api(request):
 
 @csrf_exempt
 @login_required
-@user_passes_test(is_director_or_manager)
+@director_or_manager_required
 def record_payment_api(request):
     if request.method == 'POST':
         try:
@@ -1227,8 +1430,8 @@ def record_payment_api(request):
             invoice_id = data.get('invoice_id')
             amount = Decimal(str(data.get('amount', 0)))
             payment_method = data.get('payment_method', 'CARD')
-            transaction_id = data.get('transaction_id', '')
-            notes = data.get('notes', '')
+            transaction_id = data.get('transaction_id', '').strip()
+            notes = data.get('notes', '').strip()
 
             invoice = get_object_or_404(MonthlyInvoice, id=invoice_id)
             payment = Payment.objects.create(
@@ -1240,6 +1443,15 @@ def record_payment_api(request):
                 recorded_by=request.user
             )
 
+            staff_name = request.user.get_full_name() or request.user.username
+            log_audit(
+                category='PAYMENT',
+                action="Bog'cha badal to'lovi qabul qilindi",
+                description=f"Bola: {invoice.child.full_name} ({invoice.child.group.name if invoice.child.group else 'Guruhsiz'}). Summa: {amount:,.0f} UZS. To'lov turi: {payment.get_payment_method_display()}. Chek raqami: {transaction_id or '—'}. Izoh: {notes or '—'}. Qabul qilgan xodim: {staff_name}. Qoldiq qarz: {invoice.remaining_debt:,.0f} UZS.",
+                user=request.user,
+                request=request
+            )
+
             return JsonResponse({
                 'success': True,
                 'message': f"{amount:,.0f} UZS to'lov muvaffaqiyatli qabul qilindi!",
@@ -1249,6 +1461,191 @@ def record_payment_api(request):
         except Exception as e:
             return JsonResponse({'success': False, 'message': str(e)}, status=400)
 
+    return JsonResponse({'success': False, 'message': 'Invalid request'}, status=405)
+
+
+# --- Vaqtinchalik Bolalar (Trial Children) ---
+@csrf_exempt
+@login_required
+@user_passes_test(is_director_or_manager)
+def trial_child_create_api(request):
+    """Yangi vaqtinchalik (sinov muddatidagi) bolani ro'yxatga olish"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            kg_settings = KindergartenSettings.get_settings()
+            default_daily = round(kg_settings.default_monthly_fee / Decimal('22.0'), -3)
+            daily_fee_val = data.get('daily_fee')
+            daily_fee = Decimal(str(daily_fee_val)) if daily_fee_val else default_daily
+
+            trial = TemporaryChild.objects.create(
+                first_name=data.get('first_name', '').strip(),
+                last_name=data.get('last_name', '').strip(),
+                parent_full_name=data.get('parent_full_name', '').strip(),
+                parent_phone=data.get('parent_phone', '').strip(),
+                birth_date=data.get('birth_date') or None,
+                gender=data.get('gender', 'M'),
+                start_date=data.get('start_date') or timezone.now().date(),
+                trial_days=int(data.get('trial_days', 3)),
+                daily_fee=daily_fee,
+                target_group_id=data.get('target_group_id') or None,
+                notes=data.get('notes', '').strip(),
+                registered_by=request.user,
+            )
+
+            staff_name = request.user.get_full_name() or request.user.username
+            log_audit(
+                category='SYSTEM',
+                action="Vaqtinchalik bola ro'yxatga olindi",
+                description=f"Vaqtinchalik bola: {trial.full_name}, Tel: {trial.parent_phone}, Sinov davri: {trial.trial_days} kun, Kunlik to'lov: {trial.daily_fee:,.0f} UZS. Qayd etgan: {staff_name}.",
+                user=request.user,
+                request=request
+            )
+
+            return JsonResponse({
+                'success': True,
+                'message': f"{trial.full_name} vaqtinchalik (sinov muddatiga) muvaffaqiyatli ro'yxatga olindi!",
+                'trial_id': trial.id,
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'message': str(e)}, status=400)
+    return JsonResponse({'success': False, 'message': 'Invalid request'}, status=405)
+
+
+@csrf_exempt
+@login_required
+@user_passes_test(is_director_or_manager)
+def trial_child_payment_api(request):
+    """Vaqtinchalik bola uchun to'lov qabul qilish"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            trial_id = data.get('trial_id')
+            amount = Decimal(str(data.get('amount', 0)))
+            payment_method = data.get('payment_method', 'CASH')
+            transaction_id = data.get('transaction_id', '').strip()
+            notes = data.get('notes', '').strip()
+
+            trial = get_object_or_404(TemporaryChild, id=trial_id)
+
+            payment = Payment.objects.create(
+                temporary_child=trial,
+                amount=amount,
+                payment_method=payment_method,
+                transaction_id=transaction_id,
+                notes=notes,
+                recorded_by=request.user
+            )
+
+            staff_name = request.user.get_full_name() or request.user.username
+            log_audit(
+                category='PAYMENT',
+                action="Vaqtinchalik bola to'lovi qabul qilindi",
+                description=f"Vaqtinchalik bola: {trial.full_name}. Summa: {amount:,.0f} UZS, Usul: {payment.get_payment_method_display()}. Chek raqami: {transaction_id or '—'}. Izoh: {notes or '—'}. Qabul qilgan xodim: {staff_name}. Qoldiq qarz: {trial.remaining_fee:,.0f} UZS.",
+                user=request.user,
+                request=request
+            )
+
+            return JsonResponse({
+                'success': True,
+                'message': f"{amount:,.0f} UZS to'lov muvaffaqiyatli qabul qilindi!",
+                'paid_amount': float(trial.paid_amount),
+                'remaining_fee': float(trial.remaining_fee),
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'message': str(e)}, status=400)
+    return JsonResponse({'success': False, 'message': 'Invalid request'}, status=405)
+
+
+@csrf_exempt
+@login_required
+@user_passes_test(is_director_or_manager)
+def trial_child_promote_api(request):
+    """Vaqtinchalik bolani doimiy guruhga o'tkazish"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            trial_id = data.get('trial_id')
+            group_id = data.get('group_id')
+            birth_date = data.get('birth_date') or trial.birth_date
+            gender = data.get('gender') or trial.gender or 'M'
+            parent_full_name = data.get('parent_full_name') or trial.parent_full_name or f"{trial.first_name} ota-onasi"
+
+            trial = get_object_or_404(TemporaryChild, id=trial_id)
+            group = get_object_or_404(Group, id=group_id)
+
+            if not birth_date:
+                # Default to approximate 4-year-old if not set
+                from datetime import timedelta
+                birth_date = timezone.now().date() - timedelta(days=4*365)
+
+            # 1. Create permanent Child record
+            child = Child.objects.create(
+                first_name=trial.first_name,
+                last_name=trial.last_name,
+                birth_date=birth_date,
+                gender=gender,
+                group=group,
+                parent_full_name=parent_full_name,
+                parent_phone=trial.parent_phone,
+                enrollment_date=timezone.now().date(),
+                is_active=True,
+            )
+
+            # 2. Update trial record
+            trial.status = 'PROMOTED'
+            trial.promoted_child = child
+            trial.promoted_at = timezone.now()
+            trial.save()
+
+            # 3. Create current month MonthlyInvoice for child (doimiy oylik badal tizimiga o'tkazish)
+            now = timezone.now()
+            kg_settings = KindergartenSettings.get_settings()
+            MonthlyInvoice.objects.get_or_create(
+                child=child,
+                month=now.month,
+                year=now.year,
+                defaults={
+                    'base_fee': group.monthly_fee if group.monthly_fee else kg_settings.default_monthly_fee,
+                    'meal_rate': kg_settings.daily_meal_rate,
+                }
+            )
+
+            staff_name = request.user.get_full_name() or request.user.username
+            log_audit(
+                category='SYSTEM',
+                action="Vaqtinchalik bola doimiy guruhga o'tkazildi",
+                description=f"Vaqtinchalik bola {trial.full_name} → '{group.name}' guruhiga muvaffaqiyatli o'tkazildi va oylik badal tizimiga kiritildi. O'tkazgan xodim: {staff_name}.",
+                user=request.user,
+                request=request
+            )
+
+            return JsonResponse({
+                'success': True,
+                'message': f"{trial.full_name} muvaffaqiyatli '{group.name}' guruhiga o'tkazildi va oylik badal tizimiga qo'shildi!",
+                'child_id': child.id,
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'message': str(e)}, status=400)
+    return JsonResponse({'success': False, 'message': 'Invalid request'}, status=405)
+
+
+@csrf_exempt
+@login_required
+@user_passes_test(is_director_or_manager)
+def trial_child_update_status_api(request):
+    """Vaqtinchalik bola statusini yangilash (LEFT)"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            trial_id = data.get('trial_id')
+            new_status = data.get('status', 'LEFT')
+            trial = get_object_or_404(TemporaryChild, id=trial_id)
+            trial.status = new_status
+            trial.save()
+            return JsonResponse({'success': True, 'message': 'Status yangilandi!'})
+        except Exception as e:
+            return JsonResponse({'success': False, 'message': str(e)}, status=400)
     return JsonResponse({'success': False, 'message': 'Invalid request'}, status=405)
 
 
@@ -1287,6 +1684,17 @@ def export_finance(request):
     buf = generate_finance_excel(month, year)
     response = HttpResponse(buf, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     response['Content-Disposition'] = f'attachment; filename="Moliya_Qayta_Hisoblash_{timezone.now().strftime("%Y%m%d")}.xlsx"'
+    return response
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def export_finance_pdf(request):
+    month = request.GET.get('month', None)
+    year = request.GET.get('year', None)
+    buf = generate_finance_pdf(month, year)
+    response = HttpResponse(buf, content_type='application/pdf')
+    period = f"_{month}_{year}" if month and year else ""
+    response['Content-Disposition'] = f'attachment; filename="Moliya_Hisoboti{period}_{timezone.now().strftime("%Y%m%d")}.pdf"'
     return response
 
 
@@ -1387,5 +1795,305 @@ def settings_view(request):
     return render(request, 'settings/settings.html', {
         'form': form,
         'settings_obj': settings_obj,
+    })
+
+
+# --- Xodimlar Paneli (Shaxsiy Profil) ---
+@login_required
+def staff_profile(request):
+    user = request.user
+    today = timezone.localtime(timezone.now()).date()
+    current_month = today.month
+    current_year = today.year
+
+    # Sync monthly salary record
+    payroll = sync_staff_monthly_salary(user, current_month, current_year)
+
+    # Monthly attendance logs
+    monthly_logs = StaffAttendance.objects.filter(
+        teacher=user,
+        date__year=current_year,
+        date__month=current_month
+    ).order_by('-date')
+
+    # Monthly penalties and bonuses breakdown
+    my_penalties = StaffBonusPenalty.objects.filter(
+        staff=user,
+        date__year=current_year,
+        date__month=current_month,
+        record_type__in=['PENALTY_LATE', 'OTHER_DEDUCTION']
+    )
+    my_bonuses = StaffBonusPenalty.objects.filter(
+        staff=user,
+        date__year=current_year,
+        date__month=current_month,
+        record_type__in=['BONUS_EARLY', 'BONUS_PERFORMANCE']
+    )
+
+    late_count = monthly_logs.filter(is_late=True).count()
+    on_time_count = monthly_logs.filter(status='ON_TIME').count()
+
+    return render(request, 'staff/staff_profile.html', {
+        'user_profile': user,
+        'payroll': payroll,
+        'monthly_logs': monthly_logs,
+        'my_penalties': my_penalties,
+        'my_bonuses': my_bonuses,
+        'late_count': late_count,
+        'on_time_count': on_time_count,
+        'current_month': current_month,
+        'current_year': current_year,
+        'today': today,
+    })
+
+
+# --- Kechikkanlar Ro'yxati ---
+@login_required
+@director_or_manager_required
+def late_staff_list(request):
+    today = timezone.localtime(timezone.now()).date()
+    date_filter = request.GET.get('date', today.strftime('%Y-%m-%d'))
+    month_filter = request.GET.get('month', '')
+    year_filter = request.GET.get('year', str(today.year))
+
+    logs = StaffAttendance.objects.filter(is_late=True).select_related('teacher')
+
+    if month_filter:
+        logs = logs.filter(date__year=int(year_filter), date__month=int(month_filter))
+    elif date_filter:
+        try:
+            sel_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
+            logs = logs.filter(date=sel_date)
+        except ValueError:
+            sel_date = today
+            logs = logs.filter(date=today)
+    else:
+        logs = logs.filter(date=today)
+
+    logs = logs.order_by('-date', '-check_in_time')
+    total_penalty_sum = sum((l.penalty_amount for l in logs), Decimal('0.00'))
+
+    return render(request, 'staff/late_staff_list.html', {
+        'logs': logs,
+        'date_filter': date_filter,
+        'month_filter': month_filter,
+        'year_filter': year_filter,
+        'total_penalty_sum': total_penalty_sum,
+        'today': today,
+        'months_range': range(1, 13),
+    })
+
+
+# --- Oylik Maosh Hisob-kitobi (Har oyning 10-sanasigacha tayyor döküm) ---
+@login_required
+@director_or_manager_required
+def staff_payroll_dashboard(request):
+    today = timezone.localtime(timezone.now()).date()
+    month = int(request.GET.get('month', today.month))
+    year = int(request.GET.get('year', today.year))
+
+    all_staff = User.objects.filter(is_active=True).exclude(role='DIRECTOR').order_by('role', 'first_name')
+
+    payrolls = []
+    for staff in all_staff:
+        p = sync_staff_monthly_salary(staff, month, year)
+        payrolls.append(p)
+
+    total_base_payroll = sum((p.base_salary for p in payrolls), Decimal('0.00'))
+    total_penalties = sum((p.total_penalties for p in payrolls), Decimal('0.00'))
+    total_bonuses = sum((p.total_bonuses for p in payrolls), Decimal('0.00'))
+    total_net_payroll = sum((p.net_salary for p in payrolls), Decimal('0.00'))
+
+    return render(request, 'staff/payroll.html', {
+        'payrolls': payrolls,
+        'month': month,
+        'year': year,
+        'total_base_payroll': total_base_payroll,
+        'total_penalties': total_penalties,
+        'total_bonuses': total_bonuses,
+        'total_net_payroll': total_net_payroll,
+        'all_staff': all_staff,
+        'months_range': range(1, 13),
+    })
+
+
+# --- Erta kelganlar va faollar uchun Bonus / Shtraf qo'shish API ---
+@csrf_exempt
+@login_required
+@director_or_manager_required
+def add_bonus_penalty_api(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            staff_id = data.get('staff_id')
+            record_type = data.get('record_type', 'BONUS_EARLY')
+            amount = Decimal(str(data.get('amount', 0)))
+            description = data.get('description', '').strip()
+            date_str = data.get('date')
+
+            if date_str:
+                rec_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            else:
+                rec_date = timezone.localtime(timezone.now()).date()
+
+            staff = get_object_or_404(User, id=staff_id)
+
+            record = StaffBonusPenalty.objects.create(
+                staff=staff,
+                date=rec_date,
+                record_type=record_type,
+                amount=amount,
+                description=description,
+                created_by=request.user
+            )
+
+            sync_staff_monthly_salary(staff, rec_date.month, rec_date.year)
+
+            category = 'BONUS' if 'BONUS' in record_type else 'PENALTY'
+            log_audit(
+                category=category,
+                action=f"{record.get_record_type_display()} tayinlandi",
+                description=f"Mas'ul {request.user.get_full_name()} tomonidan {staff.get_full_name()}ga {amount:,.0f} UZS {record.get_record_type_display()} biriktirildi. Sabab: {description}",
+                user=request.user,
+                request=request
+            )
+
+            return JsonResponse({
+                'success': True,
+                'message': f"{staff.get_full_name()} uchun {amount:,.0f} UZS {record.get_record_type_display()} muvaffaqiyatli saqlandi!"
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'message': str(e)}, status=400)
+    return JsonResponse({'success': False, 'message': 'Invalid request'}, status=405)
+
+
+# --- Maosh to'landi deb belgilash API ---
+@csrf_exempt
+@login_required
+@director_or_manager_required
+def mark_payroll_paid_api(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            payroll_id = data.get('payroll_id')
+            payroll = get_object_or_404(StaffMonthlySalary, id=payroll_id)
+
+            payroll.status = 'PAID'
+            payroll.paid_at = timezone.now()
+            payroll.save()
+
+            log_audit(
+                category='SYSTEM',
+                action="Oylik maosh to'landi deb belgilandi",
+                description=f"{payroll.staff.get_full_name()}ga {payroll.month}/{payroll.year} oyi uchun {payroll.net_salary:,.0f} UZS maosh to'langan deb tasdiqlandi.",
+                user=request.user,
+                request=request
+            )
+
+            return JsonResponse({
+                'success': True,
+                'message': f"{payroll.staff.get_full_name()} uchun {payroll.month}/{payroll.year} maoshi to'langan deb belgilandi!"
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'message': str(e)}, status=400)
+    return JsonResponse({'success': False, 'message': 'Invalid request'}, status=405)
+
+
+# --- Guruhlar To'lovi Bo'limi (Moliya) ---
+@login_required
+@director_or_manager_required
+def groups_finance_view(request):
+    today = timezone.localtime(timezone.now()).date()
+    month = int(request.GET.get('month', today.month))
+    year = int(request.GET.get('year', today.year))
+    selected_group_id = request.GET.get('group', '')
+
+    all_groups = Group.objects.all().order_by('name')
+
+    groups_summary = []
+    for g in all_groups:
+        invs = MonthlyInvoice.objects.filter(child__group=g, month=month, year=year)
+        total_exp = invs.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
+        total_pd = invs.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
+        total_recalc = invs.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
+        total_dbt = max(Decimal('0.00'), total_exp - total_pd)
+        paid_pct = round((float(total_pd) / float(total_exp) * 100), 1) if total_exp > 0 else 0
+        groups_summary.append({
+            'group': g,
+            'children_count': g.children.filter(is_active=True).count(),
+            'total_expected': total_exp,
+            'total_paid': total_pd,
+            'total_recalc': total_recalc,
+            'total_debt': total_dbt,
+            'paid_percent': paid_pct,
+        })
+
+    active_group = None
+    if selected_group_id:
+        active_group = all_groups.filter(id=selected_group_id).first()
+    if not active_group and all_groups.exists():
+        active_group = all_groups.first()
+
+    group_invoices = []
+    active_group_stats = {}
+    if active_group:
+        group_invoices = MonthlyInvoice.objects.select_related('child', 'child__group').filter(
+            child__group=active_group, month=month, year=year
+        ).order_by('child__first_name')
+        total_exp = group_invoices.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
+        total_pd = group_invoices.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
+        active_group_stats = {
+            'total_expected': total_exp,
+            'total_paid': total_pd,
+            'total_debt': max(Decimal('0.00'), total_exp - total_pd),
+        }
+
+    return render(request, 'finance/groups_finance.html', {
+        'all_groups': all_groups,
+        'groups_summary': groups_summary,
+        'active_group': active_group,
+        'group_invoices': group_invoices,
+        'active_group_stats': active_group_stats,
+        'month': month,
+        'year': year,
+        'months_range': range(1, 13),
+    })
+
+
+# --- Tizim Tarixi (Audit Log / History) ---
+@login_required
+@director_or_manager_required
+def audit_logs_view(request):
+    category_filter = request.GET.get('category', 'all')
+    date_filter = request.GET.get('date', '')
+    query = request.GET.get('q', '').strip()
+
+    logs = AuditLog.objects.select_related('user').all()
+
+    if category_filter and category_filter != 'all':
+        logs = logs.filter(category=category_filter)
+    if date_filter:
+        try:
+            sel_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
+            logs = logs.filter(created_at__date=sel_date)
+        except ValueError:
+            pass
+    if query:
+        logs = logs.filter(
+            Q(action__icontains=query) |
+            Q(description__icontains=query) |
+            Q(user__first_name__icontains=query) |
+            Q(user__last_name__icontains=query) |
+            Q(user__username__icontains=query)
+        )
+
+    logs = logs.order_by('-created_at')[:250]
+
+    return render(request, 'audit/audit_logs.html', {
+        'logs': logs,
+        'category_filter': category_filter,
+        'date_filter': date_filter,
+        'query': query,
+        'category_choices': AuditLog.CATEGORY_CHOICES,
     })
 

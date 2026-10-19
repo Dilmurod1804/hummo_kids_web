@@ -1,0 +1,319 @@
+{% extends 'base.html' %}
+
+{% block title %}Guruhlar Bo'yicha To'lovlar — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="max-width: 1200px; margin: 0 auto;">
+    
+    <!-- Top Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white; margin: 0;">
+                    Guruhlar To'lovi Bo'limi
+                </h2>
+                <span class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 12px; font-weight: 800;">
+                    Guruhlar Kesimida Moliya
+                </span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+                Har bir guruh uchun alohida to'lov bo'limi: har bir bola qancha to'lov qilgani va qancha qarzi borligi
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <a href="{% url 'finance_dashboard' %}" class="btn-glass btn-secondary">
+                <i data-lucide="receipt" style="width: 16px; height: 16px;"></i>
+                <span>Umumiy Moliya &rarr;</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Month & Year Selector -->
+    <div class="glass-card" style="padding: 16px 20px; margin-bottom: 24px;">
+        <form method="GET" style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+            {% if active_group %}
+            <input type="hidden" name="group" value="{{ active_group.id }}">
+            {% endif %}
+            
+            <div style="min-width: 160px;">
+                <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Hisob Oyi:</label>
+                <select name="month" class="glass-select" onchange="this.form.submit()" style="padding: 8px 12px;">
+                    {% for m in months_range %}
+                    <option value="{{ m }}" {% if month == m %}selected{% endif %}>{{ m }}-oy</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div style="min-width: 140px;">
+                <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Yil:</label>
+                <select name="year" class="glass-select" onchange="this.form.submit()" style="padding: 8px 12px;">
+                    <option value="2026" {% if year == 2026 %}selected{% endif %}>2026</option>
+                    <option value="2025" {% if year == 2025 %}selected{% endif %}>2025</option>
+                </select>
+            </div>
+        </form>
+    </div>
+
+    <!-- Group Cards Grid (Tabs) -->
+    <div style="margin-bottom: 14px;">
+        <h4 style="font-size: 13px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">
+            Bog'cha Guruhlari (Guruhni tanlang):
+        </h4>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 28px;">
+        {% for gs in groups_summary %}
+        <a href="?group={{ gs.group.id }}&month={{ month }}&year={{ year }}" style="text-decoration: none;">
+            <div class="glass-card" style="padding: 18px; border-radius: var(--radius-md); transition: all 0.2s ease; cursor: pointer; border: {% if active_group.id == gs.group.id %}2px solid #38bdf8{% else %}1px solid var(--border-glass){% endif %}; background: {% if active_group.id == gs.group.id %}rgba(56, 189, 248, 0.08){% else %}var(--bg-glass-card){% endif %};">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                    <div>
+                        <h4 style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 800; color: white; margin: 0;">
+                            {{ gs.group.name }}
+                        </h4>
+                        <span style="font-size: 11px; color: var(--text-dim);">
+                            {{ gs.group.get_age_category_display }}
+                        </span>
+                    </div>
+                    <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-weight: 700; font-size: 11px;">
+                        {{ gs.children_count }} ta bola
+                    </span>
+                </div>
+
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+                    Tarbiyachi: <strong style="color: white;">{{ gs.group.primary_teacher.get_full_name|default:gs.group.primary_teacher.username|default:"Biriktirilmagan" }}</strong>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;">
+                    <span style="color: var(--text-dim);">To'langan:</span>
+                    <strong style="color: #34d399;">{{ gs.total_paid|floatformat:0 }} UZS</strong>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 12px;">
+                    <span style="color: var(--text-dim);">Qarzdorlik:</span>
+                    <strong style="color: #fb7185;">{{ gs.total_debt|floatformat:0 }} UZS</strong>
+                </div>
+
+                <!-- Progress Bar -->
+                <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 4px; overflow: hidden;">
+                    <div style="width: {{ gs.paid_percent }}%; height: 100%; background: linear-gradient(90deg, #38bdf8, #34d399); border-radius: 4px;"></div>
+                </div>
+                <div style="text-align: right; font-size: 11px; color: var(--text-dim); margin-top: 4px;">
+                    {{ gs.paid_percent }}% yig'ildi
+                </div>
+            </div>
+        </a>
+        {% empty %}
+        <div class="glass-card" style="padding: 24px; text-align: center; color: var(--text-dim); grid-column: 1 / -1;">
+            Hozircha guruhlar mavjud emas.
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if active_group %}
+    <!-- Detailed Children Payment & Debt Table for Active Group -->
+    <div class="glass-card">
+        <div class="glass-card-header" style="flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h3 class="glass-card-title" style="margin: 0;">
+                    <i data-lucide="layers" style="color: #38bdf8; width: 22px; height: 22px;"></i>
+                    <span>"{{ active_group.name }}" Guruhi — Bolalar To'lovi va Qarzdorlik Jadvali ({{ month }}/{{ year }})</span>
+                </h3>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">
+                    Guruh badali: <strong>{{ active_group.monthly_fee|floatformat:0 }} UZS / oy</strong> &bull; 
+                    Tarbiyachi: <strong>{{ active_group.primary_teacher.get_full_name|default:active_group.primary_teacher.username|default:"Biriktirilmagan" }}</strong>
+                </p>
+            </div>
+
+            <div style="display: flex; gap: 16px; align-items: center;">
+                <div style="background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 12px; padding: 6px 14px; font-size: 12px; color: #34d399;">
+                    Yig'ilgan: <b>{{ active_group_stats.total_paid|floatformat:0 }} UZS</b>
+                </div>
+                <div style="background: rgba(251, 113, 133, 0.1); border: 1px solid rgba(251, 113, 133, 0.3); border-radius: 12px; padding: 6px 14px; font-size: 12px; color: #fb7185;">
+                    Qarzdorlik: <b>{{ active_group_stats.total_debt|floatformat:0 }} UZS</b>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-table-wrapper">
+            <table class="glass-table">
+                <thead>
+                    <tr>
+                        <th>Bola F.I.Sh</th>
+                        <th>Ota-onasi / Telefon</th>
+                        <th>Asosiy Badal</th>
+                        <th>Sababli (Kun)</th>
+                        <th>Qayta Hisoblash</th>
+                        <th>Jami Hisoblangan</th>
+                        <th>To'langan Summa</th>
+                        <th>Qarzdorlik (Qoldiq)</th>
+                        <th>Holati</th>
+                        <th style="text-align: right;">Amal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inv in group_invoices %}
+                    <tr>
+                        <td>
+                            <strong style="color: white; font-size: 14px;">{{ inv.child.full_name }}</strong>
+                            <div style="font-size: 11px; color: var(--text-dim);">Yosh: {{ inv.child.age }} yosh</div>
+                        </td>
+                        <td>
+                            <div style="font-weight: 600; color: #cbd5e1;">{{ inv.child.parent_full_name }}</div>
+                            <div style="font-size: 12px; color: #38bdf8;">{{ inv.child.parent_phone }}</div>
+                        </td>
+                        <td>{{ inv.base_fee|floatformat:0 }} UZS</td>
+                        <td style="text-align: center;">
+                            <strong>{{ inv.excused_days_count }} kun</strong>
+                        </td>
+                        <td>
+                            {% if inv.recalculation_amount > 0 %}
+                            <span style="color: #34d399; font-weight: 700;">-{{ inv.recalculation_amount|floatformat:0 }} UZS</span>
+                            {% else %}
+                            <span style="color: var(--text-dim);">0 UZS</span>
+                            {% endif %}
+                        </td>
+                        <td><strong style="color: white;">{{ inv.total_amount|floatformat:0 }} UZS</strong></td>
+                        <td>
+                            <strong style="color: #34d399; font-size: 14px;">{{ inv.paid_amount|floatformat:0 }} UZS</strong>
+                        </td>
+                        <td>
+                            {% if inv.remaining_debt > 0 %}
+                            <strong style="color: #fb7185; font-size: 14px;">{{ inv.remaining_debt|floatformat:0 }} UZS</strong>
+                            {% else %}
+                            <span style="color: #34d399; font-weight: 700;">Qarz yo'q (0 UZS)</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if inv.status == 'PAID' %}
+                            <span class="badge badge-paid">To'langan</span>
+                            {% elif inv.status == 'PARTIAL' %}
+                            <span class="badge badge-partial">Qisman</span>
+                            {% else %}
+                            <span class="badge badge-unpaid">Qarzdor</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: right;">
+                            <button type="button" onclick="openPaymentModal({{ inv.id }}, '{{ inv.child.full_name }}', {{ inv.remaining_debt }})" class="btn-glass btn-secondary" style="padding: 6px 12px; font-size: 12px;">
+                                + To'lov
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="10" style="text-align: center; color: var(--text-dim); padding: 36px;">
+                            Ushbu guruhda {{ month }}/{{ year }} oyi uchun invoyslar topilmadi. Moliya bo'limida avtomatik hisoblashni ishga tushiring.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- Record Payment Modal -->
+<div id="modalPayment" class="glass-modal-backdrop">
+    <div class="glass-modal" style="max-width: 480px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white;">To'lovni Qayd Etish</h3>
+            <button onclick="document.getElementById('modalPayment').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form id="formPayment" onsubmit="submitPayment(event)">
+            {% csrf_token %}
+            <input type="hidden" id="payInvoiceId" name="invoice_id">
+            
+            <div style="background: rgba(255, 255, 255, 0.04); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 18px;">
+                <div style="font-size: 12px; color: var(--text-dim);">Bola:</div>
+                <div id="payChildName" style="font-size: 16px; font-weight: 700; color: white; margin-bottom: 6px;"></div>
+                <div style="font-size: 12px; color: var(--text-dim);">Qarzdorlik miqdori: <strong id="payCurrentDebt" style="color: #fb7185;"></strong> UZS</div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">To'lanayotgan Summa (UZS):</label>
+                <input type="number" id="payAmount" class="glass-input" step="1000" min="1000" required style="width: 100%;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">To'lov Usuli:</label>
+                <select id="payMethod" class="glass-select" style="width: 100%;">
+                    <option value="CARD">Bank kartasi (Terminal / Humo / Uzcard)</option>
+                    <option value="CASH">Naqd pul (Kassaga)</option>
+                    <option value="CLICK_PAYME">Click / Payme Online</option>
+                    <option value="BANK_TRANSFER">Bank orqali o'tkazma</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 24px;">
+                <label class="form-label">Izoh / Chek raqami (Ixtiyoriy):</label>
+                <input type="text" id="payNotes" class="glass-input" placeholder="Chek #, tranzaksiya ID..." style="width: 100%;">
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" onclick="document.getElementById('modalPayment').style.display='none'" class="btn-glass btn-secondary">
+                    Bekor Qilish
+                </button>
+                <button type="submit" id="btnSubmitPay" class="btn-glass btn-emerald" style="font-weight: 700;">
+                    To'lovni Saqlash
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function openPaymentModal(invoiceId, childName, debt) {
+        document.getElementById('payInvoiceId').value = invoiceId;
+        document.getElementById('payChildName').innerText = childName;
+        document.getElementById('payCurrentDebt').innerText = Number(debt).toLocaleString();
+        document.getElementById('payAmount').value = debt > 0 ? debt : '';
+        document.getElementById('modalPayment').style.display = 'flex';
+    }
+
+    async function submitPayment(e) {
+        e.preventDefault();
+        const invoiceId = document.getElementById('payInvoiceId').value;
+        const amount = document.getElementById('payAmount').value;
+        const paymentMethod = document.getElementById('payMethod').value;
+        const notes = document.getElementById('payNotes').value;
+        const btn = document.getElementById('btnSubmitPay');
+
+        btn.disabled = true;
+        btn.innerText = "Saqlanmoqda...";
+
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const res = await fetch("{% url 'record_payment_api' %}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                },
+                body: JSON.stringify({
+                    invoice_id: invoiceId,
+                    amount: amount,
+                    payment_method: paymentMethod,
+                    notes: notes
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert(data.message);
+                window.location.reload();
+            } else {
+                alert("Xatolik: " + data.message);
+            }
+        } catch (err) {
+            alert("Aloqa xatosi: " + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "To'lovni Saqlash";
+        }
+    }
+</script>
+{% endblock %}

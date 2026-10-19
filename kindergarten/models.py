@@ -47,6 +47,15 @@ class User(AbstractUser):
     def position_display(self):
         return self.custom_position if self.custom_position else self.get_role_display()
 
+    @property
+    def assigned_group(self):
+        """Teacher's assigned group (primary or assistant)"""
+        return self.primary_groups.first() or self.assistant_groups.first()
+
+    @property
+    def has_assigned_group(self):
+        return self.is_teacher and (self.primary_groups.exists() or self.assistant_groups.exists())
+
     def __str__(self):
         return f"{self.get_full_name() or self.username} ({self.position_display})"
 
@@ -180,6 +189,10 @@ class StaffAttendance(models.Model):
     is_within_geofence = models.BooleanField(default=False)
     face_snapshot = models.ImageField(upload_to='face_attendance/', blank=True, null=True)
     status = models.CharField(max_length=25, choices=STATUS_CHOICES, default='VERIFIED')
+    late_minutes = models.PositiveIntegerField(default=0, verbose_name="Kechikkan minutlar")
+    penalty_percent = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'), verbose_name="Shtraf foizi (%)")
+    penalty_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Ushlab qolingan summa (UZS)")
+    is_late = models.BooleanField(default=False, verbose_name="Kechikkanmi")
     notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -240,29 +253,34 @@ class MonthlyInvoice(models.Model):
 
 class Payment(models.Model):
     PAYMENT_METHODS = (
-        ('CASH', 'Cash (Naqd)'),
-        ('CARD', 'Bank Card (Plastik karta)'),
-        ('BANK_TRANSFER', 'Bank Transfer (Pul o‘tkazmasi)'),
+        ('CASH', 'Naqd pul'),
+        ('CARD', 'Plastik Karta (Uzcard/Humo)'),
+        ('BANK_TRANSFER', 'Bank o‘tkazmasi'),
         ('CLICK_PAYME', 'Click / Payme Online'),
     )
-    invoice = models.ForeignKey(MonthlyInvoice, on_delete=models.CASCADE, related_name='payments')
+    invoice = models.ForeignKey(MonthlyInvoice, on_delete=models.CASCADE, related_name='payments', null=True, blank=True)
+    temporary_child = models.ForeignKey('TemporaryChild', on_delete=models.SET_NULL, null=True, blank=True, related_name='payments', verbose_name="Vaqtinchalik bola")
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='CARD')
-    transaction_id = models.CharField(max_length=100, blank=True, null=True)
+    transaction_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="Chek / Kvitansiya raqami")
     paid_at = models.DateTimeField(default=timezone.now)
     recorded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    notes = models.CharField(max_length=255, blank=True, null=True)
+    notes = models.CharField(max_length=255, blank=True, null=True, verbose_name="Qo'shimcha izoh")
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-        # Update invoice total paid
-        invoice = self.invoice
-        total_paid = sum(p.amount for p in invoice.payments.all())
-        invoice.paid_amount = total_paid
-        invoice.save()
+        if self.invoice:
+            total_paid = sum(p.amount for p in self.invoice.payments.all())
+            self.invoice.paid_amount = total_paid
+            self.invoice.save()
+        if self.temporary_child:
+            total_paid = sum(p.amount for p in self.temporary_child.payments.all())
+            self.temporary_child.paid_amount = total_paid
+            self.temporary_child.save()
 
     def __str__(self):
-        return f"Payment {self.amount} UZS for {self.invoice.child.full_name} on {self.paid_at.strftime('%Y-%m-%d')}"
+        target = self.invoice.child.full_name if self.invoice else (self.temporary_child.full_name if self.temporary_child else "Noma'lum")
+        return f"Payment {self.amount} UZS for {target} ({self.get_payment_method_display()}) on {self.paid_at.strftime('%Y-%m-%d')}"
 
 
 class ChatMessage(models.Model):
@@ -279,3 +297,153 @@ class ChatMessage(models.Model):
 
     def __str__(self):
         return f"[{self.room_name}] {self.sender.username}: {self.message[:30]}"
+
+
+class StaffBonusPenalty(models.Model):
+    TYPE_CHOICES = (
+        ('PENALTY_LATE', 'Kechikish jarimasi (Shtraf)'),
+        ('BONUS_EARLY', 'Erta kelish bonusi'),
+        ('BONUS_PERFORMANCE', 'Faollik / Maxsus bonus'),
+        ('OTHER_DEDUCTION', 'Boshqa ushlab qolish'),
+    )
+    staff = models.ForeignKey(User, on_delete=models.CASCADE, related_name='bonus_penalties', verbose_name="Xodim")
+    date = models.DateField(default=timezone.now, verbose_name="Sana")
+    record_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='PENALTY_LATE', verbose_name="Turi")
+    late_minutes = models.PositiveIntegerField(default=0, verbose_name="Kechikkan minutlar")
+    percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'), verbose_name="Foiz (%)")
+    amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Summa (UZS)")
+    description = models.CharField(max_length=255, blank=True, null=True, verbose_name="Izoh / Sabab")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='awarded_bonus_penalties', verbose_name="Tayinlagan shaxs")
+    created_at = models.DateTimeField(auto_now_add=True)
+    staff_attendance = models.ForeignKey(StaffAttendance, on_delete=models.SET_NULL, null=True, blank=True, related_name='penalty_records')
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+        verbose_name = "Xodim Bonusi / Shtrafi"
+        verbose_name_plural = "Xodimlar Bonuslari va Shtraflari"
+
+    def __str__(self):
+        return f"{self.staff.get_full_name() or self.staff.username} - {self.get_record_type_display()}: {self.amount:,.0f} UZS"
+
+
+class StaffMonthlySalary(models.Model):
+    STATUS_CHOICES = (
+        ('PENDING', 'Kutilmoqda / 10-sanagacha'),
+        ('PAID', 'To‘langan'),
+    )
+    staff = models.ForeignKey(User, on_delete=models.CASCADE, related_name='monthly_salaries', verbose_name="Xodim")
+    month = models.PositiveSmallIntegerField(help_text="1 dan 12 gacha")
+    year = models.PositiveIntegerField(default=2026)
+    base_salary = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Asosiy Maosh")
+    total_penalties = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Barcha Shtraflar")
+    total_bonuses = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Barcha Bonuslar")
+    net_salary = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Yakuniy Oylik Maosh")
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='PENDING', verbose_name="Holati")
+    paid_at = models.DateTimeField(null=True, blank=True, verbose_name="To'langan vaqti")
+    notes = models.TextField(blank=True, null=True, verbose_name="Izoh")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('staff', 'month', 'year')
+        ordering = ['-year', '-month', 'staff__first_name']
+        verbose_name = "Oylik Maosh Dökümi"
+        verbose_name_plural = "Oylik Maosh Dökümlari"
+
+    def calculate_net(self):
+        # Formula: Yakuniy Oylik = Asosiy Maosh - (Barcha Shtraflar) + (Bonuslar)
+        self.net_salary = max(Decimal('0.00'), self.base_salary - self.total_penalties + self.total_bonuses)
+
+    def save(self, *args, **kwargs):
+        self.calculate_net()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.staff.get_full_name() or self.staff.username} - {self.month}/{self.year}: {self.net_salary:,.0f} UZS"
+
+
+class TemporaryChild(models.Model):
+    """Sinov muddatida (vaqtinchalik) kelgan bolalar"""
+    TRIAL_STATUS = (
+        ('ACTIVE', 'Sinov jarayonida'),
+        ('PROMOTED', 'Doimiy guruhga o\'tkazildi'),
+        ('LEFT', 'Ketib qoldi'),
+    )
+    first_name = models.CharField(max_length=60, verbose_name="Ismi")
+    last_name = models.CharField(max_length=60, verbose_name="Familiyasi")
+    parent_full_name = models.CharField(max_length=120, blank=True, null=True, verbose_name="Ota-onasi F.I.SH")
+    parent_phone = models.CharField(max_length=25, verbose_name="Ota-ona telefoni")
+    birth_date = models.DateField(blank=True, null=True, verbose_name="Tug'ilgan sanasi")
+    gender = models.CharField(max_length=1, choices=Child.GENDER_CHOICES, default='M', verbose_name="Jinsi")
+    start_date = models.DateField(default=timezone.now, verbose_name="Kelgan sanasi")
+    trial_days = models.PositiveIntegerField(default=3, verbose_name="Sinov kunlari soni")
+    daily_fee = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('100000.00'), verbose_name="Kunlik badal (UZS)")
+    paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="To'langan summa")
+    status = models.CharField(max_length=15, choices=TRIAL_STATUS, default='ACTIVE', verbose_name="Holati")
+    target_group = models.ForeignKey('Group', on_delete=models.SET_NULL, null=True, blank=True, related_name='trial_children', verbose_name="Mo'ljaldagi guruh")
+    promoted_child = models.OneToOneField('Child', on_delete=models.SET_NULL, null=True, blank=True, related_name='trial_record', verbose_name="O'tkazilgan bola")
+    promoted_at = models.DateTimeField(null=True, blank=True, verbose_name="O'tkazilgan sana")
+    notes = models.TextField(blank=True, null=True, verbose_name="Izoh")
+    registered_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='registered_trial_children', verbose_name="Qayd etgan xodim")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Vaqtinchalik Bola (Sinov)"
+        verbose_name_plural = "Vaqtinchalik Bolalar (Sinov)"
+
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_name}"
+
+    @property
+    def end_date(self):
+        from datetime import timedelta
+        return self.start_date + timedelta(days=self.trial_days - 1)
+
+    @property
+    def total_fee(self):
+        return Decimal(self.trial_days) * self.daily_fee
+
+    @property
+    def remaining_fee(self):
+        return max(Decimal('0.00'), self.total_fee - self.paid_amount)
+
+    @property
+    def days_remaining(self):
+        today = timezone.now().date()
+        remaining = (self.end_date - today).days + 1
+        return max(0, remaining)
+
+    @property
+    def is_expired(self):
+        return timezone.now().date() > self.end_date
+
+    def __str__(self):
+        return f"{self.full_name} (Sinov: {self.trial_days} kun, {self.start_date})"
+
+
+class AuditLog(models.Model):
+    CATEGORY_CHOICES = (
+        ('FACE_ID', 'Face ID Keldi-Ketdi'),
+        ('CHILD_ATTENDANCE', 'Bolalar Davomati'),
+        ('PENALTY', 'Ushlab qolingan Shtraf'),
+        ('BONUS', 'Berilgan Bonus'),
+        ('PAYMENT', 'Qabul qilingan To‘lov'),
+        ('SYSTEM', 'Tizim Boshqaruvi'),
+    )
+    category = models.CharField(max_length=25, choices=CATEGORY_CHOICES, default='SYSTEM', verbose_name="Kategoriya")
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='audit_logs', verbose_name="Mas'ul / Xodim")
+    action = models.CharField(max_length=150, verbose_name="Harakat")
+    description = models.TextField(verbose_name="Tafsilotlar")
+    ip_address = models.GenericIPAddressField(null=True, blank=True, verbose_name="IP Manzil")
+    created_at = models.DateTimeField(default=timezone.now, db_index=True, verbose_name="Sana va Vaqt")
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Tizim Tarixi (Audit Log)"
+        verbose_name_plural = "Tizim Tarixi (Audit Logs)"
+
+    def __str__(self):
+        return f"[{self.get_category_display()}] {self.action} - {self.created_at.strftime('%Y-%m-%d %H:%M:%S')}"

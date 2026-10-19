@@ -1,0 +1,253 @@
+{% extends 'base.html' %}
+
+{% block title %}Xodimlar Paneli — {{ user_profile.get_full_name|default:user_profile.username }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 1100px; margin: 0 auto;">
+    
+    <!-- Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">
+                Xodimlar Paneli (Shaxsiy Profil)
+            </h2>
+            <p style="font-size: 13px; color: var(--text-muted);">
+                Shaxsiy ma'lumotlar, Face ID holati, keldi-ketdi davomati va oylik maosh hisob-kitobi
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <a href="{% url 'staff_attendance_portal' %}" class="btn-glass btn-primary" style="padding: 10px 20px; font-weight: 700;">
+                <i data-lucide="scan-face" style="width: 18px; height: 18px;"></i>
+                <span>Face ID Davomat Portali &rarr;</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- User Profile Overview Card -->
+    <div class="glass-card" style="padding: 24px; margin-bottom: 24px; display: flex; align-items: center; gap: 24px; flex-wrap: wrap;">
+        <div style="position: relative;">
+            {% if user_profile.face_image %}
+                <img src="{{ user_profile.face_image.url }}" alt="Face Avatar" style="width: 84px; height: 84px; border-radius: 50%; object-fit: cover; border: 3px solid #38bdf8; box-shadow: 0 4px 20px rgba(56, 189, 248, 0.4);">
+            {% elif user_profile.avatar %}
+                <img src="{{ user_profile.avatar.url }}" alt="Avatar" style="width: 84px; height: 84px; border-radius: 50%; object-fit: cover; border: 3px solid #c084fc;">
+            {% else %}
+                <div style="width: 84px; height: 84px; border-radius: 50%; background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%); display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 800; color: white;">
+                    {{ user_profile.first_name|slice:":1"|default:user_profile.username|slice:":1"|upper }}
+                </div>
+            {% endif %}
+            <span style="position: absolute; bottom: 2px; right: 2px; width: 18px; height: 18px; border-radius: 50%; background: {% if user_profile.face_image %}#34d399{% else %}#fbbf24{% endif %}; border: 2px solid #0f172a;" title="{% if user_profile.face_image %}Face ID faol{% else %}Etalon rasm yuklanmagan{% endif %}"></span>
+        </div>
+
+        <div style="flex: 1; min-width: 250px;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 22px; font-weight: 800; color: white; margin: 0;">
+                    {{ user_profile.get_full_name|default:user_profile.username }}
+                </h3>
+                <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-size: 11px;">
+                    {{ user_profile.position_display }}
+                </span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin: 0 0 8px 0;">
+                Login: <strong style="color: white;">{{ user_profile.username }}</strong> &bull; Telefon: <strong style="color: white;">{{ user_profile.phone_number|default:"Kiritilmagan" }}</strong>
+            </p>
+            <div style="display: flex; gap: 16px; font-size: 12px; color: var(--text-dim); flex-wrap: wrap;">
+                <span>Face ID: <strong style="color: {% if user_profile.face_image %}#34d399{% else %}#fbbf24{% endif %};">{% if user_profile.face_image %}✓ Etalon rasm tasdiqlangan{% else %}! Etalon rasm yuklanmagan{% endif %}</strong></span>
+                {% if user_profile.has_assigned_group %}
+                <span>Biriktirilgan guruh: <strong style="color: #38bdf8;">{{ user_profile.assigned_group.name }}</strong></span>
+                {% else %}
+                <span>Guruh: <strong style="color: var(--text-dim);">Biriktirilmagan (Umumiy xodim)</strong></span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Monthly Payroll & Salary Calculation KPI Cards (Formula) -->
+    <div style="margin-bottom: 12px;">
+        <h4 style="font-size: 14px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">
+            <i data-lucide="calculator" style="width: 16px; height: 16px; display: inline-block; vertical-align: middle;"></i>
+            {{ current_month }}/{{ current_year }} oyi Maosh Hisob-kitobi (10-sanagacha)
+        </h4>
+    </div>
+
+    <div class="stats-grid" style="margin-bottom: 24px;">
+        <!-- Base Salary -->
+        <div class="stat-card">
+            <div>
+                <p class="stat-label">Asosiy Oylik Maosh</p>
+                <h3 class="stat-value" style="font-size: 22px;">{{ payroll.base_salary|floatformat:0 }} <span style="font-size: 12px;">UZS</span></h3>
+                <p class="stat-subtext">Shtat bo'yicha belgilangan</p>
+            </div>
+            <div class="stat-icon-wrapper icon-blue">
+                <i data-lucide="wallet" style="width: 22px; height: 22px;"></i>
+            </div>
+        </div>
+
+        <!-- Late Penalties -->
+        <div class="stat-card">
+            <div>
+                <p class="stat-label">Kechikish Shtraflari</p>
+                <h3 class="stat-value" style="font-size: 22px; color: #fb7185;">-{{ payroll.total_penalties|floatformat:0 }} <span style="font-size: 12px;">UZS</span></h3>
+                <p class="stat-subtext" style="color: #fb7185;">{{ late_count }} ta kechikish qayd etilgan</p>
+            </div>
+            <div class="stat-icon-wrapper icon-rose">
+                <i data-lucide="clock-alert" style="width: 22px; height: 22px;"></i>
+            </div>
+        </div>
+
+        <!-- Bonuses -->
+        <div class="stat-card">
+            <div>
+                <p class="stat-label">Berilgan Bonuslar</p>
+                <h3 class="stat-value" style="font-size: 22px; color: #34d399;">+{{ payroll.total_bonuses|floatformat:0 }} <span style="font-size: 12px;">UZS</span></h3>
+                <p class="stat-subtext" style="color: #34d399;">Erta kelganlik va faollik</p>
+            </div>
+            <div class="stat-icon-wrapper icon-emerald">
+                <i data-lucide="award" style="width: 22px; height: 22px;"></i>
+            </div>
+        </div>
+
+        <!-- Net Salary (Formula: Asosiy - Shtraflar + Bonuslar) -->
+        <div class="stat-card" style="border-color: rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.08);">
+            <div>
+                <p class="stat-label" style="color: #38bdf8; font-weight: 700;">Yakuniy To'lanadigan Maosh</p>
+                <h3 class="stat-value" style="font-size: 24px; color: white;">{{ payroll.net_salary|floatformat:0 }} <span style="font-size: 13px; color: #38bdf8;">UZS</span></h3>
+                <p class="stat-subtext" style="color: {% if payroll.status == 'PAID' %}#34d399{% else %}#fbbf24{% endif %}; font-weight: 700;">
+                    {% if payroll.status == 'PAID' %}✓ To'langan ({{ payroll.paid_at|date:"d.m.Y" }}){% else %}Kutilmoqda (Har oyning 10-sanasigacha){% endif %}
+                </p>
+            </div>
+            <div class="stat-icon-wrapper icon-purple">
+                <i data-lucide="badge-dollar-sign" style="width: 24px; height: 24px;"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attendance and Penalties Tabs / Grid -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-bottom: 24px;">
+        <!-- Left: Monthly Face ID Attendance History -->
+        <div class="glass-card">
+            <div class="glass-card-header">
+                <h3 class="glass-card-title">
+                    <i data-lucide="calendar" style="color: #c084fc; width: 20px; height: 20px;"></i>
+                    <span>Ushbu Oydagi Ishga Keldi-Ketdi Tarixi</span>
+                </h3>
+            </div>
+            <div class="glass-table-wrapper" style="max-height: 420px; overflow-y: auto;">
+                <table class="glass-table">
+                    <thead>
+                        <tr>
+                            <th>Sana</th>
+                            <th>Kelgan Vaqti</th>
+                            <th>Ketgan Vaqti</th>
+                            <th>Kechikish</th>
+                            <th>Shtraf</th>
+                            <th>Holati</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in monthly_logs %}
+                        <tr>
+                            <td><strong>{{ log.date|date:"d.m.Y" }}</strong></td>
+                            <td>
+                                {% if log.check_in_time %}
+                                    <span style="color: white; font-weight: 700;">{{ log.check_in_time|time:"H:i:s" }}</span>
+                                {% else %}
+                                    <span style="color: var(--text-dim);">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if log.check_out_time %}
+                                    <span style="color: #38bdf8;">{{ log.check_out_time|time:"H:i:s" }}</span>
+                                {% else %}
+                                    <span style="color: var(--text-dim);">—</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if log.is_late %}
+                                    <span style="color: #fb7185; font-weight: 700;">{{ log.late_minutes }} min</span>
+                                {% else %}
+                                    <span style="color: #34d399;">0 min (Vaqtida)</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if log.penalty_amount > 0 %}
+                                    <span style="color: #fb7185; font-weight: 700;">-{{ log.penalty_amount|floatformat:0 }} UZS ({{ log.penalty_percent }}%)</span>
+                                {% else %}
+                                    <span style="color: var(--text-dim);">0 UZS</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if log.is_late %}
+                                    <span class="badge badge-unpaid">Kechikkan</span>
+                                {% else %}
+                                    <span class="badge badge-paid">Vaqtida</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-dim); padding: 32px;">
+                                Ushbu oyda hali Face ID orqali davomat qayd etilmagan.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Right: Penalties and Bonuses Breakdown -->
+        <div class="glass-card">
+            <div class="glass-card-header">
+                <h3 class="glass-card-title">
+                    <i data-lucide="list" style="color: #38bdf8; width: 20px; height: 20px;"></i>
+                    <span>Shtraflar va Bonuslar</span>
+                </h3>
+            </div>
+            
+            <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px; max-height: 420px; overflow-y: auto;">
+                <!-- Late Penalties List -->
+                <div>
+                    <h5 style="font-size: 12px; font-weight: 700; color: #fb7185; text-transform: uppercase; margin-bottom: 8px;">
+                        Kechikish Shtraflari ({{ my_penalties.count }} ta)
+                    </h5>
+                    {% for p in my_penalties %}
+                    <div style="background: rgba(251, 113, 133, 0.08); border: 1px solid rgba(251, 113, 133, 0.2); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 12px; color: white; font-weight: 700;">{{ p.date|date:"d.m.Y" }}</span>
+                            <span style="font-size: 12px; color: #fb7185; font-weight: 800;">-{{ p.amount|floatformat:0 }} UZS</span>
+                        </div>
+                        <p style="font-size: 11px; color: var(--text-dim); margin: 4px 0 0 0;">
+                            {{ p.description|default:"Face ID orqali kechikish" }}
+                        </p>
+                    </div>
+                    {% empty %}
+                    <p style="font-size: 12px; color: #34d399; margin: 0 0 12px 0;">✓ Bu oyda hech qanday shtraf ushlanmagan.</p>
+                    {% endfor %}
+                </div>
+
+                <!-- Bonuses List -->
+                <div style="margin-top: 10px;">
+                    <h5 style="font-size: 12px; font-weight: 700; color: #34d399; text-transform: uppercase; margin-bottom: 8px;">
+                        Berilgan Bonuslar ({{ my_bonuses.count }} ta)
+                    </h5>
+                    {% for b in my_bonuses %}
+                    <div style="background: rgba(52, 211, 153, 0.08); border: 1px solid rgba(52, 211, 153, 0.2); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 12px; color: white; font-weight: 700;">{{ b.date|date:"d.m.Y" }}</span>
+                            <span style="font-size: 12px; color: #34d399; font-weight: 800;">+{{ b.amount|floatformat:0 }} UZS</span>
+                        </div>
+                        <p style="font-size: 11px; color: var(--text-dim); margin: 4px 0 0 0;">
+                            {{ b.description|default:"Rag'batlantirish bonusi" }}
+                        </p>
+                    </div>
+                    {% empty %}
+                    <p style="font-size: 12px; color: var(--text-dim); margin: 0;">Bu oyda hali bonus qo'shilmagan.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
