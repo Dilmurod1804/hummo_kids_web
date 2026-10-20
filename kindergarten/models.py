@@ -17,6 +17,39 @@ class User(AbstractUser):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='TEACHER')
     custom_position = models.CharField(max_length=100, blank=True, null=True, verbose_name="Lavozim nomi")
     salary = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name="Oylik Maosh")
+    work_start_time = models.TimeField(
+        default="08:00",
+        blank=True,
+        null=True,
+        verbose_name="Ish boshlanish vaqti",
+        help_text="Xodimning shaxsiy kelish vaqti (masalan: 08:00)"
+    )
+    work_end_time = models.TimeField(
+        default="18:00",
+        blank=True,
+        null=True,
+        verbose_name="Ish tugash vaqti",
+        help_text="Xodimning shaxsiy ishdan ketish vaqti (masalan: 18:00)"
+    )
+    penalty_rate_tier1 = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('10.00'),
+        verbose_name="1-darajali shtraf foizi (%)",
+        help_text="Belgilangan daqiqagacha kechikish uchun kunlik maoshdan foiz"
+    )
+    penalty_rate_tier2 = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('20.00'),
+        verbose_name="2-darajali shtraf foizi (%)",
+        help_text="Belgilangan daqiqadan oshgan kechikish uchun kunlik maoshdan foiz"
+    )
+    late_grace_period_minutes = models.PositiveIntegerField(
+        default=15,
+        verbose_name="1-darajali kechikish chegarasi (daqiqa)",
+        help_text="Necha daqiqagacha kechikish 1-darajali hisoblanishi (default: 15 daqiqa)"
+    )
     phone_number = models.CharField(max_length=25, blank=True, null=True)
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     face_image = models.ImageField(upload_to='face_registrations/', blank=True, null=True, verbose_name="Face ID Etalon Rasm")
@@ -244,6 +277,9 @@ class StaffAttendance(models.Model):
     penalty_percent = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'), verbose_name="Shtraf foizi (%)")
     penalty_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Ushlab qolingan summa (UZS)")
     is_late = models.BooleanField(default=False, verbose_name="Kechikkanmi")
+    early_leave_minutes = models.PositiveIntegerField(default=0, verbose_name="Barvaqt ketgan minutlar")
+    early_leave_penalty_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Barvaqt ketish shtrafi (UZS)")
+    is_early_leave = models.BooleanField(default=False, verbose_name="Barvaqt ketganmi")
     notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -356,6 +392,7 @@ class ChatMessage(models.Model):
 class StaffBonusPenalty(models.Model):
     TYPE_CHOICES = (
         ('PENALTY_LATE', 'Kechikish jarimasi (Shtraf)'),
+        ('PENALTY_EARLY_LEAVE', 'Barvaqt ketish jarimasi (Shtraf)'),
         ('BONUS_EARLY', 'Erta kelish bonusi'),
         ('BONUS_PERFORMANCE', 'Faollik / Maxsus bonus'),
         ('OTHER_DEDUCTION', 'Boshqa ushlab qolish'),

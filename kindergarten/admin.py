@@ -7,9 +7,24 @@ from .models import (
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
-    list_display = ('username', 'first_name', 'last_name', 'role', 'salary', 'phone_number', 'is_active')
+    list_display = (
+        'username', 'first_name', 'last_name', 'role',
+        'work_start_time', 'work_end_time', 'late_grace_period_minutes', 'penalty_rate_tier1', 'penalty_rate_tier2',
+        'salary', 'phone_number', 'is_active'
+    )
     list_filter = ('role', 'is_active')
     search_fields = ('username', 'first_name', 'last_name', 'phone_number')
+    fieldsets = (
+        (None, {'fields': ('username', 'password')}),
+        ('Shaxsiy ma’lumotlar', {'fields': ('first_name', 'last_name', 'role', 'custom_position', 'phone_number', 'avatar')}),
+        ('Ish tartibi va Kechikish shtraflari', {
+            'fields': ('work_start_time', 'work_end_time', 'late_grace_period_minutes', 'penalty_rate_tier1', 'penalty_rate_tier2'),
+            'description': 'Xodimning shaxsiy ish boshlanish/tugash vaqtlari va kechikish/barvaqt ketish shtraflari foizlari (kunlik maoshdan foiz).'
+        }),
+        ('Moliya', {'fields': ('salary',)}),
+        ('Face ID Biometriya', {'fields': ('face_image', 'face_embedding', 'face_enrolled_at')}),
+        ('Huquqlar va Holat', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
+    )
 
 @admin.register(KindergartenSettings)
 class KindergartenSettingsAdmin(admin.ModelAdmin):
@@ -32,8 +47,11 @@ class ChildAttendanceAdmin(admin.ModelAdmin):
 
 @admin.register(StaffAttendance)
 class StaffAttendanceAdmin(admin.ModelAdmin):
-    list_display = ('teacher', 'date', 'check_in_time', 'check_out_time', 'status', 'is_late', 'late_minutes', 'penalty_amount')
-    list_filter = ('status', 'is_late', 'date')
+    list_display = (
+        'teacher', 'date', 'check_in_time', 'check_out_time', 'status',
+        'is_late', 'late_minutes', 'is_early_leave', 'early_leave_minutes', 'penalty_amount'
+    )
+    list_filter = ('status', 'is_late', 'is_early_leave', 'date')
     search_fields = ('teacher__username', 'teacher__first_name', 'teacher__last_name')
 
 @admin.register(MonthlyInvoice)

@@ -233,7 +233,10 @@ class StaffForm(forms.ModelForm):
 
     class Meta:
         model = User
-        fields = ['first_name', 'last_name', 'phone_number', 'role', 'custom_position', 'salary', 'avatar']
+        fields = [
+            'first_name', 'last_name', 'phone_number', 'role', 'custom_position', 'salary', 'avatar',
+            'work_start_time', 'work_end_time', 'late_grace_period_minutes', 'penalty_rate_tier1', 'penalty_rate_tier2',
+        ]
         widgets = {
             'first_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Ism'}),
             'last_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Familiya'}),
@@ -242,6 +245,11 @@ class StaffForm(forms.ModelForm):
             'custom_position': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': "Ixtiyoriy aniq lavozim (masalan: Bosh oshpaz)"}),
             'salary': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': 'Oylik maosh (UZS)'}),
             'avatar': forms.FileInput(attrs={'class': 'glass-input-file'}),
+            'work_start_time': forms.TimeInput(attrs={'class': 'glass-input', 'type': 'time', 'placeholder': '08:00'}),
+            'work_end_time': forms.TimeInput(attrs={'class': 'glass-input', 'type': 'time', 'placeholder': '18:00'}),
+            'late_grace_period_minutes': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '15', 'min': '0'}),
+            'penalty_rate_tier1': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.01', 'placeholder': '10.00', 'min': '0'}),
+            'penalty_rate_tier2': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.01', 'placeholder': '20.00', 'min': '0'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -251,6 +259,9 @@ class StaffForm(forms.ModelForm):
         self.fields['phone_number'].required = True
         self.fields['salary'].required = True
         self.fields['role'].required = True
+        if self.instance and self.instance.pk:
+            self.fields['custom_username'].initial = self.instance.username
+            self.fields['custom_username'].widget.attrs['placeholder'] = self.instance.username
 
 
 class TeacherReplaceForm(forms.ModelForm):

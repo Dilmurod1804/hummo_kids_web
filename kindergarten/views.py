@@ -42,7 +42,7 @@ from .excel_reports import (
 )
 from .pdf_reports import generate_finance_pdf
 from .audit_utils import (
-    log_audit, calculate_late_penalty, sync_staff_monthly_salary
+    log_audit, calculate_late_penalty, calculate_early_leave_penalty, sync_staff_monthly_salary
 )
 
 # --- Role Helpers & Custom Decorators ---
@@ -504,6 +504,48 @@ def staff_create(request):
 
 @login_required
 @user_passes_test(is_director_or_manager)
+def staff_update(request, pk):
+    """
+    Xodim ma'lumotlari, ish boshlanish vaqti va kechikish shtraflari foizlarini tahrirlash.
+    """
+    staff_member = get_object_or_404(User, pk=pk)
+
+    # Himoya: Direktorni menejer tahrir qila olmaydi
+    if request.user.role == 'MANAGER' and staff_member.role == 'DIRECTOR':
+        messages.error(request, "Menejer direktor profilini tahrir qila olmaydi!")
+        return redirect('staff_list')
+
+    if request.method == 'POST':
+        form = StaffForm(request.POST, request.FILES, instance=staff_member)
+        if form.is_valid():
+            user = form.save(commit=False)
+            new_pass = form.cleaned_data.get('custom_password', '').strip()
+            if new_pass:
+                user.set_password(new_pass)
+                user.initial_password = new_pass
+            user.save()
+            log_audit(
+                'STAFF',
+                f"Xodim sozlamalari yangilandi: {user.get_full_name() or user.username}",
+                f"Ish vaqti: {user.work_start_time} - {user.work_end_time}, T1: {user.penalty_rate_tier1}%, T2: {user.penalty_rate_tier2}%, Chegara: {user.late_grace_period_minutes}m",
+                user=request.user,
+                request=request
+            )
+            messages.success(
+                request,
+                f"Xodim '{user.get_full_name() or user.username}' ma'lumotlari va shtraf sozlamalari muvaffaqiyatli saqlandi."
+            )
+            return redirect('staff_list')
+    else:
+        form = StaffForm(instance=staff_member)
+
+    return render(request, 'staff/staff_edit.html', {
+        'form': form,
+        'staff_member': staff_member,
+    })
+
+@login_required
+@user_passes_test(is_director_or_manager)
 def staff_toggle_active(request, pk):
     """Activate / Deactivate staff (is_active toggle). Deactivated staff cannot log in."""
     staff_member = get_object_or_404(User, pk=pk)
@@ -905,39 +947,24 @@ def attendance_save_ajax(request):
 # --- Face ID time-window helpers ---
 def _get_attendance_windows(settings_obj):
     """
-    Calculate check-in / check-out time windows based on settings.
-    Check-in:  opens 1 hour BEFORE work_start, closes 10 min AFTER work_start
-    Check-out: opens 10 min BEFORE work_end,  closes at midnight (24:00)
-    Returns dict with 'checkin_open', 'checkin_close', 'checkout_open', 'checkout_close'.
+    Face ID orqali davomat soatdan qat'i nazar HECH QACHON yopilmaydi (24/7 ochiq).
+    Xodim istalgan vaqtda kelganini yoki ketganini belgilay oladi.
     """
-    ws = settings_obj.work_start_time  # e.g. 08:00
-    we = settings_obj.work_end_time    # e.g. 18:00
-    base = datetime(2000, 1, 1)  # anchor date for timedelta arithmetic
-
-    ci_open = (datetime.combine(base, ws) - timedelta(hours=1)).time()
-    ci_close = (datetime.combine(base, ws) + timedelta(minutes=10)).time()
-    co_open = (datetime.combine(base, we) - timedelta(minutes=10)).time()
-    co_close = time(23, 59, 59)
-
     return {
-        'checkin_open': ci_open,
-        'checkin_close': ci_close,
-        'checkout_open': co_open,
-        'checkout_close': co_close,
+        'checkin_open': time(0, 0),
+        'checkin_close': time(23, 59, 59),
+        'checkout_open': time(0, 0),
+        'checkout_close': time(23, 59, 59),
     }
 
 
-def _current_attendance_mode(settings_obj):
+def _current_attendance_mode(settings_obj, has_checked_in=False):
     """
-    Returns 'check_in', 'check_out', or None depending on the current time.
+    Davomat doim faol. Agar xodim bugun kelgan bo'lsa 'check_out', aks holda 'check_in'.
     """
-    now_time = timezone.localtime(timezone.now()).time()
-    w = _get_attendance_windows(settings_obj)
-    if w['checkin_open'] <= now_time <= w['checkin_close']:
-        return 'check_in'
-    if w['checkout_open'] <= now_time <= w['checkout_close']:
+    if has_checked_in:
         return 'check_out'
-    return None
+    return 'check_in'
 
 
 # --- Staff Face ID & GPS Geofencing Module ---
@@ -947,12 +974,13 @@ def staff_attendance_portal(request):
     settings = KindergartenSettings.get_settings()
     user_today_logs = StaffAttendance.objects.filter(teacher=request.user, date=today).order_by('-is_within_geofence', '-created_at')
     windows = _get_attendance_windows(settings)
-    current_mode = _current_attendance_mode(settings)
 
     latest_log = user_today_logs.filter(is_within_geofence=True).first()
     has_checked_in = bool(latest_log and latest_log.check_in_time)
     has_checked_out = bool(latest_log and latest_log.check_out_time)
     has_face_enrolled = bool((request.user.face_image and request.user.face_image.name) or (request.user.avatar and request.user.avatar.name))
+
+    current_mode = _current_attendance_mode(settings, has_checked_in=has_checked_in)
 
     return render(request, 'attendance/staff_portal.html', {
         'today': today,
@@ -1174,17 +1202,24 @@ def staff_check_in_api(request):
             teacher=staff_user, date=today
         ).order_by('-is_within_geofence', 'id').first()
 
-        work_start = settings_obj.work_start_time
-        late_minutes, penalty_pct, penalty_amount = 0, Decimal('0.00'), Decimal('0.00')
+        work_start = staff_user.work_start_time or settings_obj.work_start_time
+        work_end = staff_user.work_end_time or getattr(settings_obj, 'work_end_time', time(18, 0))
+        late_minutes, penalty_pct, penalty_amount, tier_applied = 0, Decimal('0.00'), Decimal('0.00'), 0
+        early_minutes, early_penalty_pct, early_penalty_amount, early_tier = 0, Decimal('0.00'), Decimal('0.00'), 0
         is_late = False
+        is_early_leave = False
 
         if action_type != 'check_out':
-            late_minutes, penalty_pct, penalty_amount = calculate_late_penalty(
-                current_time, work_start, staff_user.salary
+            late_minutes, penalty_pct, penalty_amount, tier_applied = calculate_late_penalty(
+                current_time, work_start_time=work_start, salary=staff_user.salary, staff_user=staff_user
             )
             is_late = (late_minutes > 0)
             status_val = 'LATE' if is_late else 'ON_TIME'
         else:
+            early_minutes, early_penalty_pct, early_penalty_amount, early_tier = calculate_early_leave_penalty(
+                current_time, work_end_time=work_end, salary=staff_user.salary, staff_user=staff_user
+            )
+            is_early_leave = (early_minutes > 0)
             status_val = 'VERIFIED'
 
         face_note = (
@@ -1194,21 +1229,24 @@ def staff_check_in_api(request):
 
         if not log_entry:
             log_entry = StaffAttendance.objects.create(
-                teacher            = staff_user,
-                date               = today,
-                check_in_time      = current_time if action_type != 'check_out' else None,
-                check_out_time     = current_time if action_type == 'check_out' else None,
-                latitude           = user_lat,
-                longitude          = user_lon,
-                distance_meters    = distance,
-                is_within_geofence = True,
-                face_snapshot      = image_file,
-                status             = status_val,
-                late_minutes       = late_minutes,
-                penalty_percent    = penalty_pct,
-                penalty_amount     = penalty_amount,
-                is_late            = is_late,
-                notes              = face_note,
+                teacher                    = staff_user,
+                date                       = today,
+                check_in_time              = current_time if action_type != 'check_out' else None,
+                check_out_time             = current_time if action_type == 'check_out' else None,
+                latitude                   = user_lat,
+                longitude                  = user_lon,
+                distance_meters            = distance,
+                is_within_geofence         = True,
+                face_snapshot              = image_file,
+                status                     = status_val,
+                late_minutes               = late_minutes,
+                penalty_percent            = penalty_pct if action_type != 'check_out' else early_penalty_pct,
+                penalty_amount             = penalty_amount if action_type != 'check_out' else early_penalty_amount,
+                is_late                    = is_late,
+                early_leave_minutes        = early_minutes,
+                early_leave_penalty_amount = early_penalty_amount,
+                is_early_leave             = is_early_leave,
+                notes                      = face_note,
             )
         else:
             StaffAttendance.objects.filter(
@@ -1217,6 +1255,11 @@ def staff_check_in_api(request):
 
             if action_type == 'check_out':
                 log_entry.check_out_time = current_time
+                log_entry.early_leave_minutes = early_minutes
+                log_entry.early_leave_penalty_amount = early_penalty_amount
+                log_entry.is_early_leave = is_early_leave
+                if is_early_leave:
+                    log_entry.penalty_amount = (log_entry.penalty_amount or Decimal('0.00')) + early_penalty_amount
                 log_entry.notes = (
                     (log_entry.notes or '') +
                     f" | Chiqish: {current_time.strftime('%H:%M:%S')} — {face_note}"
@@ -1250,8 +1293,9 @@ def staff_check_in_api(request):
             or staff_user.username
         )
 
-        # ── 6. Kechikish shtraflari hisob-kitobi (08:05 dan keyin) ─────────────
+        # ── 6. Kechikish va Erta ketish shtraflari hisob-kitobi (Yangi 2-darajali tizim) ──
         if is_late and action_type != 'check_out':
+            tier_label = f"{tier_applied}-darajali" if tier_applied else ""
             StaffBonusPenalty.objects.update_or_create(
                 staff=staff_user,
                 date=today,
@@ -1261,8 +1305,26 @@ def staff_check_in_api(request):
                     'percentage':       penalty_pct,
                     'amount':           penalty_amount,
                     'description':      (
-                        f"Face ID kechikish: {current_time.strftime('%H:%M:%S')}. "
-                        f"{late_minutes} minut kechikdi (-{penalty_pct}%)."
+                        f"Face ID {tier_label} kechikish: {current_time.strftime('%H:%M:%S')}. "
+                        f"{late_minutes} minut kechikdi (kunlik maoshdan -{penalty_pct}% = {penalty_amount:,.0f} UZS)."
+                    ),
+                    'staff_attendance': log_entry,
+                }
+            )
+            sync_staff_monthly_salary(staff_user, today.month, today.year)
+        elif is_early_leave and action_type == 'check_out':
+            tier_label = f"{early_tier}-darajali" if early_tier else ""
+            StaffBonusPenalty.objects.update_or_create(
+                staff=staff_user,
+                date=today,
+                record_type='PENALTY_EARLY_LEAVE',
+                defaults={
+                    'late_minutes':     early_minutes,
+                    'percentage':       early_penalty_pct,
+                    'amount':           early_penalty_amount,
+                    'description':      (
+                        f"Face ID {tier_label} barvaqt ketish: {current_time.strftime('%H:%M:%S')}. "
+                        f"{early_minutes} minut erta ketdi (kunlik maoshdan -{early_penalty_pct}% = {early_penalty_amount:,.0f} UZS)."
                     ),
                     'staff_attendance': log_entry,
                 }
@@ -1473,17 +1535,24 @@ def face_identify_api(request):
             teacher=matched_user, date=today
         ).order_by('-is_within_geofence', 'id').first()
 
-        work_start = settings_obj.work_start_time
-        late_minutes, penalty_pct, penalty_amount = 0, Decimal('0.00'), Decimal('0.00')
+        work_start = matched_user.work_start_time or settings_obj.work_start_time
+        work_end = matched_user.work_end_time or getattr(settings_obj, 'work_end_time', time(18, 0))
+        late_minutes, penalty_pct, penalty_amount, tier_applied = 0, Decimal('0.00'), Decimal('0.00'), 0
+        early_minutes, early_penalty_pct, early_penalty_amount, early_tier = 0, Decimal('0.00'), Decimal('0.00'), 0
         is_late = False
+        is_early_leave = False
 
         if action_type != 'check_out':
-            late_minutes, penalty_pct, penalty_amount = calculate_late_penalty(
-                current_time, work_start, matched_user.salary
+            late_minutes, penalty_pct, penalty_amount, tier_applied = calculate_late_penalty(
+                current_time, work_start_time=work_start, salary=matched_user.salary, staff_user=matched_user
             )
             is_late = (late_minutes > 0)
             status_val = 'LATE' if is_late else 'ON_TIME'
         else:
+            early_minutes, early_penalty_pct, early_penalty_amount, early_tier = calculate_early_leave_penalty(
+                current_time, work_end_time=work_end, salary=matched_user.salary, staff_user=matched_user
+            )
+            is_early_leave = (early_minutes > 0)
             status_val = 'VERIFIED'
 
         face_note = (
@@ -1493,21 +1562,24 @@ def face_identify_api(request):
 
         if not log_entry:
             log_entry = StaffAttendance.objects.create(
-                teacher            = matched_user,
-                date               = today,
-                check_in_time      = current_time if action_type != 'check_out' else None,
-                check_out_time     = current_time if action_type == 'check_out' else None,
-                latitude           = user_lat,
-                longitude          = user_lon,
-                distance_meters    = distance,
-                is_within_geofence = True,
-                face_snapshot      = image_file,
-                status             = status_val,
-                late_minutes       = late_minutes,
-                penalty_percent    = penalty_pct,
-                penalty_amount     = penalty_amount,
-                is_late            = is_late,
-                notes              = face_note,
+                teacher                    = matched_user,
+                date                       = today,
+                check_in_time              = current_time if action_type != 'check_out' else None,
+                check_out_time             = current_time if action_type == 'check_out' else None,
+                latitude                   = user_lat,
+                longitude                  = user_lon,
+                distance_meters            = distance,
+                is_within_geofence         = True,
+                face_snapshot              = image_file,
+                status                     = status_val,
+                late_minutes               = late_minutes,
+                penalty_percent            = penalty_pct if action_type != 'check_out' else early_penalty_pct,
+                penalty_amount             = penalty_amount if action_type != 'check_out' else early_penalty_amount,
+                is_late                    = is_late,
+                early_leave_minutes        = early_minutes,
+                early_leave_penalty_amount = early_penalty_amount,
+                is_early_leave             = is_early_leave,
+                notes                      = face_note,
             )
         else:
             StaffAttendance.objects.filter(
@@ -1516,6 +1588,11 @@ def face_identify_api(request):
 
             if action_type == 'check_out':
                 log_entry.check_out_time = current_time
+                log_entry.early_leave_minutes = early_minutes
+                log_entry.early_leave_penalty_amount = early_penalty_amount
+                log_entry.is_early_leave = is_early_leave
+                if is_early_leave:
+                    log_entry.penalty_amount = (log_entry.penalty_amount or Decimal('0.00')) + early_penalty_amount
                 log_entry.notes = (
                     (log_entry.notes or '') +
                     f" | Kiosk Chiqish: {current_time.strftime('%H:%M:%S')} — {face_note}"
@@ -1550,6 +1627,7 @@ def face_identify_api(request):
         )
 
         if is_late and action_type != 'check_out':
+            tier_label = f"{tier_applied}-darajali" if tier_applied else ""
             StaffBonusPenalty.objects.update_or_create(
                 staff=matched_user,
                 date=today,
@@ -1559,8 +1637,26 @@ def face_identify_api(request):
                     'percentage':       penalty_pct,
                     'amount':           penalty_amount,
                     'description':      (
-                        f"Kiosk Face ID kechikish: {current_time.strftime('%H:%M:%S')}. "
-                        f"{late_minutes} minut kechikdi (-{penalty_pct}%)."
+                        f"Kiosk Face ID {tier_label} kechikish: {current_time.strftime('%H:%M:%S')}. "
+                        f"{late_minutes} minut kechikdi (-{penalty_pct}% kunlik maoshdan = {penalty_amount:,.0f} UZS)."
+                    ),
+                    'staff_attendance': log_entry,
+                }
+            )
+            sync_staff_monthly_salary(matched_user, today.month, today.year)
+        elif is_early_leave and action_type == 'check_out':
+            tier_label = f"{early_tier}-darajali" if early_tier else ""
+            StaffBonusPenalty.objects.update_or_create(
+                staff=matched_user,
+                date=today,
+                record_type='PENALTY_EARLY_LEAVE',
+                defaults={
+                    'late_minutes':     early_minutes,
+                    'percentage':       early_penalty_pct,
+                    'amount':           early_penalty_amount,
+                    'description':      (
+                        f"Kiosk Face ID {tier_label} barvaqt ketish: {current_time.strftime('%H:%M:%S')}. "
+                        f"{early_minutes} minut erta ketdi (kunlik maoshdan -{early_penalty_pct}% = {early_penalty_amount:,.0f} UZS)."
                     ),
                     'staff_attendance': log_entry,
                 }
@@ -1672,6 +1768,192 @@ def staff_attendance_logs(request):
         'staff_passed_count': len(staff_passed_list),
         'staff_pending_count': len(staff_pending_list),
         'staff_total_count': len(all_active_staff),
+    })
+
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def staff_attendance_matrix(request):
+    """
+    Xodimlar Davomati va Shtraflari Kalendar Matritsasi (Tabel: '+' va '-' belgili).
+    Bolalar davomatidagi kabi har bir xodim uchun oy kunlari bo'yicha to'liq ko'rinadi.
+    """
+    import calendar
+    today = timezone.localtime(timezone.now()).date()
+    month = int(request.GET.get('month', today.month))
+    year = int(request.GET.get('year', today.year))
+    search_q = request.GET.get('q', '').strip()
+    role_filter = request.GET.get('role', '')
+
+    num_days = calendar.monthrange(year, month)[1]
+
+    days = []
+    uz_weekdays = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya']
+    for d in range(1, num_days + 1):
+        day_date = date(year, month, d)
+        wd = day_date.weekday()
+        days.append({
+            'day': d,
+            'date': day_date,
+            'weekday_name': uz_weekdays[wd],
+            'is_weekend': wd in [5, 6],
+            'is_today': (day_date == today),
+            'is_future': (day_date > today),
+        })
+
+    all_staff_qs = User.objects.filter(is_active=True).exclude(role='DIRECTOR').order_by('role', 'first_name')
+    if search_q:
+        all_staff_qs = all_staff_qs.filter(
+            Q(first_name__icontains=search_q) |
+            Q(last_name__icontains=search_q) |
+            Q(username__icontains=search_q)
+        )
+    if role_filter:
+        all_staff_qs = all_staff_qs.filter(role=role_filter)
+
+    month_attendances = StaffAttendance.objects.filter(
+        date__year=year,
+        date__month=month,
+        is_within_geofence=True
+    ).select_related('teacher')
+
+    att_map = {}
+    for att in month_attendances:
+        key = (att.teacher_id, att.date.day)
+        att_map[key] = att
+
+    month_penalties = StaffBonusPenalty.objects.filter(
+        date__year=year,
+        date__month=month,
+        record_type__in=['PENALTY_LATE', 'PENALTY_EARLY_LEAVE']
+    )
+    penalties_map = {}
+    for p in month_penalties:
+        key = (p.staff_id, p.date.day)
+        if key not in penalties_map:
+            penalties_map[key] = []
+        penalties_map[key].append(p)
+
+    matrix_rows = []
+    total_present_all = 0
+    total_late_all = 0
+    total_early_all = 0
+    total_penalties_all = Decimal('0.00')
+
+    for staff in all_staff_qs:
+        cells = []
+        staff_present_count = 0
+        staff_late_count = 0
+        staff_early_count = 0
+        staff_total_penalty = Decimal('0.00')
+
+        for d_info in days:
+            d = d_info['day']
+            att = att_map.get((staff.id, d))
+            day_penalties = penalties_map.get((staff.id, d), [])
+            day_penalty_sum = sum((p.amount for p in day_penalties), Decimal('0.00'))
+
+            if att and att.check_in_time:
+                staff_present_count += 1
+                total_present_all += 1
+                is_late = att.is_late
+                is_early = att.is_early_leave
+
+                if is_late and is_early:
+                    symbol = '+ (K+B)'
+                    status_class = 'cell-late-early'
+                    staff_late_count += 1
+                    staff_early_count += 1
+                    total_late_all += 1
+                    total_early_all += 1
+                elif is_late:
+                    symbol = '+ (K)'
+                    status_class = 'cell-late'
+                    staff_late_count += 1
+                    total_late_all += 1
+                elif is_early:
+                    symbol = '+ (B)'
+                    status_class = 'cell-early'
+                    staff_early_count += 1
+                    total_early_all += 1
+                else:
+                    symbol = '+'
+                    status_class = 'cell-present'
+
+                staff_total_penalty += day_penalty_sum
+                total_penalties_all += day_penalty_sum
+
+                cells.append({
+                    'day': d,
+                    'symbol': symbol,
+                    'status_class': status_class,
+                    'has_record': True,
+                    'check_in': att.check_in_time,
+                    'check_out': att.check_out_time,
+                    'late_minutes': att.late_minutes,
+                    'early_minutes': att.early_leave_minutes,
+                    'penalty_amount': day_penalty_sum,
+                    'is_late': is_late,
+                    'is_early': is_early,
+                })
+            else:
+                if d_info['is_future']:
+                    symbol = '·'
+                    status_class = 'cell-future'
+                elif d_info['is_weekend']:
+                    symbol = '—'
+                    status_class = 'cell-weekend'
+                else:
+                    symbol = '-'
+                    status_class = 'cell-absent'
+
+                cells.append({
+                    'day': d,
+                    'symbol': symbol,
+                    'status_class': status_class,
+                    'has_record': False,
+                    'penalty_amount': Decimal('0.00'),
+                })
+
+        matrix_rows.append({
+            'staff': staff,
+            'cells': cells,
+            'present_count': staff_present_count,
+            'late_count': staff_late_count,
+            'early_count': staff_early_count,
+            'total_penalty': staff_total_penalty,
+        })
+
+    prev_month = 12 if month == 1 else month - 1
+    prev_year = year - 1 if month == 1 else year
+    next_month = 1 if month == 12 else month + 1
+    next_year = year + 1 if month == 12 else year
+
+    month_names_uz = [
+        '', 'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+        'Iyul', 'Avgust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr'
+    ]
+    current_month_name = month_names_uz[month]
+
+    return render(request, 'attendance/staff_matrix.html', {
+        'days': days,
+        'matrix_rows': matrix_rows,
+        'month': month,
+        'year': year,
+        'current_month_name': current_month_name,
+        'months_range': range(1, 13),
+        'month_names_uz': month_names_uz,
+        'prev_month': prev_month,
+        'prev_year': prev_year,
+        'next_month': next_month,
+        'next_year': next_year,
+        'total_staff_count': all_staff_qs.count(),
+        'total_present_all': total_present_all,
+        'total_late_all': total_late_all,
+        'total_early_all': total_early_all,
+        'total_penalties_all': total_penalties_all,
+        'search_q': search_q,
+        'role_filter': role_filter,
     })
 
 

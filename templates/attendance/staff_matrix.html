@@ -1,0 +1,335 @@
+{% extends 'base.html' %}
+
+{% block title %}Xodimlar Davomat Jadvali (Tabel + / -) — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="max-width: 100%; margin: 0 auto;">
+
+    <!-- Top Header & Tabs -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">
+                Xodimlar Oylik Davomat Jadvali (Tabel)
+            </h2>
+            <p style="font-size: 13px; color: var(--text-muted);">
+                Bolalar davomati kabi oylik <b>(+)</b> va <b>(-)</b> belgili kalendar nazorati, kechikish va barvaqt ketish shtraflari
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <a href="{% url 'staff_attendance_matrix' %}?month={{ month }}&year={{ year }}" class="btn-glass btn-primary" style="padding: 9px 18px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="calendar" style="width: 16px; height: 16px;"></i>
+                <span>Kalendar Davomat (Tabel)</span>
+            </a>
+            <a href="{% url 'staff_attendance_logs' %}" class="btn-glass btn-secondary" style="padding: 9px 18px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="map-pin" style="width: 16px; height: 16px;"></i>
+                <span>Kunlik GPS & Face ID</span>
+            </a>
+            <a href="{% url 'late_staff_list' %}" class="btn-glass btn-secondary" style="padding: 9px 18px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; color: #fb7185;">
+                <i data-lucide="clock-alert" style="width: 16px; height: 16px;"></i>
+                <span>Kechikkanlar</span>
+            </a>
+            <a href="{% url 'export_staff_attendance' %}" class="btn-glass btn-excel" style="padding: 9px 16px; font-size: 13px; text-decoration: none;">
+                <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px;"></i>
+                <span>Excel</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Month & Year Navigation + Filters -->
+    <div class="glass-card" style="padding: 18px 24px; margin-bottom: 22px;">
+        <form method="GET" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <!-- Month Navigator -->
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <a href="?month={{ prev_month }}&year={{ prev_year }}{% if search_q %}&q={{ search_q }}{% endif %}{% if role_filter %}&role={{ role_filter }}{% endif %}" class="btn-glass btn-secondary" style="padding: 8px 12px; font-size: 13px; text-decoration: none;">
+                    &larr; Oldingi
+                </a>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <select name="month" class="glass-select" onchange="this.form.submit()" style="padding: 8px 14px; font-weight: 700;">
+                        {% for m in months_range %}
+                        <option value="{{ m }}" {% if m == month %}selected{% endif %}>
+                            {{ forloop.counter }} - {{ month_names_uz|slice:m|last|default:m }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <input type="number" name="year" value="{{ year }}" class="glass-input" style="width: 86px; padding: 8px 10px; font-weight: 700; text-align: center;" onchange="this.form.submit()">
+                </div>
+                <a href="?month={{ next_month }}&year={{ next_year }}{% if search_q %}&q={{ search_q }}{% endif %}{% if role_filter %}&role={{ role_filter }}{% endif %}" class="btn-glass btn-secondary" style="padding: 8px 12px; font-size: 13px; text-decoration: none;">
+                    Keyingi &rarr;
+                </a>
+            </div>
+
+            <!-- Search & Role Filter -->
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <input type="text" name="q" value="{{ search_q }}" placeholder="Xodim qidirish..." class="glass-input" style="padding: 8px 14px; min-width: 200px;">
+                <select name="role" class="glass-select" onchange="this.form.submit()" style="padding: 8px 14px;">
+                    <option value="">Barcha Lavozimlar</option>
+                    <option value="TEACHER" {% if role_filter == 'TEACHER' %}selected{% endif %}>Tarbiyachilar</option>
+                    <option value="ASSISTANT" {% if role_filter == 'ASSISTANT' %}selected{% endif %}>Yordamchilar</option>
+                    <option value="NURSE" {% if role_filter == 'NURSE' %}selected{% endif %}>Hamshira</option>
+                    <option value="COOK" {% if role_filter == 'COOK' %}selected{% endif %}>Oshpaz</option>
+                    <option value="SECURITY" {% if role_filter == 'SECURITY' %}selected{% endif %}>Qorovul</option>
+                    <option value="MANAGER" {% if role_filter == 'MANAGER' %}selected{% endif %}>Menejer</option>
+                    <option value="OTHER" {% if role_filter == 'OTHER' %}selected{% endif %}>Boshqalar</option>
+                </select>
+                <button type="submit" class="btn-glass btn-primary" style="padding: 8px 16px;">
+                    <i data-lucide="search" style="width: 15px; height: 15px;"></i>
+                    <span>Filtrlash</span>
+                </button>
+                {% if search_q or role_filter %}
+                <a href="?month={{ month }}&year={{ year }}" class="btn-glass btn-secondary" style="padding: 8px 12px; font-size: 12px; text-decoration: none;">Tozalash</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <!-- Stats Bar -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 22px;">
+        <div class="glass-card" style="padding: 16px; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(56, 189, 248, 0.15); display: flex; align-items: center; justify-content: center; color: #38bdf8;">
+                <i data-lucide="users" style="width: 22px; height: 22px;"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Faol Xodimlar</div>
+                <div style="font-size: 20px; font-weight: 800; color: white;">{{ total_staff_count }} nafar</div>
+            </div>
+        </div>
+
+        <div class="glass-card" style="padding: 16px; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(52, 211, 153, 0.15); display: flex; align-items: center; justify-content: center; color: #34d399;">
+                <i data-lucide="calendar-check" style="width: 22px; height: 22px;"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Kelgan Kunlar (+)</div>
+                <div style="font-size: 20px; font-weight: 800; color: #34d399;">{{ total_present_all }} ta</div>
+            </div>
+        </div>
+
+        <div class="glass-card" style="padding: 16px; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(251, 191, 36, 0.15); display: flex; align-items: center; justify-content: center; color: #fbbf24;">
+                <i data-lucide="clock-alert" style="width: 22px; height: 22px;"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Kechikishlar (K)</div>
+                <div style="font-size: 20px; font-weight: 800; color: #fbbf24;">{{ total_late_all }} marta</div>
+            </div>
+        </div>
+
+        <div class="glass-card" style="padding: 16px; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(192, 132, 252, 0.15); display: flex; align-items: center; justify-content: center; color: #c084fc;">
+                <i data-lucide="log-out" style="width: 22px; height: 22px;"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Barvaqt Ketishlar (B)</div>
+                <div style="font-size: 20px; font-weight: 800; color: #c084fc;">{{ total_early_all }} marta</div>
+            </div>
+        </div>
+
+        <div class="glass-card" style="padding: 16px; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(244, 63, 94, 0.15); display: flex; align-items: center; justify-content: center; color: #fb7185;">
+                <i data-lucide="alert-octagon" style="width: 22px; height: 22px;"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Jami Shtraflar</div>
+                <div style="font-size: 20px; font-weight: 800; color: #fb7185;">-{{ total_penalties_all|floatformat:0 }} UZS</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monthly Matrix Table Card -->
+    <div class="glass-card" style="padding: 20px 24px; margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="font-size: 17px; font-weight: 700; color: white; display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="table" style="color: #38bdf8; width: 20px; height: 20px;"></i>
+                <span>{{ current_month_name }} {{ year }} — Davomat & Shtraflar Matritsasi</span>
+            </h3>
+            <div style="font-size: 12px; color: var(--text-muted);">
+                Sichqonchani kataklar ustiga olib borsangiz, kelgan/ketgan vaqti va shtraf summasi ko'rinadi.
+            </div>
+        </div>
+
+        <div style="overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08);">
+            <table class="matrix-table" style="width: 100%; border-collapse: collapse; text-align: center; color: white; min-width: 950px; font-size: 12px;">
+                <thead>
+                    <tr style="background: rgba(15, 23, 42, 0.7); border-bottom: 1px solid rgba(255, 255, 255, 0.12);">
+                        <th style="padding: 10px 8px; width: 40px; position: sticky; left: 0; background: #0f172a; z-index: 3;">№</th>
+                        <th style="padding: 10px 14px; text-align: left; min-width: 210px; position: sticky; left: 40px; background: #0f172a; z-index: 3;">Xodim</th>
+                        
+                        <!-- Day Numbers (1 .. N) -->
+                        {% for d in days %}
+                        <th style="padding: 6px 4px; min-width: 32px; {% if d.is_today %}background: rgba(56, 189, 248, 0.22); border-left: 1px solid #38bdf8; border-right: 1px solid #38bdf8;{% elif d.is_weekend %}background: rgba(255,255,255,0.03); color: #94a3b8;{% endif %}">
+                            <div style="font-size: 12px; font-weight: 800; {% if d.is_today %}color: #38bdf8;{% endif %}">{{ d.day }}</div>
+                            <div style="font-size: 9px; font-weight: 600; text-transform: uppercase; color: {% if d.is_today %}#38bdf8{% elif d.is_weekend %}#f43f5e{% else %}var(--text-muted){% endif %};">{{ d.weekday_name }}</div>
+                        </th>
+                        {% endfor %}
+
+                        <!-- Totals Columns -->
+                        <th style="padding: 10px 10px; background: rgba(52, 211, 153, 0.08); color: #34d399; font-weight: 700; border-left: 1px solid rgba(255,255,255,0.1);">Keldi</th>
+                        <th style="padding: 10px 10px; background: rgba(251, 191, 36, 0.08); color: #fbbf24; font-weight: 700;">Kech</th>
+                        <th style="padding: 10px 10px; background: rgba(192, 132, 252, 0.08); color: #c084fc; font-weight: 700;">Barvaqt</th>
+                        <th style="padding: 10px 12px; background: rgba(244, 63, 94, 0.08); color: #fb7185; font-weight: 700;">Shtraflar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in matrix_rows %}
+                    <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(255,255,255,0.03)'" onmouseout="this.style.background='transparent'">
+                        <td style="padding: 8px; color: var(--text-dim); position: sticky; left: 0; background: #0f172a; z-index: 2;">{{ forloop.counter }}</td>
+                        <td style="padding: 8px 14px; text-align: left; position: sticky; left: 40px; background: #0f172a; z-index: 2;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                                    {% if row.staff.avatar %}
+                                    <img src="{{ row.staff.avatar.url }}" alt="avatar" style="width: 100%; height: 100%; object-fit: cover;">
+                                    {% else %}
+                                    <i data-lucide="user" style="width: 16px; height: 16px; color: var(--text-dim);"></i>
+                                    {% endif %}
+                                </div>
+                                <div style="overflow: hidden;">
+                                    <a href="{% url 'staff_update' row.staff.id %}" style="font-weight: 700; color: white; text-decoration: none; display: block; white-space: nowrap; text-overflow: ellipsis; max-width: 150px;" title="{{ row.staff.get_full_name|default:row.staff.username }}">
+                                        {{ row.staff.get_full_name|default:row.staff.username }}
+                                    </a>
+                                    <div style="font-size: 10px; color: var(--text-dim);">
+                                        {{ row.staff.work_start_time|time:"H:i"|default:"08:00" }} - {{ row.staff.work_end_time|time:"H:i"|default:"18:00" }}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+
+                        <!-- Cells for each day -->
+                        {% for cell in row.cells %}
+                        <td style="padding: 6px 2px;">
+                            {% if cell.has_record %}
+                                {% if cell.is_late and cell.is_early %}
+                                <span class="matrix-badge badge-late-early" title="{{ cell.day }}-sana: Kechikkan ({{ cell.late_minutes }}m) va Barvaqt ketgan ({{ cell.early_minutes }}m). Shtraf: -{{ cell.penalty_amount|floatformat:0 }} UZS. Keldi: {{ cell.check_in|time:'H:i'|default:'—' }} / Ketdi: {{ cell.check_out|time:'H:i'|default:'—' }}">
+                                    +
+                                </span>
+                                {% elif cell.is_late %}
+                                <span class="matrix-badge badge-late" title="{{ cell.day }}-sana: Kechikkan ({{ cell.late_minutes }}m). Shtraf: -{{ cell.penalty_amount|floatformat:0 }} UZS. Keldi: {{ cell.check_in|time:'H:i'|default:'—' }}">
+                                    +
+                                </span>
+                                {% elif cell.is_early %}
+                                <span class="matrix-badge badge-early" title="{{ cell.day }}-sana: Barvaqt ketgan ({{ cell.early_minutes }}m). Shtraf: -{{ cell.penalty_amount|floatformat:0 }} UZS. Ketdi: {{ cell.check_out|time:'H:i'|default:'—' }}">
+                                    +
+                                </span>
+                                {% else %}
+                                <span class="matrix-badge badge-present" title="{{ cell.day }}-sana: Vaqtida kelgan va ketgan. Keldi: {{ cell.check_in|time:'H:i'|default:'—' }} / Ketdi: {{ cell.check_out|time:'H:i'|default:'—' }}">
+                                    +
+                                </span>
+                                {% endif %}
+                            {% else %}
+                                {% if cell.symbol == '-' %}
+                                <span class="matrix-badge badge-absent" title="{{ cell.day }}-sana: Kelmagan (Davomat qayd etilmagan)">
+                                    -
+                                </span>
+                                {% elif cell.symbol == '—' %}
+                                <span style="color: rgba(255,255,255,0.15); font-size: 11px;">—</span>
+                                {% else %}
+                                <span style="color: rgba(255,255,255,0.15); font-size: 14px;">·</span>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+
+                        <!-- Row Totals -->
+                        <td style="padding: 8px; color: #34d399; font-weight: 800; border-left: 1px solid rgba(255,255,255,0.08); background: rgba(52, 211, 153, 0.03);">
+                            {{ row.present_count }}
+                        </td>
+                        <td style="padding: 8px; color: #fbbf24; font-weight: 800; background: rgba(251, 191, 36, 0.03);">
+                            {{ row.late_count }}
+                        </td>
+                        <td style="padding: 8px; color: #c084fc; font-weight: 800; background: rgba(192, 132, 252, 0.03);">
+                            {{ row.early_count }}
+                        </td>
+                        <td style="padding: 8px 12px; color: {% if row.total_penalty > 0 %}#fb7185{% else %}var(--text-dim){% endif %}; font-weight: 800; background: rgba(244, 63, 94, 0.03);">
+                            {% if row.total_penalty > 0 %}-{{ row.total_penalty|floatformat:0 }} UZS{% else %}0{% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="{{ days|length|add:6 }}" style="padding: 30px; text-align: center; color: var(--text-muted);">
+                            Xodimlar topilmadi.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Legend / Tushuntirish Belgilari -->
+        <div style="display: flex; gap: 20px; align-items: center; margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); flex-wrap: wrap; font-size: 12px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="matrix-badge badge-present">+</span>
+                <span style="color: #cbd5e1;">Vaqtida kelgan va ketgan (Keldi)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="matrix-badge badge-late">+</span>
+                <span style="color: #cbd5e1;">Kechikib kelgan (Kechikish jarimasi)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="matrix-badge badge-early">+</span>
+                <span style="color: #cbd5e1;">Barvaqt ketgan (Erta chiqish jarimasi)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="matrix-badge badge-late-early">+</span>
+                <span style="color: #cbd5e1;">Ham kechikkan, ham barvaqt ketgan</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span class="matrix-badge badge-absent">-</span>
+                <span style="color: #cbd5e1;">Kelmagan (Davomat yo'q)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="color: rgba(255,255,255,0.3); font-weight: 700;">—</span>
+                <span style="color: var(--text-dim);">Dam olish kuni (Shanba / Yakshanba)</span>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<style>
+.matrix-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    font-weight: 800;
+    font-size: 13px;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.matrix-badge:hover {
+    transform: scale(1.2);
+    z-index: 5;
+}
+.badge-present {
+    background: rgba(52, 211, 153, 0.18);
+    color: #34d399;
+    border: 1px solid rgba(52, 211, 153, 0.4);
+}
+.badge-late {
+    background: rgba(251, 191, 36, 0.22);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.5);
+    box-shadow: 0 0 6px rgba(251, 191, 36, 0.25);
+}
+.badge-early {
+    background: rgba(192, 132, 252, 0.22);
+    color: #c084fc;
+    border: 1px solid rgba(192, 132, 252, 0.5);
+    box-shadow: 0 0 6px rgba(192, 132, 252, 0.25);
+}
+.badge-late-early {
+    background: rgba(249, 115, 22, 0.25);
+    color: #fb923c;
+    border: 1px solid rgba(249, 115, 22, 0.55);
+    box-shadow: 0 0 6px rgba(249, 115, 22, 0.3);
+}
+.badge-absent {
+    background: rgba(244, 63, 94, 0.15);
+    color: #fb7185;
+    border: 1px solid rgba(244, 63, 94, 0.35);
+}
+</style>
+{% endblock %}

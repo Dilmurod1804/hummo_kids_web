@@ -35,6 +35,7 @@ urlpatterns = [
     path('staff/add-bonus-penalty-api/', views.add_bonus_penalty_api, name='add_bonus_penalty_api'),
     path('staff/mark-payroll-paid-api/', views.mark_payroll_paid_api, name='mark_payroll_paid_api'),
     path('staff/create/', views.staff_create, name='staff_create'),
+    path('staff/<int:pk>/edit/', views.staff_update, name='staff_update'),
     path('staff/<int:pk>/toggle-active/', views.staff_toggle_active, name='staff_toggle_active'),
     path('staff/<int:pk>/reset-password/', views.staff_reset_password, name='staff_reset_password'),
     path('staff/<int:pk>/delete/', views.staff_delete, name='staff_delete'),
@@ -51,6 +52,7 @@ urlpatterns = [
     # 1:N Kiosk: yuzni aniqlash (faqat xodimlar bazasi, Child aralashmaydi)
     path('attendance/staff/face-identify/', views.face_identify_api, name='face_identify_api'),
     path('attendance/staff-logs/', views.staff_attendance_logs, name='staff_attendance_logs'),
+    path('attendance/staff-matrix/', views.staff_attendance_matrix, name='staff_attendance_matrix'),
 
     # Finance, Recalculations & Groups Finance
     path('finance/', views.finance_dashboard, name='finance_dashboard'),

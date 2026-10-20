@@ -11,8 +11,16 @@
         </p>
     </div>
 
-    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-        <a href="{% url 'export_staff_attendance' %}" class="btn-glass btn-excel">
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <a href="{% url 'staff_attendance_matrix' %}" class="btn-glass btn-secondary" style="padding: 9px 18px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+            <i data-lucide="calendar" style="width: 16px; height: 16px;"></i>
+            <span>Kalendar Davomat (Tabel)</span>
+        </a>
+        <a href="{% url 'staff_attendance_logs' %}" class="btn-glass btn-primary" style="padding: 9px 18px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+            <i data-lucide="map-pin" style="width: 16px; height: 16px;"></i>
+            <span>Kunlik GPS & Face ID</span>
+        </a>
+        <a href="{% url 'export_staff_attendance' %}" class="btn-glass btn-excel" style="padding: 9px 16px; font-size: 13px; text-decoration: none;">
             <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px;"></i>
             <span>Excel Eksport</span>
         </a>

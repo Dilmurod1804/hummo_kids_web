@@ -1,0 +1,188 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ staff_member.get_full_name|default:staff_member.username }} — Xodim Sozlamalari{% endblock %}
+
+{% block content %}
+<div style="max-width: 760px; margin: 0 auto;">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+        <div>
+            <h2 style="font-family: 'Outfit', sans-serif; font-size: 24px; font-weight: 800; color: white;">
+                Xodim Ma'lumotlari va Shtraf Sozlamalari
+            </h2>
+            <p style="font-size: 13px; color: var(--text-muted);">
+                {{ staff_member.get_full_name|default:staff_member.username }} (@{{ staff_member.username }})
+            </p>
+        </div>
+        <a href="{% url 'staff_list' %}" class="btn-glass btn-secondary" style="font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+            <i data-lucide="arrow-left" style="width: 15px; height: 15px;"></i>
+            <span>Orqaga (Xodimlar)</span>
+        </a>
+    </div>
+
+    <!-- Edit Form Card -->
+    <div class="glass-card" style="padding: 30px;">
+        
+        {% if messages %}
+        <div style="margin-bottom: 20px;">
+            {% for msg in messages %}
+            <div style="background: rgba(52,211,153,0.12); border: 1px solid rgba(52,211,153,0.3); color: #34d399; border-radius: 10px; padding: 12px 16px; font-size: 13px; display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="check-circle-2" style="width: 16px; height: 16px; flex-shrink: 0;"></i>
+                <span>{{ msg }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if form.errors %}
+        <div style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 10px; padding: 14px 18px; color: #fb7185; margin-bottom: 20px; font-size: 13px;">
+            <div style="font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                <i data-lucide="alert-circle" style="width: 16px; height: 16px;"></i>
+                <span>Iltimos, kiritilgan ma'lumotlarni tekshiring:</span>
+            </div>
+            {{ form.errors }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="{% url 'staff_update' staff_member.id %}" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            <!-- Asosiy shaxsiy ma'lumotlar -->
+            <div style="margin-bottom: 24px;">
+                <h4 style="font-size: 14px; font-weight: 700; color: #c084fc; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; display: flex; align-items: center; gap: 6px;">
+                    <i data-lucide="user" style="width: 16px; height: 16px;"></i>
+                    <span>Shaxsiy Ma'lumotlar</span>
+                </h4>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Ism *</label>
+                        {{ form.first_name }}
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Familiya *</label>
+                        {{ form.last_name }}
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Telefon *</label>
+                        {{ form.phone_number }}
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Oylik Maosh (UZS) *</label>
+                        {{ form.salary }}
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Tizimdagi Roli *</label>
+                        {{ form.role }}
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label">Lavozim Nomi (ixtiyoriy)</label>
+                        {{ form.custom_position }}
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Avatar (Profil Rasmi)</label>
+                    <div style="display: flex; align-items: center; gap: 14px;">
+                        {% if staff_member.avatar %}
+                        <img src="{{ staff_member.avatar.url }}" alt="avatar" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,0.2);">
+                        {% endif %}
+                        <div style="flex: 1;">
+                            {{ form.avatar }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ish Tartibi va Kechikish Shtraflari Bo'limi -->
+            <div style="background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 14px; padding: 20px; margin-bottom: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                    <h4 style="font-size: 14px; font-weight: 800; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.5px; margin: 0; display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="clock" style="width: 17px; height: 17px;"></i>
+                        <span>Ish Tartibi va Kechikish Shtraflari</span>
+                    </h4>
+                    <span style="font-size: 11px; padding: 2px 8px; border-radius: 6px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-weight: 600;">
+                        2-Darajali Tizim
+                    </span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" style="color: white; font-weight: 600;">
+                            Ish Boshlanish Vaqti *
+                            <span style="font-size: 11px; color: var(--text-dim); font-weight: normal;">(Kelish)</span>
+                        </label>
+                        {{ form.work_start_time }}
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" style="color: white; font-weight: 600;">
+                            Ish Tugash Vaqti *
+                            <span style="font-size: 11px; color: var(--text-dim); font-weight: normal;">(Ketish)</span>
+                        </label>
+                        {{ form.work_end_time }}
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" style="color: white; font-weight: 600;">
+                            1-Daraja Chegarasi (daqiqa) *
+                            <span style="font-size: 11px; color: var(--text-dim); font-weight: normal;">(Grace period)</span>
+                        </label>
+                        {{ form.late_grace_period_minutes }}
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" style="color: #fbbf24; font-weight: 600;">
+                            1-Darajali Shtraf Foizi (%)
+                            <span style="font-size: 11px; color: var(--text-dim); font-weight: normal;">(chegara ichida kechikish)</span>
+                        </label>
+                        {{ form.penalty_rate_tier1 }}
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label class="form-label" style="color: #fb7185; font-weight: 600;">
+                            2-Darajali Shtraf Foizi (%)
+                            <span style="font-size: 11px; color: var(--text-dim); font-weight: normal;">(chegaradan oshgan kechikish)</span>
+                        </label>
+                        {{ form.penalty_rate_tier2 }}
+                    </div>
+                </div>
+
+                <!-- Tushuntirish box -->
+                <div style="font-size: 12px; color: #94a3b8; line-height: 1.5; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px 12px;">
+                    💡 <b>Qoidalar:</b> Agar xodim belgilangan ish vaqtidan kech kelsa, kechikkan daqiqalari hisoblanadi. 
+                    Belgilangan daqiqagacha bo'lsa <b>1-darajali foiz</b>, oshsa <b>2-darajali foiz</b> kunlik maoshdan (oylik / 22) ushlab qolinadi va avtomatik jadvalga yoziladi.
+                </div>
+            </div>
+
+            <!-- Parolni yangilash (ixtiyoriy) -->
+            <div style="margin-bottom: 24px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px;">
+                <h4 style="font-size: 14px; font-weight: 700; color: #fbbf24; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+                    <i data-lucide="key" style="width: 16px; height: 16px;"></i>
+                    <span>Parolni O'zgartirish (Ixtiyoriy)</span>
+                </h4>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Yangi Parol (agar o'zgartirmoqchi bo'lsangiz kiriting)</label>
+                    {{ form.custom_password }}
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+                <a href="{% url 'staff_list' %}" class="btn-glass btn-secondary" style="text-decoration: none;">Bekor Qilish</a>
+                <button type="submit" class="btn-glass btn-primary" style="padding: 10px 24px; font-weight: 700;">
+                    <i data-lucide="check" style="width: 16px; height: 16px;"></i>
+                    <span>Saqlash</span>
+                </button>
+            </div>
+        </form>
+
+    </div>
+
+</div>
+{% endblock %}
