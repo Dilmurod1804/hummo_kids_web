@@ -63,13 +63,14 @@ class GroupForm(forms.ModelForm):
 class PaymentForm(forms.ModelForm):
     class Meta:
         model = Payment
-        fields = ['invoice', 'amount', 'payment_method', 'transaction_id', 'notes']
+        fields = ['invoice', 'amount', 'payment_method', 'transaction_id', 'reason', 'notes']
         widgets = {
             'invoice': forms.Select(attrs={'class': 'glass-input'}),
             'amount': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': 'To‘lov summasi'}),
             'payment_method': forms.Select(attrs={'class': 'glass-input'}),
             'transaction_id': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Tranzaksiya / Kvitansiya ID'}),
-            'notes': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Izoh'}),
+            'reason': forms.Textarea(attrs={'class': 'glass-input', 'rows': 2, 'placeholder': 'To‘lov sababi / Chegirma izohi'}),
+            'notes': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Qo‘shimcha izoh'}),
         }
 
 

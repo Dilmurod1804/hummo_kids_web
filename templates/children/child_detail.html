@@ -39,7 +39,7 @@
                 {{ child.first_name|slice:":1" }}{{ child.last_name|slice:":1" }}
             </div>
             <h3 style="font-size: 18px; font-weight: 700; color: white;">{{ child.full_name }}</h3>
-            <span class="badge badge-present" style="margin-top: 6px;">{{ child.group.name }}</span>
+            <span class="badge badge-present" style="margin-top: 6px;">{{ child.group.name|default:"Guruhsiz" }}</span>
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 12px; font-size: 13px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 16px;">

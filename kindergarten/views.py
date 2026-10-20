@@ -26,10 +26,15 @@ from .forms import (
     LoginForm, ChildForm, GroupForm, PaymentForm, SettingsForm,
     StaffForm, TeacherReplaceForm, generate_staff_credentials
 )
-from .haversine import haversine_distance
+from .haversine import haversine_distance, evaluate_geofence
 from .face_utils import (
-    verify_face, decode_base64_image, validate_face_image,
-    FACE_RECOGNITION_AVAILABLE, identify_staff_face,
+    decode_base64_image,
+    extract_face_embedding,
+    compare_embeddings,
+    verify_staff_face_1to1,
+    validate_and_enroll_face,
+    identify_staff_face_1toN,
+    STRICT_FACE_DISTANCE_THRESHOLD,
 )
 from .excel_reports import (
     generate_children_excel, generate_attendance_excel,
@@ -42,23 +47,49 @@ from .audit_utils import (
 
 # --- Role Helpers & Custom Decorators ---
 def is_director_or_manager(user):
-    return user.is_authenticated and (user.role in ['DIRECTOR', 'MANAGER'] or user.is_superuser)
+    """
+    Ruxsat tekshiruvi: Menejer ma'muriy va moliya bo'limlariga KIRA OLMAYDI.
+    Faqat Bog'cha Direktori va Superuser (Admin) ga ruxsat beriladi.
+    """
+    return user.is_authenticated and (user.role == 'DIRECTOR' or user.is_superuser)
 
 def is_director_only(user):
     return user.is_authenticated and (user.role == 'DIRECTOR' or user.is_superuser)
 
 def director_or_manager_required(view_func):
+    """
+    Ma'muriy bo'limlar (Moliya, Guruhlar, Xodimlar, Sozlamalar) uchun himoya dekoratori.
+    Menejer (MANAGER) ushbu sahifalarga kira olmaydi.
+    Agar Manager url orqali kirmoqchi bo'lsa, 'Ruxsat berilmagan' ogohlantirishi bilan
+    Face ID sahifasiga redirect qilinadi (yoki API bo'lsa 403 qaytaradi).
+    """
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
         if not request.user.is_authenticated:
             return redirect('login')
+        
+        # Menejer uchun cheklov
+        if request.user.role == 'MANAGER':
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.path.endswith('_api'):
+                return JsonResponse({'success': False, 'message': "Ruxsat berilmagan! Menejer uchun bu amal taqiqlangan."}, status=403)
+            messages.error(request, "Ruxsat berilmagan! Menejer faqat Face ID (xodimlar davomati) va shaxsiy profildan foydalanishi mumkin.")
+            return redirect('staff_attendance_portal')
+
         if not request.user.can_manage_all:
-            messages.error(request, "Ushbu bo'limga kirish faqat Direktor / Menejer uchun ruxsat etilgan!")
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.path.endswith('_api'):
+                return JsonResponse({'success': False, 'message': "Ushbu amal faqat Direktor uchun ruxsat etilgan!"}, status=403)
+            messages.error(request, "Ushbu bo'limga kirish faqat Bog'cha Direktori uchun ruxsat etilgan!")
             if request.user.has_assigned_group:
                 return redirect('teacher_dashboard')
-            return redirect('staff_profile')
+            return redirect('staff_attendance_portal')
+
         return view_func(request, *args, **kwargs)
     return _wrapped
+
+# Admin va Moliya dekoratorlari
+admin_required = director_or_manager_required
+finance_access_required = director_or_manager_required
+group_access_required = director_or_manager_required
 
 def director_only_required(view_func):
     @wraps(view_func)
@@ -101,7 +132,9 @@ def login_view(request):
                 if next_url and next_url.startswith('/'):
                     return redirect(next_url)
                 # Redirect directly based on role
-                if user.can_manage_all:
+                if user.role == 'MANAGER':
+                    return redirect('staff_attendance_portal')
+                elif user.can_manage_all:
                     return redirect('admin_dashboard')
                 elif user.has_assigned_group:
                     return redirect('teacher_dashboard')
@@ -154,6 +187,8 @@ def role_switch_demo(request, username):
 @login_required
 def dashboard(request):
     user = request.user
+    if user.role == 'MANAGER':
+        return redirect('staff_attendance_portal')
     if user.can_manage_all:
         return redirect('admin_dashboard')
     if user.has_assigned_group:
@@ -340,8 +375,22 @@ def group_delete(request, pk):
     group = get_object_or_404(Group, pk=pk)
     if request.method == 'POST':
         name = group.name
+        children_count = group.children.count()
+        # Bolalarni guruhsiz holatga o'tkazish (ma'lumotlar va to'lovlar yo'qolmasligi uchun)
+        group.children.update(group=None)
+        TemporaryChild.objects.filter(target_group=group).update(target_group=None)
         group.delete()
-        log_audit('SYSTEM', f"Guruh o'chirildi: {name}", f"O'chirilgan guruh: {name}", user=request.user, request=request)
+        log_audit(
+            'SYSTEM',
+            f"Guruh o'chirildi: {name}",
+            f"O'chirilgan guruh: {name}. {children_count} ta bola guruhsiz holatga o'tkazildi.",
+            user=request.user,
+            request=request
+        )
+        msg = f"'{name}' guruhi muvaffaqiyatli o'chirildi."
+        if children_count > 0:
+            msg += f" Undagi {children_count} ta bola guruhsiz holatga o'tkazildi."
+        messages.success(request, msg)
     return redirect('groups_list')
 
 @login_required
@@ -537,40 +586,39 @@ def staff_delete(request, pk):
 @user_passes_test(is_director_or_manager)
 def register_face_api(request, pk):
     """
-    Rahbar/menejer tomonidan xodimning Face ID etalon rasmini ro'yxatdan o'tkazish API.
+    Rahbar/menejer tomonidan xodimning Face ID etalon rasmini va 128-d AI embeddingini
+    ro'yxatdan o'tkazish API.
 
     POST body (JSON):
         { "face_image": "data:image/jpeg;base64,..." }
-
-    OpenCV / Haar Cascade yordamida yuz mavjudligi tekshiriladi va bazaga saqlanadi.
     """
     if request.method != 'POST':
-        return JsonResponse({'success': False, 'message': "Faqat POST so'rov qabul qilinadi."}, status=405)
+        return JsonResponse({'status': 'error', 'success': False, 'message': "Faqat POST so'rov qabul qilinadi."}, status=405)
 
     staff_member = get_object_or_404(User, pk=pk)
 
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'message': "JSON formati noto'g'ri."}, status=400)
+        return JsonResponse({'status': 'error', 'success': False, 'message': "JSON formati noto'g'ri."}, status=400)
 
     face_b64 = data.get('face_image', '').strip()
     if not face_b64:
-        return JsonResponse({'success': False, 'message': "face_image maydoni bo'sh yuborildi."}, status=400)
+        return JsonResponse({'status': 'error', 'success': False, 'message': "face_image maydoni bo'sh yuborildi."}, status=400)
 
     # Base64 → bytes
     try:
         image_bytes = decode_base64_image(face_b64)
     except Exception:
-        return JsonResponse({'success': False, 'message': "Rasm base64 formatida noto'g'ri."}, status=400)
+        return JsonResponse({'status': 'error', 'success': False, 'message': "Rasm base64 formatida noto'g'ri."}, status=400)
 
     if len(image_bytes) < 1000:
-        return JsonResponse({'success': False, 'message': "Rasm fayli juda kichik yoki bo'sh."}, status=400)
+        return JsonResponse({'status': 'error', 'success': False, 'message': "Rasm fayli juda kichik yoki bo'sh."}, status=400)
 
-    # OpenCV / Haar Cascade yordamida kadrda yuz borligini tekshirish
-    is_valid_face, face_err = validate_face_image(image_bytes)
-    if not is_valid_face:
-        return JsonResponse({'success': False, 'message': face_err}, status=400)
+    # AI Yuz tekshiruvi, liveness va 128-d embedding yaratish
+    is_valid_face, embedding_vec, face_err = validate_and_enroll_face(image_bytes)
+    if not is_valid_face or not embedding_vec:
+        return JsonResponse({'status': 'error', 'success': False, 'message': face_err}, status=400)
 
     # Eski face_image ni diskdan o'chirish (fayllar to'planib qolmasligi uchun)
     if staff_member.face_image:
@@ -579,21 +627,26 @@ def register_face_api(request, pk):
         except Exception:
             pass
 
-    # Yangi rasmni saqlash
+    # Yangi rasmni va AI embedding vektorini saqlash
     fname = f"face_reg_{staff_member.id}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-    staff_member.face_image.save(fname, ContentFile(image_bytes), save=True)
+    staff_member.face_image.save(fname, ContentFile(image_bytes), save=False)
+    staff_member.set_face_embedding(embedding_vec)
+    staff_member.face_enrolled_at = timezone.now()
+    staff_member.save(update_fields=['face_image', 'face_embedding', 'face_enrolled_at'])
 
     logger.info(
-        "Face ID ro'yxatdan o'tkazildi: xodim=%s (id=%d), fayl=%s",
-        staff_member.username, staff_member.id, fname
+        "Face ID AI embedding saqlandi: xodim=%s (id=%d), vektor_uzunligi=%d, fayl=%s",
+        staff_member.username, staff_member.id, len(embedding_vec), fname
     )
 
     return JsonResponse({
+        'status': 'success',
         'success': True,
-        'message': "Yuz muvaffaqiyatli ro'yxatdan o'tkazildi!",
+        'message': "Yuz va AI biometrik embedding muvaffaqiyatli ro'yxatdan o'tkazildi!",
         'face_image_url': staff_member.face_image.url,
         'staff_id': staff_member.id,
         'staff_name': staff_member.get_full_name() or staff_member.username,
+        'embedding_dims': len(embedding_vec),
     })
 
 
@@ -603,31 +656,32 @@ def enroll_my_face_api(request):
     """
     Xodimning o'z yuzini ro'yxatdan o'tkazishi (Self-Enrollment) API.
     Davomat portalida yuz ro'yxatdan o'tmagan bo'lsa xodim o'zi kamerada skanerlaydi.
+    128-d AI yuz embeddingi PostgreSQL/SQLite bazaga JSON sifatida saqlanadi.
     """
     if request.method != 'POST':
-        return JsonResponse({'success': False, 'message': "Faqat POST so'rov qabul qilinadi."}, status=405)
+        return JsonResponse({'status': 'error', 'success': False, 'message': "Faqat POST so'rov qabul qilinadi."}, status=405)
 
     try:
         data = json.loads(request.body)
     except json.JSONDecodeError:
-        return JsonResponse({'success': False, 'message': "JSON formati noto'g'ri."}, status=400)
+        return JsonResponse({'status': 'error', 'success': False, 'message': "JSON formati noto'g'ri."}, status=400)
 
     face_b64 = data.get('face_image', '').strip()
     if not face_b64:
-        return JsonResponse({'success': False, 'message': "face_image maydoni bo'sh yuborildi."}, status=400)
+        return JsonResponse({'status': 'error', 'success': False, 'message': "face_image maydoni bo'sh yuborildi."}, status=400)
 
     try:
         image_bytes = decode_base64_image(face_b64)
     except Exception:
-        return JsonResponse({'success': False, 'message': "Rasm base64 formatida noto'g'ri."}, status=400)
+        return JsonResponse({'status': 'error', 'success': False, 'message': "Rasm base64 formatida noto'g'ri."}, status=400)
 
     if len(image_bytes) < 1000:
-        return JsonResponse({'success': False, 'message': "Rasm fayli juda kichik yoki bo'sh."}, status=400)
+        return JsonResponse({'status': 'error', 'success': False, 'message': "Rasm fayli juda kichik yoki bo'sh."}, status=400)
 
-    # OpenCV orqali yuz borligini va sifatini tekshirish
-    is_valid_face, face_err = validate_face_image(image_bytes)
-    if not is_valid_face:
-        return JsonResponse({'success': False, 'message': face_err}, status=400)
+    # AI Yuz tekshiruvi, liveness va 128-d embedding yaratish
+    is_valid_face, embedding_vec, face_err = validate_and_enroll_face(image_bytes)
+    if not is_valid_face or not embedding_vec:
+        return JsonResponse({'status': 'error', 'success': False, 'message': face_err}, status=400)
 
     user = request.user
     if user.face_image:
@@ -637,16 +691,21 @@ def enroll_my_face_api(request):
             pass
 
     fname = f"face_reg_{user.id}_{timezone.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-    user.face_image.save(fname, ContentFile(image_bytes), save=True)
+    user.face_image.save(fname, ContentFile(image_bytes), save=False)
+    user.set_face_embedding(embedding_vec)
+    user.face_enrolled_at = timezone.now()
+    user.save(update_fields=['face_image', 'face_embedding', 'face_enrolled_at'])
 
-    logger.info("Xodim o'z yuzini ro'yxatdan o'tkazdi: %s (id=%d)", user.username, user.id)
+    logger.info("Xodim o'z yuzini AI embedding bilan ro'yxatdan o'tkazdi: %s (id=%d)", user.username, user.id)
 
     return JsonResponse({
+        'status': 'success',
         'success': True,
-        'message': "Yuzingiz muvaffaqiyatli ro'yxatdan o'tkazildi!",
+        'message': "Yuzingiz va AI biometrik embedding muvaffaqiyatli saqlandi!",
         'face_image_url': user.face_image.url,
         'staff_id': user.id,
         'staff_name': user.get_full_name() or user.username,
+        'embedding_dims': len(embedding_vec),
     })
 
 
@@ -750,6 +809,7 @@ def attendance_daily(request):
         selected_date = datetime.strptime(selected_date_str, '%Y-%m-%d').date()
     except ValueError:
         selected_date = today
+        selected_date_str = today.strftime('%Y-%m-%d')
 
     groups = Group.objects.all()
     if request.user.is_teacher and not request.user.can_manage_all:
@@ -764,10 +824,10 @@ def attendance_daily(request):
 
     children = []
     if selected_group:
-        children = Child.objects.filter(group=selected_group, is_active=True).order_by('first_name')
+        children = list(Child.objects.filter(group=selected_group, is_active=True).order_by('first_name', 'last_name'))
         # Fetch existing attendance records for the date
         existing_attendances = {
-            att.child_id: att for att in ChildAttendance.objects.filter(child__in=children, date=selected_date)
+            att.child_id: att for att in ChildAttendance.objects.filter(child_id__in=[c.id for c in children], date=selected_date)
         }
         for child in children:
             child.current_attendance = existing_attendances.get(child.id)
@@ -787,29 +847,45 @@ def attendance_save_ajax(request):
         try:
             data = json.loads(request.body)
             date_str = data.get('date')
+            if date_str:
+                att_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            else:
+                att_date = timezone.localtime(timezone.now()).date()
+
             records = data.get('records', [])
-            att_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            # Support both batch list and single child auto-save
+            if not records and data.get('child_id'):
+                records = [{
+                    'child_id': data.get('child_id'),
+                    'status': data.get('status'),
+                    'notes': data.get('notes', '')
+                }]
 
             saved_count = 0
             for item in records:
                 child_id = item.get('child_id')
-                status = item.get('status', 'PRESENT')
-                notes = item.get('notes', '')
+                if not child_id:
+                    continue
+                raw_status = str(item.get('status', 'PRESENT')).strip().upper()
+                notes = (item.get('notes') or '').strip()
 
-                att = ChildAttendance.objects.filter(child_id=child_id, date=att_date).first()
-                if att:
-                    att.status = status
-                    att.notes = notes
-                    att.marked_by = request.user
-                    att.save()
+                # Normalize status variations (Present, Excused, Unexcused)
+                if raw_status in ['EXCUSED', 'ABSENT_EXCUSED', 'SABABLI', 'ABSENT-EXCUSED']:
+                    status = 'EXCUSED'
+                elif raw_status in ['UNEXCUSED', 'ABSENT_UNEXCUSED', 'ABSENT', 'SABABSIZ', 'ABSENT-UNEXCUSED']:
+                    status = 'UNEXCUSED'
                 else:
-                    ChildAttendance.objects.create(
-                        child_id=child_id,
-                        date=att_date,
-                        status=status,
-                        notes=notes,
-                        marked_by=request.user
-                    )
+                    status = 'PRESENT'
+
+                ChildAttendance.objects.update_or_create(
+                    child_id=child_id,
+                    date=att_date,
+                    defaults={
+                        'status': status,
+                        'notes': notes,
+                        'marked_by': request.user
+                    }
+                )
                 saved_count += 1
 
             log_audit(
@@ -894,366 +970,49 @@ def staff_attendance_portal(request):
 @login_required
 def staff_check_in_api(request):
     """
-    Xodimlar uchun Face ID + GPS davomat API.
+    Xodimlar uchun zamonaviy AI Face ID + GPS davomat API (Strict 1:1 Biometric Verification).
 
-    Xavfsizlik qatlamlari (tartib bo'yicha):
-      1. face_image mavjudligi tekshiruvi
-      2. Xodimda avatar (etalon rasm) borligini tekshirish
-      3. Haqiqiy yuz taqqoslash (face_recognition / OpenCV)
-      4. GPS / Geofence tekshiruvi
-      5. Davomat yozuvi yaratish/yangilash
-    """
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            user_lat = float(data.get('latitude', 0))
-            user_lon = float(data.get('longitude', 0))
-            action_type = data.get('action', 'check_in')  # check_in or check_out
-            face_b64 = data.get('face_image', '')
-
-            # ── 1. Face rasm mavjudligini tekshirish ──────────────────────────────
-            if not face_b64:
-                return JsonResponse({
-                    'success': False,
-                    'message': "Yuz rasmi (face_image) yuborilmadi. Kamera ruxsati berilganligini tekshiring."
-                }, status=400)
-
-            # ── 2. Xodimda etalon yuz rasmi borligini tekshirish ─────────────────
-            # Ustuvorlik: face_image (maxsus Face ID rasm) > avatar (profil rasmi)
-            user = request.user
-            has_face_image = bool(user.face_image and user.face_image.name)
-            has_avatar = bool(user.avatar and user.avatar.name)
-
-            if not has_face_image and not has_avatar:
-                return JsonResponse({
-                    'success': False,
-                    'message': (
-                        "Xodimning tizimda etalon yuzi saqlanmagan! "
-                        "Iltimos, 'Yuz Ro'yxatdan O'tkazish' tugmasini bosib yuzingizni ro'yxatdan o'tkazing."
-                    )
-                }, status=400)
-
-            # ── 3. Haqiqiy yuz taqqoslash ─────────────────────────────────────────
-            try:
-                incoming_bytes = decode_base64_image(face_b64)
-            except Exception:
-                return JsonResponse({
-                    'success': False,
-                    'message': "Yuborilgan rasm noto'g'ri formatda (base64 xatosi)."
-                }, status=400)
-
-            try:
-                # ── Faqat SHU xodimning etalon rasmi olinadi ──────────────────
-                # face_image (Face ID maxsus rasm) ustunlik qiladi, yo'q bo'lsa avatar
-                if has_face_image:
-                    reference_path = user.face_image.path
-                else:
-                    reference_path = user.avatar.path
-            except Exception:
-                return JsonResponse({
-                    'success': False,
-                    'message': "Etalon yuz faylini o'qib bo'lmadi. Administrator bilan bog'laning."
-                }, status=400)
-
-            # ── Xavfsizlik log'i: KIM va QAYSI fayl bilan taqqoslanmoqda ──────
-            # verify_face() faqat reference_path dagi bitta yuz bilan taqqoslaydi.
-            # U HECH QACHON bazadagi boshqa xodimlar yuzlarini tekshirmaydi.
-            logger.info(
-                "Face ID tekshiruvi: xodim=%s (id=%d), etalon=%s",
-                user.username, user.id, reference_path,
-            )
-
-            face_match, face_message, face_distance, similarity_pct = verify_face(
-                incoming_image_bytes=incoming_bytes,
-                stored_avatar_path=reference_path,  # ← FAQAT shu xodimning etalon rasmi
-            )
-
-            if not face_match:
-                # Yuz mos kelmadi — bazaga REJECTED yozuv yozib, 400 qaytarish
-                now_rej = timezone.localtime(timezone.now())
-                today_rej = now_rej.date()
-                try:
-                    fname = f"face_rejected_{user.id}_{today_rej.strftime('%Y%m%d')}_{now_rej.strftime('%H%M%S')}.jpg"
-                    rej_image = ContentFile(incoming_bytes, name=fname)
-                    existing_rej = StaffAttendance.objects.filter(
-                        teacher=user, date=today_rej
-                    ).order_by('-is_within_geofence', 'id').first()
-
-                    rejection_note = f"FACE_ID_REJECTED ({similarity_pct:.1f}%): {face_message}"
-                    if existing_rej and not existing_rej.is_within_geofence:
-                        existing_rej.face_snapshot = rej_image
-                        existing_rej.notes = rejection_note
-                        existing_rej.save()
-                    elif not existing_rej:
-                        StaffAttendance.objects.create(
-                            teacher=user,
-                            date=today_rej,
-                            latitude=user_lat,
-                            longitude=user_lon,
-                            is_within_geofence=False,
-                            face_snapshot=rej_image,
-                            status='REJECTED_GEOFENCE',
-                            notes=rejection_note,
-                        )
-                except Exception:
-                    pass  # Yozuv xatosi asosiy javobni to'sib qolmasin
-
-                return JsonResponse({
-                    'success': False,
-                    'face_verified': False,
-                    'face_distance': round(face_distance, 4),
-                    'similarity_score': similarity_pct,
-                    'message': face_message,
-                }, status=400)
-
-            # ── 4. GPS / Geofence tekshiruvi ──────────────────────────────────────
-            settings = KindergartenSettings.get_settings()
-            k_lat = settings.latitude
-            k_lon = settings.longitude
-            radius_limit = settings.geofence_radius_meters
-
-            distance = haversine_distance(user_lat, user_lon, k_lat, k_lon)
-            now = timezone.localtime(timezone.now())
-            today = now.date()
-            current_time = now.time()
-
-            is_within_radius = distance <= radius_limit
-
-            # Face tasdiqlangan — rasmni fayl sifatida saqlashga tayyorlaymiz
-            fname = f"face_{user.id}_{today.strftime('%Y%m%d')}_{now.strftime('%H%M%S')}.jpg"
-            image_file = ContentFile(incoming_bytes, name=fname)
-
-            if not is_within_radius:
-                # Yuz to'g'ri, lekin GPS hududdan tashqarida
-                existing_log = StaffAttendance.objects.filter(
-                    teacher=user, date=today
-                ).order_by('-is_within_geofence', 'id').first()
-
-                if existing_log:
-                    if not existing_log.is_within_geofence:
-                        existing_log.latitude = user_lat
-                        existing_log.longitude = user_lon
-                        existing_log.distance_meters = distance
-                        existing_log.face_snapshot = image_file
-                        existing_log.status = 'REJECTED_GEOFENCE'
-                        existing_log.notes = (
-                            f"Face ID tasdiqlandi, lekin GPS xatosi: "
-                            f"{distance:.1f}m uzoqlikda (Ruxsat: {radius_limit}m). "
-                            f"Face distance: {face_distance:.3f}"
-                        )
-                        existing_log.save()
-                    StaffAttendance.objects.filter(
-                        teacher=user, date=today
-                    ).exclude(id=existing_log.id).delete()
-                else:
-                    StaffAttendance.objects.create(
-                        teacher=user,
-                        date=today,
-                        latitude=user_lat,
-                        longitude=user_lon,
-                        distance_meters=distance,
-                        is_within_geofence=False,
-                        face_snapshot=image_file,
-                        status='REJECTED_GEOFENCE',
-                        notes=(
-                            f"Face ID tasdiqlandi, lekin GPS xatosi: "
-                            f"{distance:.1f}m uzoqlikda (Ruxsat: {radius_limit}m)."
-                        )
-                    )
-
-                return JsonResponse({
-                    'success': False,
-                    'face_verified': True,
-                    'within_geofence': False,
-                    'distance': distance,
-                    'radius_limit': radius_limit,
-                    'message': (
-                        f"Rad etildi! Yuz tasdiqlandi, lekin siz bog'cha hududidan "
-                        f"{distance:.1f} metr uzoqdasiz. "
-                        f"Ruxsat etilgan radius: {radius_limit} metr."
-                    )
-                }, status=400)
-
-            # ── 5. Davomat yozuvi yaratish/yangilash ──────────────────────────────
-            log_entry = StaffAttendance.objects.filter(
-                teacher=user, date=today
-            ).order_by('-is_within_geofence', 'id').first()
-
-            face_note = f"Face ID tasdiqlandi (masofa: {face_distance:.3f}). GPS: {distance:.1f}m."
-
-            # Ishga kelish vaqti va kechikish shtraflari hisob-kitobi
-            work_start = settings.work_start_time
-            late_minutes, penalty_pct, penalty_amount = 0, Decimal('0.00'), Decimal('0.00')
-            is_late = False
-
-            if action_type != 'check_out':
-                late_minutes, penalty_pct, penalty_amount = calculate_late_penalty(
-                    current_time, work_start, user.salary
-                )
-                is_late = (late_minutes > 0)
-                status_val = 'LATE' if is_late else 'ON_TIME'
-            else:
-                status_val = 'VERIFIED'
-
-            if not log_entry:
-                log_entry = StaffAttendance.objects.create(
-                    teacher=user,
-                    date=today,
-                    check_in_time=current_time if action_type != 'check_out' else None,
-                    check_out_time=current_time if action_type == 'check_out' else None,
-                    latitude=user_lat,
-                    longitude=user_lon,
-                    distance_meters=distance,
-                    is_within_geofence=True,
-                    face_snapshot=image_file,
-                    status=status_val,
-                    late_minutes=late_minutes,
-                    penalty_percent=penalty_pct,
-                    penalty_amount=penalty_amount,
-                    is_late=is_late,
-                    notes=face_note
-                )
-            else:
-                # Dublikat yozuvlarni tozalash
-                StaffAttendance.objects.filter(
-                    teacher=user, date=today
-                ).exclude(id=log_entry.id).delete()
-
-                if action_type == 'check_out':
-                    log_entry.check_out_time = current_time
-                    log_entry.notes = (
-                        (log_entry.notes or '') +
-                        f" | Chiqish: {current_time.strftime('%H:%M:%S')} — {face_note}"
-                    )
-                else:
-                    if not log_entry.check_in_time:
-                        log_entry.check_in_time = current_time
-                        log_entry.late_minutes = late_minutes
-                        log_entry.penalty_percent = penalty_pct
-                        log_entry.penalty_amount = penalty_amount
-                        log_entry.is_late = is_late
-                        log_entry.status = status_val
-                    else:
-                        log_entry.notes = (
-                            (log_entry.notes or '') +
-                            f" | Qayta tekshiruv: {current_time.strftime('%H:%M:%S')} — {face_note}"
-                        )
-
-                log_entry.face_snapshot = image_file
-                log_entry.latitude = user_lat
-                log_entry.longitude = user_lon
-                log_entry.distance_meters = distance
-                log_entry.is_within_geofence = True
-                if log_entry.status == 'REJECTED_GEOFENCE':
-                    log_entry.status = status_val
-                log_entry.save()
-
-            full_name = f"{user.first_name} {user.last_name}".strip() or user.get_full_name().strip() or user.username
-
-            # Agar kechikkan bo'lsa, avtomatik shtraf yozuvi yaratamiz va oylik hisob-kitobni yangilaymiz
-            if is_late and action_type != 'check_out':
-                StaffBonusPenalty.objects.update_or_create(
-                    staff=user,
-                    date=today,
-                    record_type='PENALTY_LATE',
-                    defaults={
-                        'late_minutes': late_minutes,
-                        'percentage': penalty_pct,
-                        'amount': penalty_amount,
-                        'description': f"Face ID kechikish: {current_time.strftime('%H:%M:%S')}. {late_minutes} minut kechikdi (-{penalty_pct}%).",
-                        'staff_attendance': log_entry,
-                    }
-                )
-                sync_staff_monthly_salary(user, today.month, today.year)
-
-            # Tizim tarixiga (AuditLog) yozish
-            log_audit(
-                category='FACE_ID',
-                action=f"Face ID orqali {action_type} tasdiqlandi",
-                description=f"Xodim: {full_name} ({user.position_display}). Vaqt: {current_time.strftime('%H:%M:%S')}. Holat: {'Kechikkan' if is_late else 'Vaqtida'}. Kechikish: {late_minutes} min, Shtraf: {penalty_amount:,.0f} UZS ({penalty_pct}%). Masofa: {distance:.1f}m.",
-                user=user,
-                request=request
-            )
-            if is_late and action_type != 'check_out':
-                log_audit(
-                    category='PENALTY',
-                    action="Kechikish shtrafi hisoblandi",
-                    description=f"Xodim {full_name} ishga {late_minutes} minut kechikib keldi. Oylik maoshidan {penalty_pct}% ({penalty_amount:,.0f} UZS) ushlab qolindi.",
-                    user=user,
-                    request=request
-                )
-
-            if action_type == 'check_in':
-                if is_late:
-                    greeting = f"Kechikish qayd etildi, {full_name}! {late_minutes} minut kechikdingiz (-{penalty_pct}% shtraf). Kechikkanlar ro'yxatiga kiritildingiz."
-                else:
-                    greeting = f"Xush kelibsiz, {full_name}! Vaqtida keldingiz."
-            else:
-                greeting = f"Xayr, {full_name}!"
-
-            return JsonResponse({
-                'success': True,
-                'first_name': user.first_name or '',
-                'last_name': user.last_name or '',
-                'full_name': full_name,
-                'employee_name': full_name,
-                'action': action_type,
-                'greeting': greeting,
-                'face_verified': True,
-                'similarity_score': similarity_pct,
-                'within_geofence': True,
-                'distance': distance,
-                'face_distance': round(face_distance, 4),
-                'time': current_time.strftime('%H:%M:%S'),
-                'status': log_entry.get_status_display(),
-                'is_late': is_late,
-                'late_minutes': late_minutes,
-                'penalty_percent': float(penalty_pct),
-                'penalty_amount': float(penalty_amount),
-                'message': f"{face_message} GPS: {distance:.1f}m. {'Kechikish: ' + str(late_minutes) + ' min (' + str(penalty_pct) + '%)' if is_late else 'Vaqtida'}",
-            })
-
-        except Exception as e:
-            logger.exception("staff_check_in_api xatosi: %s", e)
-            return JsonResponse({'success': False, 'message': f"Server xatosi: {str(e)}"}, status=500)
-
-    return JsonResponse({'success': False, 'message': 'Invalid request'}, status=405)
-
-
-# ── Face Identify API (1:N — Kiosk rejimi) ────────────────────────────────────
-@csrf_exempt
-def face_identify_api(request):
-    """
-    Kamera kadridan yuzni FAQAT xodimlar (User) bazasidan qidiradi va
-    topilgan xodimning bugungi StaffAttendance yozuvini yaratadi/yangilaydi.
-
-    Qoidalar:
-      • Child / ChildAttendance jadvallariga HECH QACHON murojaat qilmaydi.
-      • Faqat face_image yoki avatar bor xodimlar nomzod hisoblanadi.
-      • Threshold: deepface < 0.45 (cosine), opencv >= 0.72 (histogram).
-      • Login talab qilmaydi — kiosk / planshет rejimi uchun mo'ljallangan.
-
-    POST JSON:
-        {
-          "face_image": "data:image/jpeg;base64,...",
-          "latitude":   41.311,
-          "longitude":  69.240,
-          "action":     "check_in"   // yoki "check_out"
-        }
+    Qoidalar va xavfsizlik:
+      1. Faqat xodimlar (Staff / User modeli) bilan ishlaydi. Bolalar (Child) butunlay chiqarilgan.
+      2. 1:1 Taqqoslash: Bazani ko'r-ko'rona skanerlamaydi. Aynan login qilgan xodimning
+         saqlangan 128-d AI yuz embeddingi bilan matematik taqqoslash (Cosine distance <= 0.40) bajariladi.
+      3. Liveness / Anti-spoofing tekshiruvi: Tasvir xiraligi (Laplacian), qora-oq nusxa va
+         yorug'lik tekshiriladi.
+      4. Qat'iy xatolik xabarlari:
+         - Yuz topilmasa: {"status": "error", "message": "Yuz topilmadi. Qaytadan urinib ko'ring."}
+         - Ko'p yuz bo'lsa: {"status": "error", "message": "Kadrda 1 tadan ortiq odam bor."}
+         - Yuz mos kelmasa: {"status": "error", "message": "Yuz mos kelmadi. Xodim tasdiqlanmadi."}
+      5. GPS geofence va 08:05 dan keyin kechikish jarimalari avtomatik hisoblanadi.
+      6. Xato bo'lsa hech qachon server crash bo'lmaydi (502 Bad Gateway yo'q).
     """
     if request.method != 'POST':
-        return JsonResponse({'success': False, 'message': 'Faqat POST qabul qilinadi.'}, status=405)
+        return JsonResponse({
+            'status': 'error',
+            'success': False,
+            'message': "Faqat POST so'rov qabul qilinadi."
+        }, status=405)
 
     try:
-        data        = json.loads(request.body)
-        face_b64    = data.get('face_image', '').strip()
-        user_lat    = float(data.get('latitude', 0))
-        user_lon    = float(data.get('longitude', 0))
-        action_type = data.get('action', 'check_in')
+        # ── So'rov ma'lumotlarini parse qilish ──────────────────────────────────
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, Exception):
+            return JsonResponse({
+                'status': 'error',
+                'success': False,
+                'message': "JSON formati noto'g'ri."
+            }, status=400)
 
-        # ── 1. Rasm yuborilganligini tekshirish ───────────────────────────────
+        user_lat      = float(data.get('latitude', 0) or 0)
+        user_lon      = float(data.get('longitude', 0) or 0)
+        user_accuracy = float(data.get('accuracy', 0) or 0)
+        action_type   = data.get('action', 'check_in')
+        face_b64      = (data.get('face_image', '') or '').strip()
+
+        # ── 1. Rasm mavjudligini tekshirish ───────────────────────────────────
         if not face_b64:
             return JsonResponse({
+                'status': 'error',
                 'success': False,
                 'message': "Yuz rasmi (face_image) yuborilmadi. Kamera ruxsati berilganligini tekshiring."
             }, status=400)
@@ -1262,80 +1021,423 @@ def face_identify_api(request):
             incoming_bytes = decode_base64_image(face_b64)
         except Exception:
             return JsonResponse({
+                'status': 'error',
                 'success': False,
                 'message': "Yuborilgan rasm noto'g'ri formatda (base64 xatosi)."
             }, status=400)
 
-        if len(incoming_bytes) < 1000:
+        if len(incoming_bytes) < 500:
             return JsonResponse({
+                'status': 'error',
                 'success': False,
                 'message': "Rasm fayli juda kichik. Kamera kadrini qayta oling."
             }, status=400)
 
-        # ── 2. FAQAT xodimlar — face_image yoki avatar mavjud bo'lganlar ──────
-        # Child / ChildAttendance jadvallariga HECH QACHON murojaat qilinmaydi.
-        staff_candidates = User.objects.filter(
-            is_active=True
-        ).filter(
-            Q(face_image__isnull=False, face_image__gt='') |
-            Q(avatar__isnull=False, avatar__gt='')
-        ).distinct()
-
-        logger.info(
-            "face_identify_api: %d nomzod xodim tekshiriladi (Child aralashmaydi).",
-            staff_candidates.count(),
-        )
-
-        # ── 3. 1:N Yuz identifikatsiyasi (faqat xodimlar bazasi) ─────────────
-        found, matched_user, face_msg, face_dist, similarity_pct = identify_staff_face(
-            incoming_bytes,
-            staff_candidates,
-        )
-
-        if not found or matched_user is None:
+        # ── 2. Staff-Only tekshiruvi (Child umuman aralashmaydi) ──────────────
+        staff_user = request.user
+        if not staff_user.is_authenticated:
             return JsonResponse({
-                'success':          False,
-                'face_verified':    False,
-                'face_distance':    round(face_dist, 4),
-                'similarity_score': similarity_pct,
-                'message':          face_msg,
-            }, status=400)
+                'status': 'error',
+                'success': False,
+                'message': "Tizimga kirish talab etiladi."
+            }, status=401)
 
-        # ── 4. Topilgan xodim — GPS / Geofence tekshiruvi ─────────────────────
-        kg_settings  = KindergartenSettings.get_settings()
-        k_lat        = kg_settings.latitude
-        k_lon        = kg_settings.longitude
-        radius_limit = kg_settings.geofence_radius_meters
+        # ── 3. Strict 1:1 Biometric Verification ──────────────────────────────
+        # Bu yerda bazadagi boshqa xodimlar qidirilmaydi.
+        # Faqat SHU xodimning saqlangan embeddingi bilan matematik solishtirish o'tkaziladi.
+        verify_result = verify_staff_face_1to1(
+            incoming_image_bytes=incoming_bytes,
+            staff_user=staff_user,
+            threshold=STRICT_FACE_DISTANCE_THRESHOLD
+        )
 
-        distance         = haversine_distance(user_lat, user_lon, k_lat, k_lon)
-        is_within_radius = distance <= radius_limit
+        face_match     = verify_result.get("is_match", False)
+        face_message   = verify_result.get("message", "")
+        face_distance  = verify_result.get("distance", 1.0)
+        similarity_pct = verify_result.get("similarity_pct", 0.0)
+        error_code     = verify_result.get("error_code")
 
-        now          = timezone.localtime(timezone.now())
-        today        = now.date()
+        now = timezone.localtime(timezone.now())
+        today = now.date()
         current_time = now.time()
 
-        full_name  = matched_user.get_full_name().strip() or matched_user.username
-        fname      = f"face_id_{matched_user.id}_{today.strftime('%Y%m%d')}_{now.strftime('%H%M%S')}.jpg"
+        if not face_match:
+            # Agar yuz mos kelmasa yoki kadrda yuz topilmasa, rad yozuvi yoziladi
+            try:
+                fname_rej = f"face_rejected_{staff_user.id}_{today.strftime('%Y%m%d')}_{now.strftime('%H%M%S')}.jpg"
+                rej_image = ContentFile(incoming_bytes, name=fname_rej)
+                rej_note  = f"FACE_REJECTED [{error_code or 'MISMATCH'}] ({similarity_pct:.1f}%): {face_message}"
+
+                existing_rej = StaffAttendance.objects.filter(
+                    teacher=staff_user, date=today
+                ).order_by('-is_within_geofence', 'id').first()
+
+                if existing_rej and not existing_rej.is_within_geofence:
+                    existing_rej.face_snapshot = rej_image
+                    existing_rej.notes         = rej_note
+                    existing_rej.save(update_fields=['face_snapshot', 'notes'])
+                elif not existing_rej:
+                    StaffAttendance.objects.create(
+                        teacher            = staff_user,
+                        date               = today,
+                        latitude           = user_lat,
+                        longitude          = user_lon,
+                        is_within_geofence = False,
+                        face_snapshot      = rej_image,
+                        status             = 'REJECTED_GEOFENCE',
+                        notes              = rej_note,
+                    )
+            except Exception as _rej_err:
+                logger.warning("staff_check_in_api: rad yozuvida xato: %s", _rej_err)
+
+            return JsonResponse({
+                'status':           'error',
+                'success':          False,
+                'face_verified':    False,
+                'face_distance':    round(face_distance, 4),
+                'similarity_score': similarity_pct,
+                'error_code':       error_code,
+                'message':          face_message,
+            }, status=400)
+
+        # ── 4. GPS / Geofence tekshiruvi ──────────────────────────────────────
+        settings_obj = KindergartenSettings.get_settings()
+        k_lat        = settings_obj.latitude
+        k_lon        = settings_obj.longitude
+        radius_limit = settings_obj.geofence_radius_meters
+
+        is_within_radius, distance, effective_dist, geo_reason = evaluate_geofence(
+            user_lat=user_lat,
+            user_lon=user_lon,
+            target_lat=k_lat,
+            target_lon=k_lon,
+            radius_limit=radius_limit,
+            accuracy=user_accuracy
+        )
+
+        fname_ok = f"face_{staff_user.id}_{today.strftime('%Y%m%d')}_{now.strftime('%H%M%S')}.jpg"
+        image_file = ContentFile(incoming_bytes, name=fname_ok)
+
+        if not is_within_radius:
+            # Yuz AI orqali tasdiqlandi, lekin GPS hududdan tashqarida
+            try:
+                geo_log = StaffAttendance.objects.filter(
+                    teacher=staff_user, date=today
+                ).order_by('-is_within_geofence', 'id').first()
+
+                geo_note = (
+                    f"Face ID 1:1 tasdiqlandi ({similarity_pct:.1f}%), lekin GPS rad etildi: {geo_reason}"
+                )
+
+                if geo_log and not geo_log.is_within_geofence:
+                    geo_log.latitude        = user_lat
+                    geo_log.longitude       = user_lon
+                    geo_log.distance_meters = distance
+                    geo_log.face_snapshot   = image_file
+                    geo_log.status          = 'REJECTED_GEOFENCE'
+                    geo_log.notes           = geo_note
+                    geo_log.save()
+                elif not geo_log:
+                    StaffAttendance.objects.create(
+                        teacher            = staff_user,
+                        date               = today,
+                        latitude           = user_lat,
+                        longitude          = user_lon,
+                        distance_meters    = distance,
+                        is_within_geofence = False,
+                        face_snapshot      = image_file,
+                        status             = 'REJECTED_GEOFENCE',
+                        notes              = geo_note,
+                    )
+            except Exception as _g_err:
+                logger.warning("Geofence rad yozuvida xato: %s", _g_err)
+
+            return JsonResponse({
+                'status':             'error',
+                'success':            False,
+                'face_verified':      True,
+                'within_geofence':    False,
+                'distance':           round(distance, 1),
+                'effective_distance': round(effective_dist, 1),
+                'radius_limit':       radius_limit,
+                'accuracy':           round(user_accuracy, 1),
+                'face_distance':      round(face_distance, 4),
+                'similarity_score':   similarity_pct,
+                'message': (
+                    f"Yuz tasdiqlandi, lekin siz bog'cha hududidan {distance:.1f} metr uzoqdasiz. "
+                    f"Ruxsat etilgan radius: {radius_limit:.0f} metr (GPS aniqligi: ±{user_accuracy:.0f}m)."
+                ),
+            }, status=400)
+
+        # ── 5. StaffAttendance yozuvi — Faqat Yuz va GPS to'g'ri bo'lganda ─────
+        log_entry = StaffAttendance.objects.filter(
+            teacher=staff_user, date=today
+        ).order_by('-is_within_geofence', 'id').first()
+
+        work_start = settings_obj.work_start_time
+        late_minutes, penalty_pct, penalty_amount = 0, Decimal('0.00'), Decimal('0.00')
+        is_late = False
+
+        if action_type != 'check_out':
+            late_minutes, penalty_pct, penalty_amount = calculate_late_penalty(
+                current_time, work_start, staff_user.salary
+            )
+            is_late = (late_minutes > 0)
+            status_val = 'LATE' if is_late else 'ON_TIME'
+        else:
+            status_val = 'VERIFIED'
+
+        face_note = (
+            f"Face ID 1:1 AI tasdiqlandi (masofa: {face_distance:.3f}, {similarity_pct:.1f}%). "
+            f"GPS: {distance:.1f}m."
+        )
+
+        if not log_entry:
+            log_entry = StaffAttendance.objects.create(
+                teacher            = staff_user,
+                date               = today,
+                check_in_time      = current_time if action_type != 'check_out' else None,
+                check_out_time     = current_time if action_type == 'check_out' else None,
+                latitude           = user_lat,
+                longitude          = user_lon,
+                distance_meters    = distance,
+                is_within_geofence = True,
+                face_snapshot      = image_file,
+                status             = status_val,
+                late_minutes       = late_minutes,
+                penalty_percent    = penalty_pct,
+                penalty_amount     = penalty_amount,
+                is_late            = is_late,
+                notes              = face_note,
+            )
+        else:
+            StaffAttendance.objects.filter(
+                teacher=staff_user, date=today
+            ).exclude(id=log_entry.id).delete()
+
+            if action_type == 'check_out':
+                log_entry.check_out_time = current_time
+                log_entry.notes = (
+                    (log_entry.notes or '') +
+                    f" | Chiqish: {current_time.strftime('%H:%M:%S')} — {face_note}"
+                )
+            else:
+                if not log_entry.check_in_time:
+                    log_entry.check_in_time   = current_time
+                    log_entry.late_minutes    = late_minutes
+                    log_entry.penalty_percent = penalty_pct
+                    log_entry.penalty_amount  = penalty_amount
+                    log_entry.is_late         = is_late
+                    log_entry.status          = status_val
+                else:
+                    log_entry.notes = (
+                        (log_entry.notes or '') +
+                        f" | Qayta tekshiruv: {current_time.strftime('%H:%M:%S')} — {face_note}"
+                    )
+
+            log_entry.face_snapshot      = image_file
+            log_entry.latitude           = user_lat
+            log_entry.longitude          = user_lon
+            log_entry.distance_meters    = distance
+            log_entry.is_within_geofence = True
+            if log_entry.status == 'REJECTED_GEOFENCE':
+                log_entry.status = status_val
+            log_entry.save()
+
+        full_name = (
+            f"{staff_user.first_name} {staff_user.last_name}".strip()
+            or staff_user.get_full_name().strip()
+            or staff_user.username
+        )
+
+        # ── 6. Kechikish shtraflari hisob-kitobi (08:05 dan keyin) ─────────────
+        if is_late and action_type != 'check_out':
+            StaffBonusPenalty.objects.update_or_create(
+                staff=staff_user,
+                date=today,
+                record_type='PENALTY_LATE',
+                defaults={
+                    'late_minutes':     late_minutes,
+                    'percentage':       penalty_pct,
+                    'amount':           penalty_amount,
+                    'description':      (
+                        f"Face ID kechikish: {current_time.strftime('%H:%M:%S')}. "
+                        f"{late_minutes} minut kechikdi (-{penalty_pct}%)."
+                    ),
+                    'staff_attendance': log_entry,
+                }
+            )
+            sync_staff_monthly_salary(staff_user, today.month, today.year)
+
+        # ── 7. Audit log ──────────────────────────────────────────────────────
+        log_audit(
+            category='FACE_ID',
+            action=f"Face ID 1:1 orqali {action_type} tasdiqlandi",
+            description=(
+                f"Xodim: {full_name} ({staff_user.position_display}). "
+                f"Vaqt: {current_time.strftime('%H:%M:%S')}. "
+                f"Holat: {'Kechikkan' if is_late else 'Vaqtida'}. "
+                f"Kechikish: {late_minutes} min, Shtraf: {penalty_amount:,.0f} UZS ({penalty_pct}%). "
+                f"AI O'xshashlik: {similarity_pct:.1f}% (distance={face_distance:.3f}). Masofa: {distance:.1f}m."
+            ),
+            user=staff_user,
+            request=request,
+        )
+
+        if action_type == 'check_in':
+            if is_late:
+                greeting = f"Kechikish qayd etildi, {full_name}! {late_minutes} minut kechikdingiz (-{penalty_pct}% shtraf)."
+            else:
+                greeting = f"Xush kelibsiz, {full_name}! Vaqtida keldingiz."
+        else:
+            greeting = f"Xayr, {full_name}!"
+
+        return JsonResponse({
+            'status':             'success',
+            'success':            True,
+            'first_name':         staff_user.first_name or '',
+            'last_name':          staff_user.last_name or '',
+            'full_name':          full_name,
+            'employee_name':      full_name,
+            'action':             action_type,
+            'greeting':           greeting,
+            'face_verified':      True,
+            'similarity_score':   similarity_pct,
+            'within_geofence':    True,
+            'distance':           distance,
+            'face_distance':      round(face_distance, 4),
+            'time':               current_time.strftime('%H:%M:%S'),
+            'status_display':     log_entry.get_status_display(),
+            'attendance_status':  log_entry.get_status_display(),
+            'is_late':            is_late,
+            'late_minutes':       late_minutes,
+            'penalty_percent':    float(penalty_pct),
+            'penalty_amount':     float(penalty_amount),
+            'message':            f"{face_message} GPS: {distance:.1f}m. {'Kechikish: ' + str(late_minutes) + ' min (' + str(penalty_pct) + '%)' if is_late else 'Vaqtida'}",
+        })
+
+    except Exception as e:
+        logger.exception("staff_check_in_api kutilmagan xato: %s", e)
+        return JsonResponse({
+            'status':  'error',
+            'success': False,
+            'message': f"Server xatosi: {e}"
+        }, status=500)
+
+
+# ── Face Identify API (1:N — Kiosk / Planshet rejimi) ─────────────────────────
+@csrf_exempt
+def face_identify_api(request):
+    """
+    Kamera kadridan yuzni FAQAT xodimlar (User) bazasidan qidiradi (1:N Kiosk rejimi).
+    Topilgan xodimning bugungi StaffAttendance yozuvini yaratadi/yangilaydi.
+
+    Qoidalar:
+      • Child / ChildAttendance jadvallariga HECH QACHON murojaat qilinmaydi.
+      • Faqat faol xodimlar (User.objects.filter(is_active=True)) nomzod hisoblanadi.
+      • 128-d AI yuz embeddinglari yordamida tezkor vektor taqqoslash o'tkaziladi.
+      • Threshold: Cosine distance <= 0.40.
+      • Login talab qilmaydi — kirish eshigidagi planshet/kiosk uchun mo'ljallangan.
+    """
+    if request.method != 'POST':
+        return JsonResponse({
+            'status': 'error',
+            'success': False,
+            'message': "Faqat POST so'rov qabul qilinadi."
+        }, status=405)
+
+    try:
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, Exception):
+            return JsonResponse({
+                'status': 'error',
+                'success': False,
+                'message': "JSON formati noto'g'ri."
+            }, status=400)
+
+        user_lat      = float(data.get('latitude', 0) or 0)
+        user_lon      = float(data.get('longitude', 0) or 0)
+        user_accuracy = float(data.get('accuracy', 0) or 0)
+        action_type   = data.get('action', 'check_in')
+        face_b64      = (data.get('face_image', '') or '').strip()
+
+        if not face_b64:
+            return JsonResponse({
+                'status': 'error',
+                'success': False,
+                'message': "Yuz rasmi (face_image) yuborilmadi."
+            }, status=400)
+
+        try:
+            incoming_bytes = decode_base64_image(face_b64)
+        except Exception:
+            return JsonResponse({
+                'status': 'error',
+                'success': False,
+                'message': "Rasm noto'g'ri base64 formatida."
+            }, status=400)
+
+        if len(incoming_bytes) < 500:
+            return JsonResponse({
+                'status': 'error',
+                'success': False,
+                'message': "Rasm fayli juda kichik."
+            }, status=400)
+
+        # ── Faqat XODIMLAR nomzod qilib olinadi (Bolalar chiqarilgan) ─────────
+        candidates_qs = User.objects.filter(is_active=True).exclude(role='DIRECTOR')
+        total_candidates = candidates_qs.count()
+
+        if total_candidates == 0:
+            return JsonResponse({
+                'status': 'error',
+                'success': False,
+                'message': "Tizimda faol xodimlar topilmadi."
+            }, status=404)
+
+        # 1:N AI Vektor taqqoslash (FAQAT xodimlar bo'yicha)
+        is_identified, matched_user, face_msg, face_dist, face_sim = identify_staff_face_1toN(
+            incoming_image_bytes=incoming_bytes,
+            staff_queryset=candidates_qs,
+            threshold=STRICT_FACE_DISTANCE_THRESHOLD
+        )
+
+        now = timezone.localtime(timezone.now())
+        today = now.date()
+        current_time = now.time()
+
+        if not is_identified or matched_user is None:
+            return JsonResponse({
+                'status':             'error',
+                'success':            False,
+                'face_verified':      False,
+                'face_distance':      round(face_dist, 4),
+                'similarity_score':   face_sim,
+                'candidates_checked': total_candidates,
+                'message':            face_msg or "Yuz mos kelmadi. Xodim tasdiqlanmadi.",
+            }, status=404)
+
+        # ── GPS / Geofence tekshiruvi ──────────────────────────────────────────
+        settings_obj = KindergartenSettings.get_settings()
+        k_lat        = settings_obj.latitude
+        k_lon        = settings_obj.longitude
+        radius_limit = settings_obj.geofence_radius_meters
+
+        is_within_radius, distance, effective_dist, geo_reason = evaluate_geofence(
+            user_lat=user_lat,
+            user_lon=user_lon,
+            target_lat=k_lat,
+            target_lon=k_lon,
+            radius_limit=radius_limit,
+            accuracy=user_accuracy
+        )
+
+        fname = f"kiosk_{matched_user.id}_{today.strftime('%Y%m%d')}_{now.strftime('%H%M%S')}.jpg"
         image_file = ContentFile(incoming_bytes, name=fname)
 
-        # ── 4a. Geofence rad etildi ────────────────────────────────────────────
         if not is_within_radius:
-            rej_note = (
-                f"face_identify: Face tasdiqlandi ({similarity_pct:.1f}%), "
-                f"lekin GPS hududdan tashqarida: {distance:.1f}m > {radius_limit}m."
-            )
-            existing = StaffAttendance.objects.filter(
-                teacher=matched_user, date=today
-            ).order_by('-is_within_geofence', 'id').first()
-
-            if existing and not existing.is_within_geofence:
-                existing.latitude        = user_lat
-                existing.longitude       = user_lon
-                existing.distance_meters = distance
-                existing.face_snapshot   = image_file
-                existing.notes           = rej_note
-                existing.save()
-            elif not existing:
+            try:
                 StaffAttendance.objects.create(
                     teacher            = matched_user,
                     date               = today,
@@ -1345,26 +1447,33 @@ def face_identify_api(request):
                     is_within_geofence = False,
                     face_snapshot      = image_file,
                     status             = 'REJECTED_GEOFENCE',
-                    notes              = rej_note,
+                    notes              = f"Kiosk Face ID tasdiqlandi, lekin GPS rad etildi: {geo_reason}.",
                 )
+            except Exception:
+                pass
 
             return JsonResponse({
-                'success':          False,
-                'face_verified':    True,
-                'identified_user':  matched_user.id,
-                'full_name':        full_name,
-                'within_geofence':  False,
-                'distance':         round(distance, 1),
-                'radius_limit':     radius_limit,
-                'similarity_score': similarity_pct,
-                'message': (
-                    f"Yuz tasdiqlandi: {full_name}. Lekin siz bog'cha hududidan "
-                    f"{distance:.1f} m uzoqdasiz (ruxsat: {radius_limit} m)."
-                ),
+                'status':             'error',
+                'success':            False,
+                'face_verified':      True,
+                'within_geofence':    False,
+                'staff_id':           matched_user.id,
+                'employee_name':      matched_user.get_full_name() or matched_user.username,
+                'distance':           round(distance, 1),
+                'effective_distance': round(effective_dist, 1),
+                'radius_limit':       radius_limit,
+                'accuracy':           round(user_accuracy, 1),
+                'face_distance':      round(face_dist, 4),
+                'similarity_score':   face_sim,
+                'message':            f"Yuz tasdiqlandi, lekin qurilma bog'cha hududidan {distance:.1f}m uzoqda (Ruxsat: {radius_limit:.0f}m).",
             }, status=400)
 
-        # ── 5. Kechikish shtraflari hisoblash ──────────────────────────────────
-        work_start = kg_settings.work_start_time
+        # ── Davomat yozuvi yaratish/yangilash ──────────────────────────────────
+        log_entry = StaffAttendance.objects.filter(
+            teacher=matched_user, date=today
+        ).order_by('-is_within_geofence', 'id').first()
+
+        work_start = settings_obj.work_start_time
         late_minutes, penalty_pct, penalty_amount = 0, Decimal('0.00'), Decimal('0.00')
         is_late = False
 
@@ -1372,20 +1481,15 @@ def face_identify_api(request):
             late_minutes, penalty_pct, penalty_amount = calculate_late_penalty(
                 current_time, work_start, matched_user.salary
             )
-            is_late    = late_minutes > 0
+            is_late = (late_minutes > 0)
             status_val = 'LATE' if is_late else 'ON_TIME'
         else:
             status_val = 'VERIFIED'
 
         face_note = (
-            f"face_identify: {full_name} — {similarity_pct:.1f}% "
-            f"(d={face_dist:.3f}). GPS: {distance:.1f}m."
+            f"Kiosk Face ID 1:N tasdiqlandi (masofa: {face_dist:.3f}, {face_sim:.1f}%). "
+            f"GPS: {distance:.1f}m."
         )
-
-        # ── 6. StaffAttendance yozuvi yaratish/yangilash ───────────────────────
-        log_entry = StaffAttendance.objects.filter(
-            teacher=matched_user, date=today
-        ).order_by('-is_within_geofence', 'id').first()
 
         if not log_entry:
             log_entry = StaffAttendance.objects.create(
@@ -1406,7 +1510,6 @@ def face_identify_api(request):
                 notes              = face_note,
             )
         else:
-            # Eski dublikatlarni tozalash
             StaffAttendance.objects.filter(
                 teacher=matched_user, date=today
             ).exclude(id=log_entry.id).delete()
@@ -1415,7 +1518,7 @@ def face_identify_api(request):
                 log_entry.check_out_time = current_time
                 log_entry.notes = (
                     (log_entry.notes or '') +
-                    f" | Chiqish: {current_time.strftime('%H:%M:%S')} — {face_note}"
+                    f" | Kiosk Chiqish: {current_time.strftime('%H:%M:%S')} — {face_note}"
                 )
             else:
                 if not log_entry.check_in_time:
@@ -1428,7 +1531,7 @@ def face_identify_api(request):
                 else:
                     log_entry.notes = (
                         (log_entry.notes or '') +
-                        f" | Qayta: {current_time.strftime('%H:%M:%S')} — {face_note}"
+                        f" | Kiosk Qayta tekshiruv: {current_time.strftime('%H:%M:%S')} — {face_note}"
                     )
 
             log_entry.face_snapshot      = image_file
@@ -1440,7 +1543,12 @@ def face_identify_api(request):
                 log_entry.status = status_val
             log_entry.save()
 
-        # ── 7. Kechikish shtrafi yozuvi (avtomatik) ────────────────────────────
+        full_name = (
+            f"{matched_user.first_name} {matched_user.last_name}".strip()
+            or matched_user.get_full_name().strip()
+            or matched_user.username
+        )
+
         if is_late and action_type != 'check_out':
             StaffBonusPenalty.objects.update_or_create(
                 staff=matched_user,
@@ -1450,8 +1558,8 @@ def face_identify_api(request):
                     'late_minutes':     late_minutes,
                     'percentage':       penalty_pct,
                     'amount':           penalty_amount,
-                    'description': (
-                        f"face_identify kechikish: {current_time.strftime('%H:%M:%S')}. "
+                    'description':      (
+                        f"Kiosk Face ID kechikish: {current_time.strftime('%H:%M:%S')}. "
                         f"{late_minutes} minut kechikdi (-{penalty_pct}%)."
                     ),
                     'staff_attendance': log_entry,
@@ -1459,57 +1567,54 @@ def face_identify_api(request):
             )
             sync_staff_monthly_salary(matched_user, today.month, today.year)
 
-        # ── 8. Audit log ───────────────────────────────────────────────────────
         log_audit(
             category='FACE_ID',
-            action=f"face_identify: {action_type} — {full_name}",
+            action=f"Kiosk Face ID orqali {action_type} tasdiqlandi",
             description=(
-                f"Xodim yuz orqali aniqlandi: {full_name} ({matched_user.position_display}). "
-                f"O'xshashlik: {similarity_pct:.1f}%. Vaqt: {current_time.strftime('%H:%M:%S')}. "
-                f"GPS: {distance:.1f}m. "
-                f"{'Kechikkan: ' + str(late_minutes) + ' min (-' + str(penalty_pct) + '%)' if is_late else 'Vaqtida'}."
+                f"Xodim: {full_name} ({matched_user.position_display}). "
+                f"Vaqt: {current_time.strftime('%H:%M:%S')}. "
+                f"Holat: {'Kechikkan' if is_late else 'Vaqtida'}. "
+                f"O'xshashlik: {face_sim:.1f}% (distance={face_dist:.3f}). Masofa: {distance:.1f}m."
             ),
             user=matched_user,
             request=request,
         )
 
-        # ── 9. Muvaffaqiyatli javob ────────────────────────────────────────────
-        if action_type == 'check_in':
-            greeting = (
-                f"Kechikish qayd etildi, {full_name}! "
-                f"{late_minutes} minut (-{penalty_pct}% shtraf)."
-                if is_late else
-                f"Xush kelibsiz, {full_name}! Vaqtida keldingiz."
-            )
-        else:
-            greeting = f"Xayr, {full_name}! Yaxshi dam oling."
-
         return JsonResponse({
-            'success':          True,
-            'face_verified':    True,
-            'identified_user':  matched_user.id,
-            'full_name':        full_name,
-            'first_name':       matched_user.first_name or '',
-            'last_name':        matched_user.last_name or '',
-            'position':         matched_user.position_display,
-            'action':           action_type,
-            'greeting':         greeting,
-            'similarity_score': similarity_pct,
-            'face_distance':    round(face_dist, 4),
-            'within_geofence':  True,
-            'distance':         round(distance, 1),
-            'time':             current_time.strftime('%H:%M:%S'),
-            'status':           log_entry.get_status_display(),
-            'is_late':          is_late,
-            'late_minutes':     late_minutes,
-            'penalty_percent':  float(penalty_pct),
-            'penalty_amount':   float(penalty_amount),
-            'message':          face_msg,
+            'status':             'success',
+            'success':            True,
+            'staff_id':           matched_user.id,
+            'first_name':         matched_user.first_name or '',
+            'last_name':          matched_user.last_name or '',
+            'full_name':          full_name,
+            'employee_name':      full_name,
+            'action':             action_type,
+            'greeting':           f"Xush kelibsiz, {full_name}!",
+            'face_verified':      True,
+            'similarity_score':   face_sim,
+            'face_distance':      round(face_dist, 4),
+            'within_geofence':    True,
+            'distance':           distance,
+            'time':               current_time.strftime('%H:%M:%S'),
+            'status_display':     log_entry.get_status_display(),
+            'attendance_status':  log_entry.get_status_display(),
+            'is_late':            is_late,
+            'late_minutes':       late_minutes,
+            'penalty_percent':    float(penalty_pct),
+            'penalty_amount':     float(penalty_amount),
+            'candidates_checked': total_candidates,
+            'message':            face_msg,
         })
 
     except Exception as e:
-        logger.exception("face_identify_api xatosi: %s", e)
-        return JsonResponse({'success': False, 'message': f"Server xatosi: {str(e)}"}, status=500)
+        logger.exception("face_identify_api kutilmagan xato: %s", e)
+        return JsonResponse({
+            'status':  'error',
+            'success': False,
+            'message': f"Server xatosi: {e}"
+        }, status=500)
+
+
 
 
 @login_required
@@ -1571,6 +1676,107 @@ def staff_attendance_logs(request):
 
 
 # --- Finance & Recalculation (Перерасчет) ---
+def compute_groups_finance_summary(month, year):
+    all_groups = Group.objects.all().order_by('name')
+    groups_summary = []
+    grand_totals = {
+        'children_count': 0,
+        'total_expected': Decimal('0.00'),
+        'total_paid': Decimal('0.00'),
+        'total_recalc': Decimal('0.00'),
+        'total_debt': Decimal('0.00'),
+        'paid_card': Decimal('0.00'),
+        'paid_terminal': Decimal('0.00'),
+        'paid_payme': Decimal('0.00'),
+        'paid_cash': Decimal('0.00'),
+        'paid_marta': Decimal('0.00'),
+    }
+
+    for g in all_groups:
+        invs = MonthlyInvoice.objects.filter(child__group=g, month=month, year=year)
+        total_exp = invs.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
+        total_pd = invs.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
+        total_recalc = invs.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
+        total_dbt = max(Decimal('0.00'), total_exp - total_pd)
+        paid_pct = round((float(total_pd) / float(total_exp) * 100), 1) if total_exp > 0 else 0
+        children_cnt = g.children.filter(is_active=True).count()
+
+        # To'lov turlari bo'yicha guruh to'lovlari (shu oy va yil invoyslari bo'yicha)
+        g_payments = Payment.objects.filter(invoice__child__group=g, invoice__month=month, invoice__year=year)
+        paid_card = g_payments.filter(payment_method__in=['CARD', 'BANK_TRANSFER']).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+        paid_terminal = g_payments.filter(payment_method='TERMINAL').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+        paid_payme = g_payments.filter(payment_method__in=['CLICK_PAYME', 'PAYME']).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+        paid_cash = g_payments.filter(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+        paid_marta = g_payments.filter(payment_method='MARTA').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+
+        # Jami hisob-kitoblar
+        grand_totals['children_count'] += children_cnt
+        grand_totals['total_expected'] += total_exp
+        grand_totals['total_paid'] += total_pd
+        grand_totals['total_recalc'] += total_recalc
+        grand_totals['total_debt'] += total_dbt
+        grand_totals['paid_card'] += paid_card
+        grand_totals['paid_terminal'] += paid_terminal
+        grand_totals['paid_payme'] += paid_payme
+        grand_totals['paid_cash'] += paid_cash
+        grand_totals['paid_marta'] += paid_marta
+
+        # Guruh to'lovlarida yozilgan sabablar / chegirma izohlari
+        reasons_list = []
+        for p in g_payments:
+            r = (p.reason or p.notes or '').strip()
+            if r and r not in reasons_list:
+                reasons_list.append(r)
+        reasons_str = ", ".join(reasons_list) if reasons_list else "-"
+
+        groups_summary.append({
+            'group': g,
+            'name': g.name,
+            'children_count': children_cnt,
+            'total_expected': total_exp,
+            'total_paid': total_pd,
+            'total_recalc': total_recalc,
+            'total_debt': total_dbt,
+            'paid_card': paid_card,
+            'paid_terminal': paid_terminal,
+            'paid_payme': paid_payme,
+            'paid_cash': paid_cash,
+            'paid_marta': paid_marta,
+            'paid_percent': paid_pct,
+            'reasons_list': reasons_list,
+            'reasons': reasons_str,
+        })
+
+    grand_paid_pct = round((float(grand_totals['total_paid']) / float(grand_totals['total_expected']) * 100), 1) if grand_totals['total_expected'] > 0 else 0
+    grand_totals['paid_percent'] = grand_paid_pct
+
+    # Chart.js uchun ma'lumotlar
+    chart_labels = [item['name'] for item in groups_summary]
+    chart_paid = [float(item['total_paid']) for item in groups_summary]
+    chart_debt = [float(item['total_debt']) for item in groups_summary]
+    chart_expected = [float(item['total_expected']) for item in groups_summary]
+    chart_card = [float(item['paid_card']) for item in groups_summary]
+    chart_terminal = [float(item['paid_terminal']) for item in groups_summary]
+    chart_payme = [float(item['paid_payme']) for item in groups_summary]
+    chart_cash = [float(item['paid_cash']) for item in groups_summary]
+    chart_marta = [float(item['paid_marta']) for item in groups_summary]
+
+    return {
+        'all_groups': all_groups,
+        'groups_summary': groups_summary,
+        'grand_totals': grand_totals,
+        'chart_labels_json': json.dumps(chart_labels),
+        'chart_paid_json': json.dumps(chart_paid),
+        'chart_debt_json': json.dumps(chart_debt),
+        'chart_expected_json': json.dumps(chart_expected),
+        'chart_card_json': json.dumps(chart_card),
+        'chart_terminal_json': json.dumps(chart_terminal),
+        'chart_payme_json': json.dumps(chart_payme),
+        'chart_cash_json': json.dumps(chart_cash),
+        'chart_marta_json': json.dumps(chart_marta),
+    }
+
+
 @login_required
 @user_passes_test(is_director_or_manager)
 def finance_dashboard(request):
@@ -1630,6 +1836,9 @@ def finance_dashboard(request):
 
     payment_form = PaymentForm()
 
+    # --- 6. Guruhlar bo'yicha Umumiy To'lovlar Hisoboti & Grafik Ma'lumotlari ---
+    groups_fin_data = compute_groups_finance_summary(month, year)
+
     return render(request, 'finance/finance_dashboard.html', {
         'invoices': invoices,
         'month': month,
@@ -1662,6 +1871,18 @@ def finance_dashboard(request):
         'payment_form': payment_form,
         'months_range': range(1, 13),
         'today': today,
+        # Guruhlar bo'yicha hisobot & chart
+        'groups_summary': groups_fin_data['groups_summary'],
+        'grand_totals': groups_fin_data['grand_totals'],
+        'chart_labels_json': groups_fin_data['chart_labels_json'],
+        'chart_paid_json': groups_fin_data['chart_paid_json'],
+        'chart_debt_json': groups_fin_data['chart_debt_json'],
+        'chart_expected_json': groups_fin_data['chart_expected_json'],
+        'chart_card_json': groups_fin_data['chart_card_json'],
+        'chart_terminal_json': groups_fin_data['chart_terminal_json'],
+        'chart_payme_json': groups_fin_data['chart_payme_json'],
+        'chart_cash_json': groups_fin_data['chart_cash_json'],
+        'chart_marta_json': groups_fin_data['chart_marta_json'],
     })
 
 @csrf_exempt
@@ -1733,34 +1954,51 @@ def record_payment_api(request):
         try:
             data = json.loads(request.body)
             invoice_id = data.get('invoice_id')
-            amount = Decimal(str(data.get('amount', 0)))
+            raw_amount = data.get('amount', 0)
+            amount = Decimal(str(raw_amount)) if raw_amount else Decimal('0.00')
             payment_method = data.get('payment_method', 'CARD')
             transaction_id = data.get('transaction_id', '').strip()
             notes = data.get('notes', '').strip()
+            reason = data.get('reason', '').strip()
+
+            if amount <= Decimal('0.00'):
+                return JsonResponse({'success': False, 'message': "To'lov summasi 0 dan katta bo'lishi kerak!"}, status=400)
 
             invoice = get_object_or_404(MonthlyInvoice, id=invoice_id)
+
+            # Validatsiya: to'lov usuli
+            valid_methods = [choice[0] for choice in Payment.PAYMENT_METHODS]
+            if payment_method not in valid_methods:
+                payment_method = 'CARD'
+
             payment = Payment.objects.create(
                 invoice=invoice,
                 amount=amount,
                 payment_method=payment_method,
                 transaction_id=transaction_id,
-                notes=notes,
+                reason=reason,
+                notes=notes or reason,
                 recorded_by=request.user
             )
 
+            # Invoys ma'lumotlarini yangilash
+            invoice.refresh_from_db()
+
             staff_name = request.user.get_full_name() or request.user.username
+            reason_info = f" Sabab: {reason}." if reason else ""
             log_audit(
                 category='PAYMENT',
                 action="Bog'cha badal to'lovi qabul qilindi",
-                description=f"Bola: {invoice.child.full_name} ({invoice.child.group.name if invoice.child.group else 'Guruhsiz'}). Summa: {amount:,.0f} UZS. To'lov turi: {payment.get_payment_method_display()}. Chek raqami: {transaction_id or '—'}. Izoh: {notes or '—'}. Qabul qilgan xodim: {staff_name}. Qoldiq qarz: {invoice.remaining_debt:,.0f} UZS.",
+                description=f"Bola: {invoice.child.full_name} ({invoice.child.group.name if invoice.child.group else 'Guruhsiz'}). Summa: {amount:,.0f} UZS. To'lov turi: {payment.get_payment_method_display()}. Chek: {transaction_id or '—'}.{reason_info} Qabul qiluvchi: {staff_name}. Qoldiq qarz: {invoice.remaining_debt:,.0f} UZS.",
                 user=request.user,
                 request=request
             )
 
             return JsonResponse({
                 'success': True,
-                'message': f"{amount:,.0f} UZS to'lov muvaffaqiyatli qabul qilindi!",
+                'message': f"{amount:,.0f} UZS to'lov ({payment.get_payment_method_display()}) muvaffaqiyatli qabul qilindi!",
                 'invoice_status': invoice.get_status_display(),
+                'paid_amount': float(invoice.paid_amount),
                 'remaining_debt': float(invoice.remaining_debt),
             })
         except Exception as e:
@@ -2313,25 +2551,8 @@ def groups_finance_view(request):
     year = int(request.GET.get('year', today.year))
     selected_group_id = request.GET.get('group', '')
 
-    all_groups = Group.objects.all().order_by('name')
-
-    groups_summary = []
-    for g in all_groups:
-        invs = MonthlyInvoice.objects.filter(child__group=g, month=month, year=year)
-        total_exp = invs.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
-        total_pd = invs.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
-        total_recalc = invs.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
-        total_dbt = max(Decimal('0.00'), total_exp - total_pd)
-        paid_pct = round((float(total_pd) / float(total_exp) * 100), 1) if total_exp > 0 else 0
-        groups_summary.append({
-            'group': g,
-            'children_count': g.children.filter(is_active=True).count(),
-            'total_expected': total_exp,
-            'total_paid': total_pd,
-            'total_recalc': total_recalc,
-            'total_debt': total_dbt,
-            'paid_percent': paid_pct,
-        })
+    groups_data = compute_groups_finance_summary(month, year)
+    all_groups = groups_data['all_groups']
 
     active_group = None
     if selected_group_id:
@@ -2342,7 +2563,7 @@ def groups_finance_view(request):
     group_invoices = []
     active_group_stats = {}
     if active_group:
-        group_invoices = MonthlyInvoice.objects.select_related('child', 'child__group').filter(
+        group_invoices = MonthlyInvoice.objects.select_related('child', 'child__group').prefetch_related('payments').filter(
             child__group=active_group, month=month, year=year
         ).order_by('child__first_name')
         total_exp = group_invoices.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
@@ -2355,13 +2576,23 @@ def groups_finance_view(request):
 
     return render(request, 'finance/groups_finance.html', {
         'all_groups': all_groups,
-        'groups_summary': groups_summary,
+        'groups_summary': groups_data['groups_summary'],
+        'grand_totals': groups_data['grand_totals'],
         'active_group': active_group,
         'group_invoices': group_invoices,
         'active_group_stats': active_group_stats,
         'month': month,
         'year': year,
         'months_range': range(1, 13),
+        'chart_labels_json': groups_data['chart_labels_json'],
+        'chart_paid_json': groups_data['chart_paid_json'],
+        'chart_debt_json': groups_data['chart_debt_json'],
+        'chart_expected_json': groups_data['chart_expected_json'],
+        'chart_card_json': groups_data['chart_card_json'],
+        'chart_terminal_json': groups_data['chart_terminal_json'],
+        'chart_payme_json': groups_data['chart_payme_json'],
+        'chart_cash_json': groups_data['chart_cash_json'],
+        'chart_marta_json': groups_data['chart_marta_json'],
     })
 
 

@@ -68,9 +68,9 @@
             </div>
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 28px;">
-                <button type="button" onclick="if(confirm('Ushbu guruhni o'chirmoqchimisiz?')) document.getElementById('deleteGroupForm').submit();" class="btn-glass btn-rose">
+                <button type="button" onclick="confirmDeleteGroup()" class="btn-glass btn-rose">
                     <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
-                    <span>O'chirish</span>
+                    <span>Guruhni O'chirish</span>
                 </button>
 
                 <div style="display: flex; gap: 10px;">
@@ -84,6 +84,14 @@
             {% csrf_token %}
         </form>
     </div>
+
+    <script>
+    function confirmDeleteGroup() {
+        if (confirm("Haqiqatan ham '{{ group.name|escapejs }}' guruhini o'chirmoqchimisiz?\n\nEslatma: Guruhdagi bolalar o'chib ketmaydi, ular guruhsiz holatga o'tkaziladi.")) {
+            document.getElementById('deleteGroupForm').submit();
+        }
+    }
+    </script>
 
     <!-- Replace Teacher Section -->
     <div class="glass-card" style="padding: 28px; margin-top: 24px;">

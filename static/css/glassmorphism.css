@@ -99,45 +99,69 @@ body {
 
 /* Glass Sidebar */
 .glass-sidebar {
-    width: 280px;
-    background: rgba(13, 16, 30, 0.75);
+    width: 270px;
+    background: rgba(13, 16, 30, 0.82);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-right: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
     flex-direction: column;
-    padding: 24px 18px;
+    padding: 16px 12px 14px 12px;
     position: sticky;
     top: 0;
     height: 100vh;
+    max-height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
     z-index: 50;
     transition: all 0.3s ease;
+}
+
+/* Custom Scrollbar for Dark Glassmorphic Sidebar */
+.glass-sidebar::-webkit-scrollbar {
+    width: 5px;
+}
+
+.glass-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.glass-sidebar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+}
+
+.glass-sidebar::-webkit-scrollbar-thumb:hover {
+    background: rgba(168, 85, 247, 0.45);
 }
 
 .brand-header {
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 0 10px 24px 10px;
+    gap: 12px;
+    padding: 0 6px 14px 6px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    margin-bottom: 24px;
+    margin-bottom: 10px;
+    flex-shrink: 0;
 }
 
 .brand-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 14px;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
     background: var(--primary-gradient);
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 0 20px var(--primary-glow);
-    font-size: 22px;
+    box-shadow: 0 0 16px var(--primary-glow);
+    font-size: 20px;
 }
 
 .brand-title {
     font-family: 'Outfit', sans-serif;
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 800;
     letter-spacing: -0.5px;
     background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
@@ -146,41 +170,44 @@ body {
 }
 
 .brand-subtitle {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--text-muted);
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.8px;
     font-weight: 600;
 }
 
 .nav-section-title {
-    font-size: 11px;
+    font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 1.2px;
+    letter-spacing: 1.1px;
     color: var(--text-dim);
-    margin: 18px 12px 8px 12px;
+    margin: 10px 8px 4px 8px;
     font-weight: 700;
+    flex-shrink: 0;
 }
 
 .nav-menu {
     list-style: none;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 3px;
     flex-grow: 1;
+    margin: 0;
+    padding: 0;
 }
 
 .nav-link {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
-    border-radius: var(--radius-sm);
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 10px;
     color: var(--text-muted);
     text-decoration: none;
     font-weight: 500;
-    font-size: 14px;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 13.5px;
+    transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
     border: 1px solid transparent;
 }
 
@@ -188,24 +215,24 @@ body {
     color: #ffffff;
     background: var(--glass-bg-hover);
     border-color: rgba(255, 255, 255, 0.08);
-    transform: translateX(4px);
+    transform: translateX(3px);
 }
 
 .nav-link.active {
     color: #ffffff;
-    background: linear-gradient(90deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.12) 100%);
-    border-color: rgba(139, 92, 246, 0.4);
-    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
+    background: linear-gradient(90deg, rgba(99, 102, 241, 0.22) 0%, rgba(168, 85, 247, 0.14) 100%);
+    border-color: rgba(139, 92, 246, 0.45);
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.16);
 }
 
 .nav-badge {
     margin-left: auto;
     background: linear-gradient(135deg, #ec4899, #f43f5e);
     color: white;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 12px;
+    padding: 1px 7px;
+    border-radius: 10px;
 }
 
 /* User Card in Sidebar */
@@ -213,24 +240,26 @@ body {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: var(--radius-md);
-    padding: 14px;
+    padding: 10px 12px;
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-top: auto;
+    gap: 10px;
+    margin-top: 14px;
+    flex-shrink: 0;
 }
 
 .user-avatar {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
     background: linear-gradient(135deg, #4f46e5, #06b6d4);
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 700;
     color: white;
-    box-shadow: 0 0 12px rgba(79, 70, 229, 0.4);
+    font-size: 13px;
+    box-shadow: 0 0 10px rgba(79, 70, 229, 0.35);
 }
 
 .user-info {

@@ -20,8 +20,37 @@ class User(AbstractUser):
     phone_number = models.CharField(max_length=25, blank=True, null=True)
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     face_image = models.ImageField(upload_to='face_registrations/', blank=True, null=True, verbose_name="Face ID Etalon Rasm")
+    face_embedding = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Face ID Embedding (JSON)",
+        help_text="128-d yoki 512-d AI yuz embedding vektori (JSON formatida)"
+    )
+    face_enrolled_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name="Yuz ro'yxatdan o'tgan vaqt"
+    )
     initial_password = models.CharField(max_length=128, blank=True, null=True, verbose_name="Berilgan boshlang'ich parol")
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def get_face_embedding(self):
+        """128-d yoki 512-d embedding vektorini float list ko'rinishida qaytaradi."""
+        if not self.face_embedding:
+            return None
+        try:
+            import json as _json
+            return _json.loads(self.face_embedding)
+        except Exception:
+            return None
+
+    def set_face_embedding(self, embedding_vec):
+        """Embedding vektorini JSON formatida saqlaydi."""
+        if embedding_vec is None:
+            self.face_embedding = None
+        else:
+            import json as _json
+            self.face_embedding = _json.dumps([float(x) for x in embedding_vec])
 
     @property
     def is_director(self):
@@ -41,7 +70,28 @@ class User(AbstractUser):
 
     @property
     def can_manage_all(self):
-        return self.is_director or self.is_manager or self.is_superuser
+        """Faqat Direktor va Superuser barcha bo'limlarni boshqara oladi. Menejer kirish huquqiga ega emas."""
+        return self.is_director or self.is_superuser
+
+    @property
+    def can_access_finance(self):
+        """Moliya bo'limiga kirish huquqi (Menejer kira olmaydi)."""
+        return self.is_director or self.is_superuser
+
+    @property
+    def can_access_groups(self):
+        """Guruhlarni boshqarish huquqi (Menejer kira olmaydi)."""
+        return self.is_director or self.is_superuser
+
+    @property
+    def can_access_settings(self):
+        """Bog'cha sozlamalariga kirish huquqi (Menejer kira olmaydi)."""
+        return self.is_director or self.is_superuser
+
+    @property
+    def can_access_face_id(self):
+        """Face ID tizimidan foydalanish huquqi (Menejer va barcha xodimlar)."""
+        return True
 
     @property
     def position_display(self):
@@ -126,7 +176,7 @@ class Child(models.Model):
     last_name = models.CharField(max_length=60)
     birth_date = models.DateField()
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, default='M')
-    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name='children')
+    group = models.ForeignKey(Group, on_delete=models.SET_NULL, null=True, blank=True, related_name='children')
     parent_full_name = models.CharField(max_length=120)
     parent_phone = models.CharField(max_length=25)
     parent_email = models.EmailField(blank=True, null=True)
@@ -148,7 +198,8 @@ class Child(models.Model):
         return today.year - self.birth_date.year - ((today.month, today.day) < (self.birth_date.month, self.birth_date.day))
 
     def __str__(self):
-        return f"{self.full_name} - {self.group.name}"
+        group_name = self.group.name if self.group else "Guruhsiz"
+        return f"{self.full_name} - {group_name}"
 
 
 class ChildAttendance(models.Model):
@@ -253,10 +304,12 @@ class MonthlyInvoice(models.Model):
 
 class Payment(models.Model):
     PAYMENT_METHODS = (
+        ('CARD', 'Karta (Uzcard / Humo)'),
+        ('TERMINAL', 'Terminal'),
+        ('CLICK_PAYME', 'Payme / Click'),
         ('CASH', 'Naqd pul'),
-        ('CARD', 'Plastik Karta (Uzcard/Humo)'),
+        ('MARTA', 'Marta orqali'),
         ('BANK_TRANSFER', 'Bank o‘tkazmasi'),
-        ('CLICK_PAYME', 'Click / Payme Online'),
     )
     invoice = models.ForeignKey(MonthlyInvoice, on_delete=models.CASCADE, related_name='payments', null=True, blank=True)
     temporary_child = models.ForeignKey('TemporaryChild', on_delete=models.SET_NULL, null=True, blank=True, related_name='payments', verbose_name="Vaqtinchalik bola")
@@ -265,6 +318,7 @@ class Payment(models.Model):
     transaction_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="Chek / Kvitansiya raqami")
     paid_at = models.DateTimeField(default=timezone.now)
     recorded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    reason = models.TextField(blank=True, null=True, verbose_name="To'lov sababi / Chegirma izohi")
     notes = models.CharField(max_length=255, blank=True, null=True, verbose_name="Qo'shimcha izoh")
 
     def save(self, *args, **kwargs):

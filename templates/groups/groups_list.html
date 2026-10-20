@@ -68,9 +68,15 @@
             </a>
             {% if user.can_manage_all %}
             <div style="display: flex; gap: 6px;">
-                <a href="{% url 'group_update' group.id %}" class="btn-glass btn-secondary" style="padding: 6px 10px;">
+                <a href="{% url 'group_update' group.id %}" class="btn-glass btn-secondary" style="padding: 6px 10px;" title="Tahrirlash">
                     <i data-lucide="edit" style="width: 14px; height: 14px;"></i>
                 </a>
+                <form method="POST" action="{% url 'group_delete' group.id %}" onsubmit="return confirm('Haqiqatan ham \'{{ group.name|escapejs }}\' guruhini o\'chirmoqchimisiz?\n\nBolalar o\'chirilmaydi, ular guruhsiz holatga o\'tkaziladi.');" style="display: inline; margin: 0;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-glass btn-rose" style="padding: 6px 10px; cursor: pointer;" title="O'chirish">
+                        <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                    </button>
+                </form>
             </div>
             {% endif %}
         </div>

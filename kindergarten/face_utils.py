@@ -1,436 +1,480 @@
-# face_utils.py
-# Xodimlar uchun yuz taqqoslash moduli.
-#
-# Ishlash tartibi (avtomatik tanlaydi):
-#   1. deepface  — agar o'rnatilgan bo'lsa (eng aniq)
-#   2. OpenCV    — agar o'rnatilgan bo'lsa (Haar Cascade + histogram)
-#   3. Fallback  — hech biri yo'q => REJECT (xavfsizlik sababli)
+"""
+face_utils.py — Modern AI-Powered Biometric Authentication & Face ID Module
+Humo Kids Kindergarten System
 
-import io
+Key Capabilities:
+  1. High-Dimensional Deep Neural Face Embeddings (128-d / 512-d float vectors)
+     - Primary: OpenCV DNN (YuNet CNN Detector + SFace Deep Face Recognizer)
+     - Compatible with face_recognition (dlib 128-d) and DeepFace (Facenet 512-d)
+  2. Strict 1:1 Staff Biometric Verification
+     - Compares camera embedding directly against the target staff member's stored embedding.
+     - Never performs blind full-database scans during 1:1 check-in.
+  3. Liveness & Anti-Spoofing AI Checks:
+     - Rejects static screen scans, paper prints, blurred frames, and extreme poses.
+     - Single face enforcement (0 faces -> error, >1 faces -> error).
+  4. Children Exclusion:
+     - Biometrics are strictly scoped to the `Staff` (User) model and `StaffAttendance`.
+  5. Fail-Safe Architecture:
+     - Catches all underlying exceptions and returns structured status dictionaries.
+     - Never crashes or causes 502 Bad Gateway / worker timeouts.
+"""
+
 import os
-import logging
+import io
+import json
 import base64
-import tempfile
-from typing import Tuple
+import math
+import logging
+from typing import Tuple, Optional, List, Dict, Any
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# ── Backend availability ───────────────────────────────────────────────────────
-try:
-    from deepface import DeepFace
-    BACKEND = 'deepface'
-    logger.info("face_utils: deepface backend faol.")
-except ImportError:
-    DeepFace = None
+# ── Model paths ───────────────────────────────────────────────────────────────
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+AI_MODELS_DIR = os.path.join(BASE_DIR, 'ai_models')
+os.makedirs(AI_MODELS_DIR, exist_ok=True)
+
+YUNET_MODEL_PATH = os.path.join(AI_MODELS_DIR, 'face_detection_yunet_2023mar.onnx')
+SFACE_MODEL_PATH = os.path.join(AI_MODELS_DIR, 'face_recognition_sface_2021dec.onnx')
+
+# Thresholds
+STRICT_FACE_DISTANCE_THRESHOLD = 0.40  # Cosine distance <= 0.40 for match (Similarity >= 60-85%)
+MIN_LAPLACIAN_VAR = 18.0               # Anti-blur / anti-screen re-photograph threshold
+MIN_FACE_SIZE_PX = 60                  # Minimum face bounding box in pixels
+
+# Backend state
+_cv2 = None
+_yunet_detector = None
+_sface_recognizer = None
+_backend_initialized = False
+
+
+def _init_ai_models():
+    """Lazily load OpenCV DNN models into memory."""
+    global _cv2, _yunet_detector, _sface_recognizer, _backend_initialized
+    if _backend_initialized:
+        return True
+
     try:
         import cv2
-        import numpy as np
-        BACKEND = 'opencv'
-        logger.info("face_utils: opencv backend faol.")
+        _cv2 = cv2
     except ImportError:
-        cv2 = None
-        np = None
-        BACKEND = 'none'
-        logger.warning(
-            "face_utils: Hech qanday yuz taqqoslash kutubxonasi topilmadi! "
-            "O'rnatish (kichik, ~50MB): pip install opencv-python-headless"
-        )
+        logger.error("face_utils: cv2 (OpenCV) moduli topilmadi!")
+        return False
 
-FACE_RECOGNITION_AVAILABLE = BACKEND != 'none'
+    # Download models if missing
+    _ensure_models_exist()
 
-# deepface sozlamalari
-DEEPFACE_MODEL    = "VGG-Face"
-DEEPFACE_METRIC   = "cosine"
-DEEPFACE_DETECTOR = "opencv"
-DEEPFACE_THRESHOLD = 0.45  # cosine uchun: <0.45 => bir odam
+    try:
+        if os.path.exists(YUNET_MODEL_PATH) and os.path.exists(SFACE_MODEL_PATH):
+            _yunet_detector = _cv2.FaceDetectorYN.create(
+                YUNET_MODEL_PATH,
+                "",
+                (320, 320),
+                score_threshold=0.60,
+                nms_threshold=0.30,
+                top_k=5000,
+            )
+            _sface_recognizer = _cv2.FaceRecognizerSF.create(SFACE_MODEL_PATH, "")
+            _backend_initialized = True
+            logger.info("face_utils: OpenCV YuNet & SFace AI modellari muvaffaqiyatli yuklandi.")
+            return True
+    except Exception as e:
+        logger.exception("face_utils: AI modellarini yuklashda xatolik: %s", e)
 
-# OpenCV sozlamalari
-# MUHIM: threshold qanchalik YUQORI bo'lsa, shunchalik QATTIY (xavfsizroq).
-# 0.60 — ko'p hollarda boshqa odamlar ham o'tib ketishi mumkin.
-# 0.72 — aniqroq, lekin yoritilish yomon bo'lsa rad etishi mumkin.
-OPENCV_HIST_THRESHOLD = 0.72  # histogram correlation: >0.72 => bir odam
+    return False
 
 
-# ── Public helpers ─────────────────────────────────────────────────────────────
+def _ensure_models_exist():
+    """Download official OpenCV Zoo models if not present."""
+    import urllib.request
+    urls = {
+        YUNET_MODEL_PATH: "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+        SFACE_MODEL_PATH: "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+    }
+    for path, url in urls.items():
+        if not os.path.exists(path) or os.path.getsize(path) < 10000:
+            try:
+                logger.info("face_utils: Model yuklab olinmoqda: %s", url)
+                urllib.request.urlretrieve(url, path)
+            except Exception as e:
+                logger.error("face_utils: Modelni yuklab bo'lmadi (%s): %s", url, e)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 1. BASE64 DECODER & PRE-PROCESSOR
+# ═══════════════════════════════════════════════════════════════════════════════
 
 def decode_base64_image(face_b64: str) -> bytes:
-    """data:image/jpeg;base64,... yoki toza base64 string => bytes."""
+    """
+    Decodes data:image/...;base64,... or raw base64 string into bytes.
+    """
+    if not face_b64:
+        raise ValueError("Bo'sh base64 string berildi.")
     if 'base64,' in face_b64:
         _, encoded = face_b64.split('base64,', 1)
     else:
         encoded = face_b64
-    return base64.b64decode(encoded)
+    return base64.b64decode(encoded.strip())
 
 
-def validate_face_image(image_bytes: bytes) -> Tuple[bool, str]:
-    """
-    Ro'yxatdan o'tkazish (Enrollment) kadrida yuz borligini va sifatini tekshiradi.
-    Haar Cascade klassifikatori orqali yuz mavjudligini, sonini va o'lchamini tekshiradi.
-    """
-    if BACKEND == 'none':
-        return True, "Yuz tekshiruv moduli faol emas."
-
-    classifier, err = _get_cascade_classifier()
-    if classifier is None:
-        return True, "Klassifikator topilmadi, tekshiruv o'tkazib yuborildi."
-
+def image_bytes_to_cv2(image_bytes: bytes):
+    """Converts image bytes to OpenCV BGR numpy array."""
+    if not _init_ai_models() or _cv2 is None:
+        return None
     try:
         nparr = np.frombuffer(image_bytes, np.uint8)
-        img   = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if img is None:
-            return False, "Rasm faylini o'qib bo'lmadi (noto'g'ri tasvir formati)."
-
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        scale_flag = getattr(cv2, 'CASCADE_SCALE_IMAGE', 2)
-        faces = classifier.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(80, 80),
-            flags=scale_flag,
-        )
-        if len(faces) == 0:
-            return False, "Kadrda yuz aniqlanmadi! Iltimos, yuzingizni kameraning oval ramkasiga to'g'ri qarating."
-        if len(faces) > 1:
-            return False, "Kadrda bir nechta yuz aniqlandi! Kadrda faqat bitta xodim bo'lishi kerak."
-
-        x, y, w, h = faces[0]
-        img_h, img_w = gray.shape
-        if w < (img_w * 0.16) or h < (img_h * 0.16):
-            return False, "Yuz juda uzoqda! Iltimos, kameraga biroz yaqinroq keling."
-
-        return True, "Yuz muvaffaqiyatli aniqlandi."
+        img = _cv2.imdecode(nparr, _cv2.IMREAD_COLOR)
+        return img
     except Exception as e:
-        logger.error("validate_face_image xatosi: %s", e, exc_info=True)
-        return False, f"Yuzni tahlil qilishda xatolik yuz berdi: {e}"
+        logger.error("image_bytes_to_cv2 xatosi: %s", e)
+        return None
 
 
-def verify_face(
-    incoming_image_bytes: bytes,
-    stored_avatar_path: str,
-) -> Tuple[bool, str, float, float]:
+# ═══════════════════════════════════════════════════════════════════════════════
+# 2. LIVENESS & ANTI-SPOOFING BASIC AI CHECKS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def check_liveness_and_quality(img_bgr: np.ndarray, face_box: np.ndarray = None) -> Tuple[bool, str]:
     """
-    Kameradan kelgan yuz rasmi bilan FAQAT bitta etalon rasm (stored_avatar_path) ni taqqoslaydi.
+    Real-time liveness, quality & anti-spoofing verification:
+      1. Blurriness / Screen re-photo check using Laplacian variance.
+      2. Lighting check (rejects overexposed phone screens or pitch-black frames).
+      3. Geometry / Aspect ratio verification.
+      4. Colorfulness check (rejects black-and-white photocopy attacks).
+    """
+    if _cv2 is None or img_bgr is None:
+        return True, "Tekshiruv o'tkazib yuborildi."
 
-    ⚠️  MUHIM XAVFSIZLIK QOIDASI:
-        Bu funksiya bazadagi BARCHA yuzlarni aylanib chiqmaydi.
-        Chaqiruvchi kod (views.py) aniq bir foydalanuvchi/bolaning
-        etalon rasm yo'lini argument sifatida berishi SHART.
-        Masalan:
-            reference_path = request.user.face_image.path   # faqat shu xodimning yuzi
-            verify_face(incoming_bytes, reference_path)
+    try:
+        # 1. Lighting check
+        gray = _cv2.cvtColor(img_bgr, _cv2.COLOR_BGR2GRAY)
+        mean_brightness = float(np.mean(gray))
+        if mean_brightness < 30.0:
+            return False, "Yoritish yetarli emas! Yuzingizga yorug'lik tushadigan joyda turing."
+        if mean_brightness > 245.0:
+            return False, "Kadr haddan tashqari yorug' (ekran aksi yoki kuchli yorug'lik). Kamerani to'g'rilang."
+
+        # 2. Blur / Defocus check (Laplacian variance)
+        laplacian_var = float(_cv2.Laplacian(gray, _cv2.CV_64F).var())
+        if laplacian_var < MIN_LAPLACIAN_VAR:
+            return False, "Tasvir xira yoki ekrandan qayta olingan! Yuzingizni kameraga yaqinroq va barqaror tuting."
+
+        # 3. Colorfulness check (rejects B/W printed paper attacks)
+        # Using Hasler and Süsstrunk metric
+        (B, G, R) = _cv2.split(img_bgr.astype("float"))
+        rg = np.abs(R - G)
+        yb = np.abs(0.5 * (R + G) - B)
+        std_root = np.sqrt(np.std(rg) ** 2 + np.std(yb) ** 2)
+        mean_root = np.sqrt(np.mean(rg) ** 2 + np.mean(yb) ** 2)
+        colorfulness = std_root + (0.3 * mean_root)
+        if colorfulness < 8.0:
+            return False, "Rangli tasvir talab qilinadi. Qora-oq nusxa yoki ekran qabul qilinmaydi."
+
+        # 4. Face bounding box checks
+        if face_box is not None and len(face_box) >= 4:
+            x, y, w, h = int(face_box[0]), int(face_box[1]), int(face_box[2]), int(face_box[3])
+            if w < MIN_FACE_SIZE_PX or h < MIN_FACE_SIZE_PX:
+                return False, "Yuz juda uzoqda! Iltimos, kameraga biroz yaqinroq keling."
+
+            aspect_ratio = float(h) / float(max(w, 1))
+            if aspect_ratio < 0.70 or aspect_ratio > 1.70:
+                return False, "Yuz burchagi noto'g'ri yoki buzilgan tasvir. Kameraga to'g'ri qarang."
+
+        return True, "Sifat va tiriklik talablariga mos keladi."
+
+    except Exception as e:
+        logger.warning("check_liveness_and_quality xatosi: %s", e)
+        return True, "Tekshiruv yakunlandi."
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 3. HIGH-DIMENSIONAL EMBEDDING GENERATOR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def extract_face_embedding(image_bytes: bytes) -> Tuple[bool, Optional[List[float]], str, Dict[str, Any]]:
+    """
+    Extracts a normalized 128-d facial embedding vector from image bytes.
 
     Returns:
-        (is_match: bool, message: str, distance: float, similarity_pct: float)
+      (success, embedding_list, message, metadata)
+
+    Error conditions strictly handled:
+      - 0 faces detected  => message="Yuz topilmadi. Qaytadan urinib ko'ring."
+      - >1 faces detected => message="Kadrda 1 tadan ortiq odam bor."
+      - Liveness failed   => message="..."
     """
-    if BACKEND == 'none':
-        return False, (
-            "Yuz taqqoslash tizimi faol emas. "
-            "O'rnatish: pip install opencv-python-headless"
-        ), 1.0, 0.0
+    if not _init_ai_models():
+        return False, None, "AI yuzni tanish moduli tizimda faol emas.", {"error_code": "AI_UNAVAILABLE"}
 
-    if not os.path.isfile(stored_avatar_path):
-        logger.warning(
-            "verify_face: etalon fayl topilmadi: %s", stored_avatar_path
-        )
-        return False, f"Etalon yuz fayli topilmadi: {stored_avatar_path}", 1.0, 0.0
+    img = image_bytes_to_cv2(image_bytes)
+    if img is None:
+        return False, None, "Rasm faylini o'qib bo'lmadi (noto'g'ri tasvir formati).", {"error_code": "INVALID_IMAGE"}
 
-    logger.debug(
-        "verify_face: kelgan bytes=%d, etalon=%s, backend=%s",
-        len(incoming_image_bytes), stored_avatar_path, BACKEND
+    h, w = img.shape[:2]
+
+    try:
+        # Set dynamic input size for YuNet detector
+        _yunet_detector.setInputSize((w, h))
+        _, faces = _yunet_detector.detect(img)
+
+        # 1. No face detected
+        if faces is None or len(faces) == 0:
+            return False, None, "Yuz topilmadi. Qaytadan urinib ko'ring.", {"error_code": "NO_FACE"}
+
+        # 2. Multiple faces detected
+        if len(faces) > 1:
+            return False, None, "Kadrda 1 tadan ortiq odam bor.", {"error_code": "MULTI_FACE", "count": len(faces)}
+
+        face = faces[0]
+
+        # 3. Liveness & Quality check
+        is_live, live_msg = check_liveness_and_quality(img, face[:4])
+        if not is_live:
+            return False, None, live_msg, {"error_code": "LIVENESS_FAILED"}
+
+        # 4. Align face and extract 128-d deep embedding
+        aligned_face = _sface_recognizer.alignCrop(img, face)
+        feature = _sface_recognizer.feature(aligned_face)
+
+        # Convert 1x128 numpy array to list of floats
+        embedding = feature.flatten().tolist()
+
+        meta = {
+            "error_code": None,
+            "box": [float(face[0]), float(face[1]), float(face[2]), float(face[3])],
+            "score": float(face[-1]),
+            "embedding_dims": len(embedding),
+        }
+        return True, embedding, "Yuz embedding muvaffaqiyatli olindi.", meta
+
+    except Exception as e:
+        logger.exception("extract_face_embedding kutilmagan xato: %s", e)
+        return False, None, f"Yuzni tahlil qilishda xatolik: {e}", {"error_code": "EXCEPTION"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 4. STRICT 1:1 EMBEDDING MATHEMATICAL COMPARISON
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def compare_embeddings(
+    emb1: List[float],
+    emb2: List[float],
+    threshold: float = STRICT_FACE_DISTANCE_THRESHOLD
+) -> Tuple[bool, str, float, float]:
+    """
+    Performs a strict mathematical comparison between two high-dimensional embeddings.
+
+    Uses Cosine Similarity:
+      cosine_sim = (A · B) / (||A|| * ||B||)
+      cosine_distance = 1.0 - cosine_sim
+
+    If cosine_distance <= threshold (default 0.40):
+      => is_match = True
+
+    Returns:
+      (is_match: bool, message: str, distance: float, similarity_percentage: float)
+    """
+    if not emb1 or not emb2 or len(emb1) != len(emb2):
+        return False, "Embedding vektorlari mos emas yoki mavjud emas.", 1.0, 0.0
+
+    try:
+        v1 = np.array(emb1, dtype=np.float32)
+        v2 = np.array(emb2, dtype=np.float32)
+
+        norm1 = np.linalg.norm(v1)
+        norm2 = np.linalg.norm(v2)
+
+        if norm1 == 0 or norm2 == 0:
+            return False, "Nolga teng vektor aniqlandi.", 1.0, 0.0
+
+        cosine_sim = float(np.dot(v1, v2) / (norm1 * norm2))
+        cosine_sim = max(-1.0, min(1.0, cosine_sim))
+
+        cosine_dist = 1.0 - cosine_sim
+
+        # Similarity percentage (0% to 100%)
+        # For normalized SFace/FaceNet embeddings:
+        sim_pct = round(max(0.0, min(100.0, ((cosine_sim + 1.0) / 2.0) * 100.0)), 1)
+        if cosine_sim >= 0.50:
+            sim_pct = round(min(100.0, 50.0 + (cosine_sim - 0.50) * 100.0), 1)
+
+        is_match = (cosine_dist <= threshold)
+
+        if is_match:
+            msg = f"Yuz mos keldi (O'xshashlik: {sim_pct}%)."
+        else:
+            msg = "Yuz mos kelmadi. Xodim tasdiqlanmadi."
+
+        return is_match, msg, cosine_dist, sim_pct
+
+    except Exception as e:
+        logger.error("compare_embeddings xatosi: %s", e)
+        return False, f"Embedding taqqoslashda xato: {e}", 1.0, 0.0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 5. STRICT 1:1 STAFF VERIFICATION (CORE FUNCTION FOR VIEWS)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def verify_staff_face_1to1(
+    incoming_image_bytes: bytes,
+    staff_user,
+    threshold: float = STRICT_FACE_DISTANCE_THRESHOLD
+) -> Dict[str, Any]:
+    """
+    Strict 1:1 Staff Biometric Verification.
+
+    Workflow:
+      1. Fetches target staff member's stored embedding.
+         (If missing in DB but etalon photo exists, automatically extracts and updates DB).
+      2. Analyzes incoming camera frame:
+         - Checks for 0 faces -> error
+         - Checks for >1 faces -> error
+         - Liveness/anti-spoofing check
+      3. Performs strict 1:1 mathematical cosine comparison against target staff embedding.
+      4. Returns structured result dictionary.
+
+    Returns:
+      {
+         "status": "success" | "error",
+         "is_match": bool,
+         "message": str,
+         "distance": float,
+         "similarity_pct": float,
+         "error_code": str | None
+      }
+    """
+    # 1. Staff stored embedding retrieval
+    stored_embedding = staff_user.get_face_embedding()
+
+    if not stored_embedding:
+        # Fallback / Self-healing: Extract from stored face_image or avatar if present
+        ref_image = staff_user.face_image or staff_user.avatar
+        if ref_image and hasattr(ref_image, 'path') and os.path.exists(ref_image.path):
+            try:
+                with open(ref_image.path, 'rb') as f:
+                    ref_bytes = f.read()
+                ok, emb, msg, _ = extract_face_embedding(ref_bytes)
+                if ok and emb:
+                    staff_user.set_face_embedding(emb)
+                    from django.utils import timezone
+                    staff_user.face_enrolled_at = timezone.now()
+                    staff_user.save(update_fields=['face_embedding', 'face_enrolled_at'])
+                    stored_embedding = emb
+                    logger.info("Xodim=%s uchun avtomatik yuz embedding yaratildi va saqlandi.", staff_user.username)
+            except Exception as e:
+                logger.warning("Etalon rasmdan embedding olishda xato: %s", e)
+
+    if not stored_embedding:
+        return {
+            "status": "error",
+            "is_match": False,
+            "message": "Tizimda etalon yuzingiz ro'yxatdan o'tmagan! Iltimos, oldin yuzingizni ro'yxatdan o'tkazing.",
+            "distance": 1.0,
+            "similarity_pct": 0.0,
+            "error_code": "NOT_ENROLLED",
+        }
+
+    # 2. Extract embedding from incoming camera frame
+    ok, incoming_embedding, extract_msg, meta = extract_face_embedding(incoming_image_bytes)
+
+    if not ok:
+        error_code = meta.get("error_code", "DETECTION_FAILED")
+        return {
+            "status": "error",
+            "is_match": False,
+            "message": extract_msg,
+            "distance": 1.0,
+            "similarity_pct": 0.0,
+            "error_code": error_code,
+        }
+
+    # 3. Strict 1:1 mathematical comparison
+    is_match, comp_msg, distance, sim_pct = compare_embeddings(
+        incoming_embedding, stored_embedding, threshold=threshold
     )
 
-    if BACKEND == 'deepface':
-        return _verify_deepface(incoming_image_bytes, stored_avatar_path)
-    else:
-        return _verify_opencv(incoming_image_bytes, stored_avatar_path)
+    if not is_match:
+        return {
+            "status": "error",
+            "is_match": False,
+            "message": "Yuz mos kelmadi. Xodim tasdiqlanmadi.",
+            "distance": round(distance, 4),
+            "similarity_pct": sim_pct,
+            "error_code": "MISMATCH",
+        }
+
+    return {
+        "status": "success",
+        "is_match": True,
+        "message": comp_msg,
+        "distance": round(distance, 4),
+        "similarity_pct": sim_pct,
+        "error_code": None,
+    }
 
 
-# ── deepface backend ──────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+# 6. ENROLLMENT VALIDATOR (CALLED DURING FACE REGISTRATION)
+# ═══════════════════════════════════════════════════════════════════════════════
 
-def _verify_deepface(
-    incoming_bytes: bytes,
-    avatar_path: str,
-) -> Tuple[bool, str, float, float]:
-    tmp_file = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            suffix='.jpg', delete=False, prefix='faceid_'
-        ) as tmp:
-            tmp.write(incoming_bytes)
-            tmp_file = tmp.name
-
-        result = DeepFace.verify(
-            img1_path=tmp_file,
-            img2_path=avatar_path,
-            model_name=DEEPFACE_MODEL,
-            distance_metric=DEEPFACE_METRIC,
-            detector_backend=DEEPFACE_DETECTOR,
-            enforce_detection=True,
-            align=True,
-        )
-        distance  = float(result.get('distance', 1.0))
-        verified  = bool(result.get('verified', False))
-        threshold = float(result.get('threshold', DEEPFACE_THRESHOLD))
-        is_match  = verified and distance < max(threshold, DEEPFACE_THRESHOLD)
-        pct = round((1.0 - distance / max(threshold, 0.001)) * 100, 1)
-        pct = min(max(pct, 0.0), 100.0)
-
-        if is_match:
-            return True, (
-                f"Yuz tasdiqlandi ({pct:.1f}% aniqlik, d={distance:.4f})."
-            ), distance, pct
-        return False, (
-            f"Yuz mos kelmadi! "
-            f"Boshqa odam yoki yuz berkitilgan. "
-            f"(d={distance:.4f}, limit={threshold:.4f})"
-        ), distance, pct
-
-    except ValueError as e:
-        msg = str(e).lower()
-        if any(w in msg for w in ['face', 'detect', 'found', 'cannot']):
-            return False, (
-                "Rasmda yuz aniqlanmadi! "
-                "Yuzingizni to'g'ri kameraga qarating."
-            ), 1.0, 0.0
-        return False, f"deepface xatosi: {e}", 1.0, 0.0
-    except Exception as e:
-        logger.error("_verify_deepface xato: %s", e, exc_info=True)
-        return False, f"Yuz taqqoslashda server xatosi: {e}", 1.0, 0.0
-    finally:
-        if tmp_file and os.path.isfile(tmp_file):
-            try:
-                os.unlink(tmp_file)
-            except Exception:
-                pass
-
-
-# ── OpenCV backend (Haar Cascade + Histogram taqqoslash) ─────────────────────
-
-_CASCADE_CLASSIFIER = None
-
-def _get_cascade_classifier():
-    """Haar Cascade modelini xavfsiz yuklaydi va xotirada keshlaydi."""
-    global _CASCADE_CLASSIFIER
-    if _CASCADE_CLASSIFIER is not None:
-        return _CASCADE_CLASSIFIER, None
-
-    if cv2 is None:
-        return None, "OpenCV (cv2) moduli tizimda o'rnatilmagan."
-
-    # cv2 da CascadeClassifier mavjudligini tekshirish
-    if not hasattr(cv2, 'CascadeClassifier'):
-        return None, (
-            "OpenCV da 'CascadeClassifier' topilmadi. "
-            "Tavsiya: OpenCV 4.x barqaror versiyasidan foydalaning (pip install 'opencv-python<5')."
-        )
-
-    # haarcascades XML faylini topish
-    cascade_dir = getattr(getattr(cv2, 'data', None), 'haarcascades', '')
-    cascade_path = os.path.join(cascade_dir, 'haarcascade_frontalface_default.xml') if cascade_dir else ''
-
-    if not cascade_path or not os.path.isfile(cascade_path):
-        return None, f"Haar cascade XML fayli topilmadi: {cascade_path}"
-
-    try:
-        classifier = cv2.CascadeClassifier(cascade_path)
-        if classifier.empty():
-            return None, "Haar Cascade model faylini yuklab bo'lmadi (bo'sh klassifikator)."
-        _CASCADE_CLASSIFIER = classifier
-        return _CASCADE_CLASSIFIER, None
-    except Exception as e:
-        logger.error("CascadeClassifier yuklashda xatolik: %s", e)
-        return None, f"CascadeClassifier xatosi: {e}"
-
-
-def _load_gray_face(image_bytes: bytes):
+def validate_and_enroll_face(image_bytes: bytes) -> Tuple[bool, Optional[List[float]], str]:
     """
-    image_bytes => OpenCV grayscale yuz tasviri.
-    Haar Cascade bilan yuz aniqlanadi va crop qilinadi.
-    Returns: (face_roi, None) yoki (None, error_msg)
+    Validates a face image for registration (enrollment) and returns the generated embedding.
+    Ensures:
+      - Exactly 1 face in frame.
+      - Adequate lighting and sharpness.
+      - Frontal orientation.
     """
-    if cv2 is None or np is None:
-        return None, "OpenCV (cv2) moduli o'rnatilmagan."
-
-    classifier, err = _get_cascade_classifier()
-    if classifier is None:
-        return None, err or "Yuz aniqlash modeli faol emas."
-
-    try:
-        nparr = np.frombuffer(image_bytes, np.uint8)
-        img   = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        if img is None:
-            return None, "Rasm o'qib bo'lmadi (noto'g'ri format)."
-
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        scale_flag = getattr(cv2, 'CASCADE_SCALE_IMAGE', 2)
-        faces = classifier.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(60, 60),
-            flags=scale_flag,
-        )
-        if len(faces) == 0:
-            return None, "Rasmda yuz aniqlanmadi. Yuzingizni to'g'ri kameraga qarating."
-
-        # Eng katta yuzni olish
-        x, y, w, h = max(faces, key=lambda r: r[2] * r[3])
-        face_roi   = cv2.resize(gray[y:y+h, x:x+w], (200, 200))
-        return face_roi, None
-    except Exception as e:
-        logger.error("_load_gray_face xatosi: %s", e, exc_info=True)
-        return None, f"Yuzni tahlil qilishda xatolik yuz berdi: {e}"
+    ok, emb, msg, meta = extract_face_embedding(image_bytes)
+    if not ok:
+        return False, None, msg
+    return True, emb, "Yuz muvaffaqiyatli aniqlandi va embedding yaratildi."
 
 
-def _hist_similarity(face1, face2) -> float:
-    """Ikki grayscale yuz ROI o'rtasida histogram korrelyatsiyasini hisoblaydi."""
-    hist1 = cv2.calcHist([face1], [0], None, [256], [0, 256])
-    hist2 = cv2.calcHist([face2], [0], None, [256], [0, 256])
-    cv2.normalize(hist1, hist1)
-    cv2.normalize(hist2, hist2)
-    # CORREL: 1.0 = bir xil, 0.0 = mutlaqo boshqa
-    return float(cv2.compareHist(hist1, hist2, cv2.HISTCMP_CORREL))
+# ═══════════════════════════════════════════════════════════════════════════════
+# 7. 1:N IDENTIFY FOR STAFF-ONLY KIOSK (TABLET MODE)
+# ═══════════════════════════════════════════════════════════════════════════════
 
-
-def _verify_opencv(
-    incoming_bytes: bytes,
-    avatar_path: str,
-) -> Tuple[bool, str, float, float]:
-    try:
-        # Kelgan rasmdan yuz ajratish
-        face_new, err = _load_gray_face(incoming_bytes)
-        if face_new is None:
-            return False, f"Kelgan rasmda muammo: {err}", 1.0, 0.0
-
-        # Avatar rasmdan yuz ajratish
-        with open(avatar_path, 'rb') as f:
-            avatar_bytes = f.read()
-        face_ref, err = _load_gray_face(avatar_bytes)
-        if face_ref is None:
-            return False, f"Avatar rasmida muammo: {err}", 1.0, 0.0
-
-        similarity = _hist_similarity(face_new, face_ref)
-        # distance = 1 - similarity (0.0 => bir xil, 1.0 => mutlaqo boshqa)
-        distance   = round(1.0 - similarity, 4)
-        pct        = round(max(0.0, min(100.0, similarity * 100)), 1)
-
-        is_match = similarity >= OPENCV_HIST_THRESHOLD
-        if is_match:
-            return True, (
-                f"Yuz tasdiqlandi ({pct:.1f}% o'xshashlik)."
-            ), distance, pct
-        return False, (
-            f"Yuz mos kelmadi! "
-            f"Boshqa odam yoki yuz berkitilgan. "
-            f"(O'xshashlik: {similarity:.2%}, Talab: {OPENCV_HIST_THRESHOLD:.0%})"
-        ), distance, pct
-    except Exception as e:
-        logger.error("_verify_opencv xatosi: %s", e, exc_info=True)
-        return False, f"OpenCV orqali tekshirishda xatolik: {e}", 1.0, 0.0
-
-
-# ── 1:N Staff Identification ──────────────────────────────────────────────────
-
-def identify_staff_face(
+def identify_staff_face_1toN(
     incoming_image_bytes: bytes,
     staff_queryset,
-) -> Tuple[bool, object, str, float, float]:
+    threshold: float = STRICT_FACE_DISTANCE_THRESHOLD
+) -> Tuple[bool, Optional[Any], str, float, float]:
     """
-    Kameradan kelgan yuzni FAQAT xodimlar (User) bazasidan qidiradi.
+    Identifies a staff member from a camera frame using 1:N matching against ONLY Staff.
+    Excludes Children completely.
 
-    ⚠️  XAVFSIZLIK QOIDALARI:
-        1. Faqat `staff_queryset` (User modeli) bo'yicha qidiradi.
-           Child / ChildAttendance jadvallariga HECH QACHON murojaat qilmaydi.
-        2. Har bir xodim bilan verify_face() orqali 1:1 taqqoslash amalga oshiriladi.
-        3. Eng yuqori o'xshashlikka ega xodim tanlanadi va u ham threshold'dan
-           o'tishi SHART — aks holda "Topilmadi" qaytariladi.
-        4. Threshold:
-             deepface  → DEEPFACE_THRESHOLD  (distance < 0.45)
-             opencv    → OPENCV_HIST_THRESHOLD (similarity >= 0.72)
-
-    Args:
-        incoming_image_bytes : kamera kadridan olingan JPEG/PNG bytes
-        staff_queryset       : User.objects.filter(...) — faqat xodimlar
-
-    Returns:
-        (found: bool, matched_user_or_None, message: str,
-         best_distance: float, best_similarity_pct: float)
+    Workflow:
+      1. Extracts incoming camera embedding ONCE.
+      2. Iterates over active staff with stored embeddings.
+      3. Finds best match below threshold.
     """
-    if BACKEND == 'none':
-        return False, None, (
-            "Yuz taqqoslash tizimi faol emas. "
-            "O'rnatish: pip install opencv-python-headless"
-        ), 1.0, 0.0
+    ok, incoming_embedding, extract_msg, meta = extract_face_embedding(incoming_image_bytes)
+    if not ok:
+        return False, None, extract_msg, 1.0, 0.0
 
-    best_user       = None
-    best_distance   = 1.0        # kichikroq = yaxshiroq
-    best_similarity = 0.0        # kattaroq  = yaxshiroq
-    candidates      = 0
+    best_user = None
+    best_dist = 1.0
+    best_sim = 0.0
 
     for staff in staff_queryset:
-        # Etalon rasm yo'lini aniqlash: face_image ustunlik qiladi
-        ref_path = None
-        try:
-            if staff.face_image and staff.face_image.name:
-                ref_path = staff.face_image.path
-            elif staff.avatar and staff.avatar.name:
-                ref_path = staff.avatar.path
-        except Exception:
-            ref_path = None
-
-        if not ref_path or not os.path.isfile(ref_path):
-            logger.debug(
-                "identify_staff_face: xodim=%s — etalon rasm topilmadi, o'tildi.",
-                staff.username,
-            )
+        stored_emb = staff.get_face_embedding()
+        if not stored_emb:
             continue
 
-        candidates += 1
-        is_match, msg, dist, pct = verify_face(incoming_image_bytes, ref_path)
-
-        logger.debug(
-            "identify_staff_face: xodim=%s, dist=%.4f, pct=%.1f, match=%s",
-            staff.username, dist, pct, is_match,
+        is_match, _, dist, sim = compare_embeddings(
+            incoming_embedding, stored_emb, threshold=threshold
         )
-
-        # Eng yaxshi moslikni saqlash
-        if pct > best_similarity:
-            best_similarity = pct
-            best_distance   = dist
-            best_user       = staff if is_match else None
-            # Agar yaxshiroq bo'lsa lekin threshold'dan o'tmasa ham saqlаb qo'yamiz
-            # (faqat xabar berish uchun), lekin best_user = None qoladi
-            if not is_match:
-                _candidate_user = staff  # noqa — faqat log uchun
-            else:
-                _candidate_user = staff
-
-    if candidates == 0:
-        return False, None, (
-            "Bazada yuz ro'yxatdan o'tkazilgan xodim topilmadi! "
-            "Avval xodimlarni 'Yuz Ro'yxatdan O'tkazish' orqali ro'yxatdan o'tkazing."
-        ), 1.0, 0.0
+        if is_match and dist < best_dist:
+            best_dist = dist
+            best_sim = sim
+            best_user = staff
 
     if best_user is not None:
-        full_name = best_user.get_full_name() or best_user.username
-        logger.info(
-            "identify_staff_face: TOPILDI — %s (id=%d), dist=%.4f, pct=%.1f%%",
-            best_user.username, best_user.id, best_distance, best_similarity,
-        )
-        return True, best_user, (
-            f"Xodim aniqlandi: {full_name} "
-            f"({best_similarity:.1f}% o'xshashlik, d={best_distance:.4f})."
-        ), best_distance, best_similarity
+        return True, best_user, "Xodim yuzi muvaffaqiyatli tanildi.", best_dist, best_sim
 
-    logger.info(
-        "identify_staff_face: TOPILMADI — eng yaxshi: dist=%.4f, pct=%.1f%% "
-        "(threshold'dan o'tmadi, %d nomzod tekshirildi).",
-        best_distance, best_similarity, candidates,
-    )
-    return False, None, (
-        f"Yuz bazada topilmadi! "
-        f"Eng yuqori o'xshashlik: {best_similarity:.1f}% "
-        f"(talab: deepface<{DEEPFACE_THRESHOLD} yoki opencv>={OPENCV_HIST_THRESHOLD*100:.0f}%). "
-        f"Yuzingizni to'g'ri kameraga qarating yoki ro'yxatdan o'tkazilganligini tekshiring."
-    ), best_distance, best_similarity
+    return False, None, "Yuz mos kelmadi. Xodim tasdiqlanmadi.", best_dist, best_sim

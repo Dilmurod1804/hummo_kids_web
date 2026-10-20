@@ -24,6 +24,7 @@ function getCookie(name) {
 // Global state variables
 let videoStream = null;
 let currentCoords = null;
+let geoWatchId = null;
 let isGpsWithinRange = true;
 let isProcessing = false;
 let isAttendanceCompleted = false;
@@ -67,12 +68,100 @@ function playSuccessChime() {
     }
 }
 
+// Kindergarten coordinates helper
+function getKindergartenCoordinates() {
+    const container = document.getElementById('attendanceScannerContainer');
+    const kLat = parseFloat(container?.dataset.kLat || 41.3625198);
+    const kLng = parseFloat(container?.dataset.kLng || 69.2041123);
+    const radius = parseFloat(container?.dataset.kRadius || 50);
+    return { kLat, kLng, radius };
+}
+
+// Update GPS radar UI
+function updateGpsUI(coords) {
+    if (!coords) return;
+    const { kLat, kLng, radius } = getKindergartenCoordinates();
+    const gpsInfoElem = document.getElementById('gpsInfoText');
+    const distanceElem = document.getElementById('distancePreview');
+    const dot = document.getElementById('gpsRadarDot');
+
+    const dist = calculateHaversine(coords.lat, coords.lng, kLat, kLng);
+    const acc = coords.accuracy || 10;
+    const effectiveDist = Math.max(0, dist - Math.min(acc, 1500));
+    const yardTolerance = Math.max(radius * 2, 100);
+
+    const withinRange = (dist <= radius) || (dist <= yardTolerance) || (effectiveDist <= radius);
+    isGpsWithinRange = withinRange;
+
+    if (gpsInfoElem) {
+        const accLabel = acc > 100 ? ` (Wi-Fi/IP aniqlik: ±${Math.round(acc)}m)` : ` (Aniqlik: ±${Math.round(acc)}m)`;
+        gpsInfoElem.innerText = `Sizning koordinatangiz: ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}${accLabel}`;
+    }
+
+    if (distanceElem) {
+        if (dist <= radius) {
+            distanceElem.innerText = `${dist.toFixed(1)} metr (Ruxsat: ${radius}m — Hududda)`;
+        } else if (withinRange) {
+            distanceElem.innerText = `${dist.toFixed(1)}m (GPS noaniqligi hisobga olindi: ${effectiveDist.toFixed(1)}m <= ${radius}m)`;
+        } else {
+            distanceElem.innerText = `${dist.toFixed(1)} metr (Ruxsat: ${radius}m, Aniqlik: ±${Math.round(acc)}m)`;
+        }
+    }
+
+    if (dot) {
+        dot.className = withinRange ? 'gps-pulse-dot in-range' : 'gps-pulse-dot out-range';
+    }
+}
+
+// Continuous Geolocation Tracking
+function startGeolocationTracking() {
+    const { kLat, kLng } = getKindergartenCoordinates();
+
+    if (!navigator.geolocation) {
+        currentCoords = { lat: kLat, lng: kLng, accuracy: 5 };
+        updateGpsUI(currentCoords);
+        return;
+    }
+
+    const onPos = (position) => {
+        currentCoords = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy || 10
+        };
+        updateGpsUI(currentCoords);
+    };
+
+    const onErr = (error) => {
+        console.warn("Geolocation warning:", error);
+        if (!currentCoords) {
+            currentCoords = { lat: kLat, lng: kLng, accuracy: 5 };
+            updateGpsUI(currentCoords);
+        }
+    };
+
+    navigator.geolocation.getCurrentPosition(onPos, onErr, {
+        enableHighAccuracy: true,
+        timeout: 6000,
+        maximumAge: 0
+    });
+
+    try {
+        if (geoWatchId) navigator.geolocation.clearWatch(geoWatchId);
+        geoWatchId = navigator.geolocation.watchPosition(onPos, onErr, {
+            enableHighAccuracy: true,
+            maximumAge: 3000,
+            timeout: 10000
+        });
+    } catch (e) {
+        console.warn("watchPosition not supported:", e);
+    }
+}
+
 // Initialize camera and geolocation
 async function initAttendanceScanner() {
     const videoElem = document.getElementById('cameraVideo');
     const statusElem = document.getElementById('scannerStatus');
-    const gpsInfoElem = document.getElementById('gpsInfoText');
-    const distanceElem = document.getElementById('distancePreview');
     const container = document.getElementById('attendanceScannerContainer');
 
     if (container) {
@@ -81,48 +170,10 @@ async function initAttendanceScanner() {
     }
 
     // 1. Geolocation Setup
-    if (navigator.geolocation) {
-        if (statusElem) {
-            statusElem.innerHTML = "<span style='color: #38bdf8;'>📡 GPS koordinatalari aniqlanmoqda...</span>";
-        }
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                currentCoords = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                    accuracy: position.coords.accuracy
-                };
-                if (gpsInfoElem) {
-                    gpsInfoElem.innerText = `Sizning koordinatangiz: ${currentCoords.lat.toFixed(6)}, ${currentCoords.lng.toFixed(6)} (Aniqlik: ±${Math.round(currentCoords.accuracy)}m)`;
-                }
-
-                const kLat = parseFloat(container?.dataset.kLat || 41.311081);
-                const kLng = parseFloat(container?.dataset.kLng || 69.240562);
-                const radius = parseFloat(container?.dataset.kRadius || 50);
-
-                const dist = calculateHaversine(currentCoords.lat, currentCoords.lng, kLat, kLng);
-                if (distanceElem) {
-                    distanceElem.innerText = `${dist.toFixed(1)} metr (Ruxsat: ${radius}m)`;
-                    const dot = document.getElementById('gpsRadarDot');
-                    if (dot) {
-                        if (dist <= radius) {
-                            dot.className = 'gps-pulse-dot in-range';
-                            isGpsWithinRange = true;
-                        } else {
-                            dot.className = 'gps-pulse-dot out-range';
-                            isGpsWithinRange = false;
-                        }
-                    }
-                }
-            },
-            (error) => {
-                console.warn("Geolocation warning:", error);
-                currentCoords = { lat: 41.311090, lng: 69.240570, accuracy: 10 };
-                isGpsWithinRange = true;
-            },
-            { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
-        );
+    if (statusElem) {
+        statusElem.innerHTML = "<span style='color: #38bdf8;'>📡 GPS koordinatalari aniqlanmoqda...</span>";
     }
+    startGeolocationTracking();
 
     // 2. Camera Stream Setup
     try {
@@ -166,12 +217,10 @@ async function initAttendanceScanner() {
                 </div>
             `;
         }
-        // Kameraning barqarorlashishi uchun 1 soniya kutib avto-skanerlashni boshlaymiz
         setTimeout(() => {
-            scheduleNextAutoScan(500);
-        }, 1000);
+            scheduleNextAutoScan(800);
+        }, 1200);
     } else {
-        // Agar xodim allaqachon kelgan bo'lsa
         if (statusElem) {
             statusElem.innerHTML = `
                 <div style="background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 10px; padding: 10px 16px; color: #34d399; font-weight: 600; display: inline-block;">
@@ -179,7 +228,6 @@ async function initAttendanceScanner() {
                 </div>
             `;
         }
-        // Ketdim tugmasini alohida yorqin qilib ko'rsatish
         const checkOutBtn = document.getElementById('btnSubmitCheckOut');
         if (checkOutBtn) {
             checkOutBtn.classList.add('pulse-glow-btn');
@@ -256,10 +304,12 @@ async function executeFaceScan(actionType = 'check_in', isAuto = false) {
         }
     }
 
-    const coords = currentCoords || { lat: 41.311081, lng: 69.240562 };
+    const { kLat, kLng } = getKindergartenCoordinates();
+    const coords = currentCoords || { lat: kLat, lng: kLng, accuracy: 5 };
     const payload = {
         latitude: coords.lat,
         longitude: coords.lng,
+        accuracy: coords.accuracy || 0,
         action: actionType,
         face_image: base64Image
     };
@@ -293,13 +343,13 @@ async function executeFaceScan(actionType = 'check_in', isAuto = false) {
                             🎉 <span>${greeting},</span> <span style="color: #34d399; font-weight: 800;">${fullName}</span>!
                         </div>
                         <div style="font-size: 13px; font-weight: normal; color: #cbd5e1;">
-                            ✓ Shaxs tasdiqlandi ${result.similarity_score !== undefined ? `&bull; O'xshashlik: <strong style="color: #34d399;">${result.similarity_score}%</strong> ` : ''}&bull; Qayd vaqti: <strong style="color: white;">${result.time}</strong> &bull; Holat: <strong style="color: #38bdf8;">${result.status}</strong>
+                            ✓ Shaxs tasdiqlandi ${result.similarity_score !== undefined ? `&bull; O'xshashlik: <strong style="color: #34d399;">${result.similarity_score}%</strong> ` : ''}&bull; Qayd vaqti: <strong style="color: white;">${result.time}</strong> &bull; Holat: <strong style="color: #38bdf8;">${result.status_display || result.attendance_status || result.status}</strong>
                         </div>
                     </div>
                 `;
             }
 
-            showScannerSuccessOverlay(fullName, greeting, result.time, result.status);
+            showScannerSuccessOverlay(fullName, greeting, result.time, result.status_display || result.attendance_status || result.status);
             showToast(`🎉 ${welcomeTitle}`, 'success');
 
             setTimeout(() => {
@@ -398,6 +448,10 @@ function showScannerSuccessOverlay(fullName, greeting, timeStr, statusStr) {
 // Stop camera stream on unload
 function stopCameraStream() {
     if (autoScanTimer) clearTimeout(autoScanTimer);
+    if (geoWatchId && navigator.geolocation) {
+        navigator.geolocation.clearWatch(geoWatchId);
+        geoWatchId = null;
+    }
     if (videoStream) {
         videoStream.getTracks().forEach(track => track.stop());
         videoStream = null;

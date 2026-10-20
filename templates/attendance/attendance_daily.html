@@ -85,26 +85,27 @@
                         {% endif %}
                     </td>
                     <td>
-                        <div style="display: flex; gap: 6px; justify-content: center;">
+                        <div style="display: flex; gap: 6px; justify-content: center; align-items: center;">
                             <!-- PRESENT -->
-                            <label class="att-status-btn present {% if child.current_attendance.status == 'PRESENT' or not child.current_attendance %}active{% endif %}" onclick="selectStatus(this, 'PRESENT')">
+                            <label class="att-status-btn present {% if child.current_attendance.status == 'PRESENT' or not child.current_attendance %}active{% endif %}" onclick="selectStatus(this, '{{ child.id }}', 'PRESENT')">
                                 <input type="radio" name="status_{{ child.id }}" value="PRESENT" style="display: none;" {% if child.current_attendance.status == 'PRESENT' or not child.current_attendance %}checked{% endif %}>
                                 <span>Keldi</span>
                             </label>
                             <!-- EXCUSED -->
-                            <label class="att-status-btn excused {% if child.current_attendance.status == 'EXCUSED' %}active{% endif %}" onclick="selectStatus(this, 'EXCUSED')">
-                                <input type="radio" name="status_{{ child.id }}" value="EXCUSED" style="display: none;" {% if child.current_attendance.status == 'EXCUSED' %}checked{% endif %}>
+                            <label class="att-status-btn excused {% if child.current_attendance.status == 'EXCUSED' or child.current_attendance.status == 'ABSENT_EXCUSED' %}active{% endif %}" onclick="selectStatus(this, '{{ child.id }}', 'EXCUSED')">
+                                <input type="radio" name="status_{{ child.id }}" value="EXCUSED" style="display: none;" {% if child.current_attendance.status == 'EXCUSED' or child.current_attendance.status == 'ABSENT_EXCUSED' %}checked{% endif %}>
                                 <span>Sababli</span>
                             </label>
                             <!-- UNEXCUSED -->
-                            <label class="att-status-btn unexcused {% if child.current_attendance.status == 'UNEXCUSED' %}active{% endif %}" onclick="selectStatus(this, 'UNEXCUSED')">
-                                <input type="radio" name="status_{{ child.id }}" value="UNEXCUSED" style="display: none;" {% if child.current_attendance.status == 'UNEXCUSED' %}checked{% endif %}>
+                            <label class="att-status-btn unexcused {% if child.current_attendance.status == 'UNEXCUSED' or child.current_attendance.status == 'ABSENT_UNEXCUSED' or child.current_attendance.status == 'ABSENT' %}active{% endif %}" onclick="selectStatus(this, '{{ child.id }}', 'UNEXCUSED')">
+                                <input type="radio" name="status_{{ child.id }}" value="UNEXCUSED" style="display: none;" {% if child.current_attendance.status == 'UNEXCUSED' or child.current_attendance.status == 'ABSENT_UNEXCUSED' or child.current_attendance.status == 'ABSENT' %}checked{% endif %}>
                                 <span>Sababsiz</span>
                             </label>
+                            <span class="save-status-indicator" id="indicator_{{ child.id }}" style="font-size: 13px; min-width: 18px; text-align: center;"></span>
                         </div>
                     </td>
                     <td>
-                        <input type="text" class="glass-input input-notes" value="{{ child.current_attendance.notes|default:'' }}" placeholder="Qoldirish sababi..." style="padding: 6px 12px; font-size: 12px;">
+                        <input type="text" class="glass-input input-notes" value="{{ child.current_attendance.notes|default:'' }}" onchange="autoSaveChild('{{ child.id }}')" placeholder="Qoldirish sababi..." style="padding: 6px 12px; font-size: 12px;">
                     </td>
                 </tr>
                 {% empty %}
@@ -169,33 +170,93 @@ function getCookie(name) {
     return m ? decodeURIComponent(m.split('=')[1]) : null;
 }
 
-function selectStatus(labelElem, status) {
+async function selectStatus(labelElem, childId, status) {
     const parentRow = labelElem.closest('tr');
     parentRow.querySelectorAll('.att-status-btn').forEach(btn => btn.classList.remove('active'));
     labelElem.classList.add('active');
-    labelElem.querySelector('input').checked = true;
+    const radio = labelElem.querySelector('input');
+    if (radio) radio.checked = true;
+
+    if (childId) {
+        await autoSaveChild(childId, status);
+    }
+}
+
+async function autoSaveChild(childId, overrideStatus = null) {
+    const row = document.querySelector(`tr[data-child-id="${childId}"]`);
+    if (!row) return;
+
+    let status = overrideStatus;
+    if (!status) {
+        const checked = row.querySelector('input[type="radio"]:checked');
+        status = checked ? checked.value : 'PRESENT';
+    }
+    const notes = row.querySelector('.input-notes')?.value || '';
+    const dateInput = document.querySelector('input[name="date"]');
+    const dateVal = dateInput?.value || "{{ selected_date_str }}";
+    const indicator = document.getElementById(`indicator_${childId}`);
+    if (indicator) indicator.innerHTML = "<span style='color: #38bdf8;'>⏳</span>";
+
+    try {
+        const response = await fetch("{% url 'attendance_save_ajax' %}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie('csrftoken'),
+            },
+            body: JSON.stringify({
+                date: dateVal,
+                child_id: childId,
+                status: status,
+                notes: notes
+            })
+        });
+        const result = await response.json();
+        if (result.success) {
+            if (indicator) {
+                indicator.innerHTML = "<span style='color: #34d399; font-weight: bold;'>✓</span>";
+                setTimeout(() => { if (indicator) indicator.innerHTML = ""; }, 2200);
+            }
+        } else {
+            if (indicator) indicator.innerHTML = "<span style='color: #fb7185;'>⚠️</span>";
+        }
+    } catch (err) {
+        console.error("Auto-save error:", err);
+        if (indicator) indicator.innerHTML = "<span style='color: #fb7185;'>⚠️</span>";
+    }
 }
 
 function markAllPresent() {
-    document.querySelectorAll('#attendanceTableBody tr').forEach(row => {
+    document.querySelectorAll('#attendanceTableBody tr[data-child-id]').forEach(row => {
         const presentBtn = row.querySelector('.att-status-btn.present');
-        if (presentBtn) selectStatus(presentBtn, 'PRESENT');
+        if (presentBtn) {
+            row.querySelectorAll('.att-status-btn').forEach(btn => btn.classList.remove('active'));
+            presentBtn.classList.add('active');
+            const radio = presentBtn.querySelector('input');
+            if (radio) radio.checked = true;
+        }
     });
+    // Barcha o'zgarishlarni darhol saqlash
+    saveAttendanceBatch(false);
 }
 
-async function saveAttendanceBatch() {
+async function saveAttendanceBatch(showAlert = true) {
     const btn = document.getElementById('btnSaveAttendance');
-    btn.disabled = true;
-    btn.innerHTML = "<span>⏳ Saqlanmoqda...</span>";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = "<span>⏳ Saqlanmoqda...</span>";
+    }
 
     const rows = document.querySelectorAll('#attendanceTableBody tr[data-child-id]');
     const records = [];
+    const dateInput = document.querySelector('input[name="date"]');
+    const dateVal = dateInput?.value || "{{ selected_date_str }}";
 
     rows.forEach(row => {
         const childId = row.getAttribute('data-child-id');
         const checkedRadio = row.querySelector('input[type="radio"]:checked');
         const status = checkedRadio ? checkedRadio.value : 'PRESENT';
-        const notes = row.querySelector('.input-notes').value;
+        const notes = row.querySelector('.input-notes')?.value || '';
 
         records.push({
             child_id: childId,
@@ -209,26 +270,39 @@ async function saveAttendanceBatch() {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "X-CSRFToken": getCookie('csrftoken'),  // ← CSRF token qo'shildi
+                "X-CSRFToken": getCookie('csrftoken'),
             },
             body: JSON.stringify({
-                date: "{{ selected_date_str }}",
+                date: dateVal,
                 records: records
             })
         });
 
         const result = await response.json();
         if (result.success) {
-            alert("✓ " + result.message);
+            if (showAlert) {
+                alert("✓ " + result.message);
+            }
+            // Flash all indicators green
+            rows.forEach(row => {
+                const childId = row.getAttribute('data-child-id');
+                const ind = document.getElementById(`indicator_${childId}`);
+                if (ind) {
+                    ind.innerHTML = "<span style='color: #34d399; font-weight: bold;'>✓</span>";
+                    setTimeout(() => { if (ind) ind.innerHTML = ""; }, 2200);
+                }
+            });
         } else {
             alert("Xatolik: " + result.message);
         }
     } catch (err) {
         alert("Server bilan aloqa xatoligi: " + err.message);
     } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<i data-lucide="save" style="width: 16px; height: 16px;"></i><span>Davomatni Saqlash</span>';
-        lucide.createIcons();
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="save" style="width: 16px; height: 16px;"></i><span>Davomatni Saqlash</span>';
+            if (window.lucide) lucide.createIcons();
+        }
     }
 }
 </script>
