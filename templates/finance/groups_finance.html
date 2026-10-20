@@ -263,7 +263,11 @@
                 </div>
 
                 <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
-                    Tarbiyachi: <strong style="color: white;">{{ gs.group.primary_teacher.get_full_name|default:gs.group.primary_teacher.username|default:"Biriktirilmagan" }}</strong>
+                    {% if gs.group.primary_teacher %}
+                    Tarbiyachi: <strong style="color: white;">{{ gs.group.primary_teacher.get_full_name|default:gs.group.primary_teacher.username }}</strong>
+                    {% else %}
+                    Tarbiyachi: <strong style="color: white;">Biriktirilmagan</strong>
+                    {% endif %}
                 </div>
 
                 <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;">
@@ -303,7 +307,7 @@
                 </h3>
                 <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">
                     Guruh badali: <strong>{{ active_group.monthly_fee|floatformat:0 }} UZS / oy</strong> &bull; 
-                    Tarbiyachi: <strong>{{ active_group.primary_teacher.get_full_name|default:active_group.primary_teacher.username|default:"Biriktirilmagan" }}</strong>
+                    Tarbiyachi: <strong>{% if active_group.primary_teacher %}{{ active_group.primary_teacher.get_full_name|default:active_group.primary_teacher.username }}{% else %}Biriktirilmagan{% endif %}</strong>
                 </p>
             </div>
 
