@@ -48,6 +48,8 @@ urlpatterns = [
     # Staff Attendance (Face ID & Geofencing)
     path('attendance/staff-portal/', views.staff_attendance_portal, name='staff_attendance_portal'),
     path('attendance/staff/check-in-api/', views.staff_check_in_api, name='staff_check_in_api'),
+    # 1:N Kiosk: yuzni aniqlash (faqat xodimlar bazasi, Child aralashmaydi)
+    path('attendance/staff/face-identify/', views.face_identify_api, name='face_identify_api'),
     path('attendance/staff-logs/', views.staff_attendance_logs, name='staff_attendance_logs'),
 
     # Finance, Recalculations & Groups Finance

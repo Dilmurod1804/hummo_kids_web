@@ -45,7 +45,10 @@ DEEPFACE_DETECTOR = "opencv"
 DEEPFACE_THRESHOLD = 0.45  # cosine uchun: <0.45 => bir odam
 
 # OpenCV sozlamalari
-OPENCV_HIST_THRESHOLD = 0.60  # histogram correlation: >0.60 => bir odam
+# MUHIM: threshold qanchalik YUQORI bo'lsa, shunchalik QATTIY (xavfsizroq).
+# 0.60 — ko'p hollarda boshqa odamlar ham o'tib ketishi mumkin.
+# 0.72 — aniqroq, lekin yoritilish yomon bo'lsa rad etishi mumkin.
+OPENCV_HIST_THRESHOLD = 0.72  # histogram correlation: >0.72 => bir odam
 
 
 # ── Public helpers ─────────────────────────────────────────────────────────────
@@ -107,7 +110,15 @@ def verify_face(
     stored_avatar_path: str,
 ) -> Tuple[bool, str, float, float]:
     """
-    Kameradan kelgan rasm bilan bazadagi etalon rasmni taqqoslaydi.
+    Kameradan kelgan yuz rasmi bilan FAQAT bitta etalon rasm (stored_avatar_path) ni taqqoslaydi.
+
+    ⚠️  MUHIM XAVFSIZLIK QOIDASI:
+        Bu funksiya bazadagi BARCHA yuzlarni aylanib chiqmaydi.
+        Chaqiruvchi kod (views.py) aniq bir foydalanuvchi/bolaning
+        etalon rasm yo'lini argument sifatida berishi SHART.
+        Masalan:
+            reference_path = request.user.face_image.path   # faqat shu xodimning yuzi
+            verify_face(incoming_bytes, reference_path)
 
     Returns:
         (is_match: bool, message: str, distance: float, similarity_pct: float)
@@ -119,7 +130,15 @@ def verify_face(
         ), 1.0, 0.0
 
     if not os.path.isfile(stored_avatar_path):
-        return False, f"Avatar fayli topilmadi: {stored_avatar_path}", 1.0, 0.0
+        logger.warning(
+            "verify_face: etalon fayl topilmadi: %s", stored_avatar_path
+        )
+        return False, f"Etalon yuz fayli topilmadi: {stored_avatar_path}", 1.0, 0.0
+
+    logger.debug(
+        "verify_face: kelgan bytes=%d, etalon=%s, backend=%s",
+        len(incoming_image_bytes), stored_avatar_path, BACKEND
+    )
 
     if BACKEND == 'deepface':
         return _verify_deepface(incoming_image_bytes, stored_avatar_path)
@@ -309,3 +328,109 @@ def _verify_opencv(
     except Exception as e:
         logger.error("_verify_opencv xatosi: %s", e, exc_info=True)
         return False, f"OpenCV orqali tekshirishda xatolik: {e}", 1.0, 0.0
+
+
+# ── 1:N Staff Identification ──────────────────────────────────────────────────
+
+def identify_staff_face(
+    incoming_image_bytes: bytes,
+    staff_queryset,
+) -> Tuple[bool, object, str, float, float]:
+    """
+    Kameradan kelgan yuzni FAQAT xodimlar (User) bazasidan qidiradi.
+
+    ⚠️  XAVFSIZLIK QOIDALARI:
+        1. Faqat `staff_queryset` (User modeli) bo'yicha qidiradi.
+           Child / ChildAttendance jadvallariga HECH QACHON murojaat qilmaydi.
+        2. Har bir xodim bilan verify_face() orqali 1:1 taqqoslash amalga oshiriladi.
+        3. Eng yuqori o'xshashlikka ega xodim tanlanadi va u ham threshold'dan
+           o'tishi SHART — aks holda "Topilmadi" qaytariladi.
+        4. Threshold:
+             deepface  → DEEPFACE_THRESHOLD  (distance < 0.45)
+             opencv    → OPENCV_HIST_THRESHOLD (similarity >= 0.72)
+
+    Args:
+        incoming_image_bytes : kamera kadridan olingan JPEG/PNG bytes
+        staff_queryset       : User.objects.filter(...) — faqat xodimlar
+
+    Returns:
+        (found: bool, matched_user_or_None, message: str,
+         best_distance: float, best_similarity_pct: float)
+    """
+    if BACKEND == 'none':
+        return False, None, (
+            "Yuz taqqoslash tizimi faol emas. "
+            "O'rnatish: pip install opencv-python-headless"
+        ), 1.0, 0.0
+
+    best_user       = None
+    best_distance   = 1.0        # kichikroq = yaxshiroq
+    best_similarity = 0.0        # kattaroq  = yaxshiroq
+    candidates      = 0
+
+    for staff in staff_queryset:
+        # Etalon rasm yo'lini aniqlash: face_image ustunlik qiladi
+        ref_path = None
+        try:
+            if staff.face_image and staff.face_image.name:
+                ref_path = staff.face_image.path
+            elif staff.avatar and staff.avatar.name:
+                ref_path = staff.avatar.path
+        except Exception:
+            ref_path = None
+
+        if not ref_path or not os.path.isfile(ref_path):
+            logger.debug(
+                "identify_staff_face: xodim=%s — etalon rasm topilmadi, o'tildi.",
+                staff.username,
+            )
+            continue
+
+        candidates += 1
+        is_match, msg, dist, pct = verify_face(incoming_image_bytes, ref_path)
+
+        logger.debug(
+            "identify_staff_face: xodim=%s, dist=%.4f, pct=%.1f, match=%s",
+            staff.username, dist, pct, is_match,
+        )
+
+        # Eng yaxshi moslikni saqlash
+        if pct > best_similarity:
+            best_similarity = pct
+            best_distance   = dist
+            best_user       = staff if is_match else None
+            # Agar yaxshiroq bo'lsa lekin threshold'dan o'tmasa ham saqlаb qo'yamiz
+            # (faqat xabar berish uchun), lekin best_user = None qoladi
+            if not is_match:
+                _candidate_user = staff  # noqa — faqat log uchun
+            else:
+                _candidate_user = staff
+
+    if candidates == 0:
+        return False, None, (
+            "Bazada yuz ro'yxatdan o'tkazilgan xodim topilmadi! "
+            "Avval xodimlarni 'Yuz Ro'yxatdan O'tkazish' orqali ro'yxatdan o'tkazing."
+        ), 1.0, 0.0
+
+    if best_user is not None:
+        full_name = best_user.get_full_name() or best_user.username
+        logger.info(
+            "identify_staff_face: TOPILDI — %s (id=%d), dist=%.4f, pct=%.1f%%",
+            best_user.username, best_user.id, best_distance, best_similarity,
+        )
+        return True, best_user, (
+            f"Xodim aniqlandi: {full_name} "
+            f"({best_similarity:.1f}% o'xshashlik, d={best_distance:.4f})."
+        ), best_distance, best_similarity
+
+    logger.info(
+        "identify_staff_face: TOPILMADI — eng yaxshi: dist=%.4f, pct=%.1f%% "
+        "(threshold'dan o'tmadi, %d nomzod tekshirildi).",
+        best_distance, best_similarity, candidates,
+    )
+    return False, None, (
+        f"Yuz bazada topilmadi! "
+        f"Eng yuqori o'xshashlik: {best_similarity:.1f}% "
+        f"(talab: deepface<{DEEPFACE_THRESHOLD} yoki opencv>={OPENCV_HIST_THRESHOLD*100:.0f}%). "
+        f"Yuzingizni to'g'ri kameraga qarating yoki ro'yxatdan o'tkazilganligini tekshiring."
+    ), best_distance, best_similarity
