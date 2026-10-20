@@ -17,7 +17,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <!-- Glassmorphism Stylesheet -->
-    <link rel="stylesheet" href="/static/css/glassmorphism.css?v=2.2">
+    <link rel="stylesheet" href="/static/css/glassmorphism.css?v=2.3">
     
     <!-- CSRF Meta Tag (JavaScript fetch uchun) -->
     <meta name="csrf-token" content="{% csrf_token %}">
@@ -202,19 +202,26 @@
                 </li>
                 {% endif %}
                 {% endif %}
+                <li class="nav-item-logout">
+                    <a href="{% url 'logout' %}" class="nav-link nav-link-logout" title="Profildan chiqish">
+                        <i data-lucide="log-out" style="width: 18px; height: 18px; color: #fb7185;"></i>
+                        <span>Profildan Chiqish</span>
+                    </a>
+                </li>
             </ul>
 
             <!-- Current User Card -->
             <div class="user-profile-widget">
-                <div class="user-avatar">
+                <div class="user-avatar" title="{{ user.get_full_name|default:user.username }}">
                     {{ user.first_name|slice:":1"|default:user.username|slice:":1"|upper }}
                 </div>
                 <div class="user-info">
                     <p class="user-name">{{ user.get_full_name|default:user.username }}</p>
                     <span class="user-role-badge role-{{ user.role|lower }}">{{ user.get_role_display }}</span>
                 </div>
-                <a href="{% url 'logout' %}" title="Chiqish" style="color: var(--text-dim); text-decoration: none; padding: 4px;">
+                <a href="{% url 'logout' %}" class="btn-sidebar-logout" title="Profildan chiqish">
                     <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
+                    <span class="btn-sidebar-logout-text">Chiqish</span>
                 </a>
             </div>
         </aside>
@@ -231,7 +238,7 @@
                 </div>
 
                 <div class="header-actions">
-                    <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 6px 12px; font-size: 13px; display: flex; align-items: center; gap: 8px; color: white;">
+                    <div class="header-stat-pill" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 6px 12px; font-size: 13px; display: flex; align-items: center; gap: 8px; color: white;">
                         <i data-lucide="users" style="width: 14px; height: 14px; color: #a855f7;"></i>
                         <span>Bolalar: <strong style="color: #c084fc;">{{ total_active_children }}</strong></span>
                     </div>
@@ -245,10 +252,16 @@
                     </div>
 
                     <!-- Geofence Info Badge -->
-                    <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 6px 12px; font-size: 12px; display: flex; align-items: center; gap: 6px; color: #34d399;">
+                    <div class="header-geofence-pill" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 6px 12px; font-size: 12px; display: flex; align-items: center; gap: 6px; color: #34d399;">
                         <span class="gps-pulse-dot in-range" style="width: 8px; height: 8px;"></span>
                         <span>Geofence: 50m</span>
                     </div>
+
+                    <!-- Mobile Quick Logout Button -->
+                    <a href="{% url 'logout' %}" class="mobile-header-logout" title="Profildan chiqish">
+                        <i data-lucide="log-out" style="width: 15px; height: 15px;"></i>
+                        <span>Chiqish</span>
+                    </a>
                 </div>
             </header>
             {% endif %}
