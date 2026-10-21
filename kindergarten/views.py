@@ -417,12 +417,14 @@ def children_list(request):
         groups = Group.objects.all()
 
     if query:
-        children = children.filter(
-            Q(first_name__icontains=query) |
-            Q(last_name__icontains=query) |
-            Q(parent_full_name__icontains=query) |
-            Q(parent_phone__icontains=query)
-        )
+        words = query.split()
+        for w in words:
+            children = children.filter(
+                Q(first_name__icontains=w) |
+                Q(last_name__icontains=w) |
+                Q(parent_full_name__icontains=w) |
+                Q(parent_phone__icontains=w)
+            )
     if group_filter and request.user.can_manage_all:
         children = children.filter(group_id=group_filter)
     if status_filter == 'active':
@@ -436,6 +438,15 @@ def children_list(request):
     kg_settings = KindergartenSettings.get_settings()
     default_trial_daily = round(kg_settings.default_monthly_fee / Decimal('22.0'), -3)
     trial_children = TemporaryChild.objects.filter(status='ACTIVE').select_related('target_group', 'registered_by')
+    if query:
+        words = query.split()
+        for w in words:
+            trial_children = trial_children.filter(
+                Q(first_name__icontains=w) |
+                Q(last_name__icontains=w) |
+                Q(parent_full_name__icontains=w) |
+                Q(parent_phone__icontains=w)
+            )
     all_groups = Group.objects.all().order_by('name')
 
     return render(request, 'children/children_list.html', {
@@ -996,10 +1007,11 @@ def children_attendance_matrix(request):
     if selected_group:
         children_qs = Child.objects.filter(group=selected_group, is_active=True).order_by('first_name', 'last_name')
         if search_q:
-            children_qs = children_qs.filter(
-                Q(first_name__icontains=search_q) |
-                Q(last_name__icontains=search_q)
-            )
+            for w in search_q.split():
+                children_qs = children_qs.filter(
+                    Q(first_name__icontains=w) |
+                    Q(last_name__icontains=w)
+                )
         children = list(children_qs)
 
         # Oylik davomat ma'lumotlarini olish
@@ -2027,11 +2039,12 @@ def staff_attendance_matrix(request):
 
     all_staff_qs = User.objects.filter(is_active=True).exclude(role='DIRECTOR').order_by('role', 'first_name')
     if search_q:
-        all_staff_qs = all_staff_qs.filter(
-            Q(first_name__icontains=search_q) |
-            Q(last_name__icontains=search_q) |
-            Q(username__icontains=search_q)
-        )
+        for w in search_q.split():
+            all_staff_qs = all_staff_qs.filter(
+                Q(first_name__icontains=w) |
+                Q(last_name__icontains=w) |
+                Q(username__icontains=w)
+            )
     if role_filter:
         all_staff_qs = all_staff_qs.filter(role=role_filter)
 
