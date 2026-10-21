@@ -10,6 +10,10 @@
     </div>
 
     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <a href="{% url 'children_attendance_matrix' %}{% if selected_group %}?group={{ selected_group.id }}{% endif %}" class="btn-glass btn-secondary" style="display: inline-flex; align-items: center; gap: 6px;">
+            <i data-lucide="grid" style="width: 16px; height: 16px; color: #818cf8;"></i>
+            <span>Oylik Kalendar Tabel (+ / -)</span>
+        </a>
         <a href="{% url 'export_attendance' %}?group={{ selected_group.id|default:'' }}&date={{ selected_date_str }}" class="btn-glass btn-excel">
             <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px;"></i>
             <span>Excel Yuklab Olish</span>

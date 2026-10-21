@@ -1,5 +1,8 @@
 from django import forms
-from .models import Child, Group, MonthlyInvoice, Payment, KindergartenSettings, User, ChildAttendance
+from .models import (
+    Child, Group, MonthlyInvoice, Payment, KindergartenSettings, User, ChildAttendance,
+    Expense, WarehouseItem, WarehouseLog
+)
 
 class LoginForm(forms.Form):
     username = forms.CharField(widget=forms.TextInput(attrs={
@@ -66,7 +69,7 @@ class PaymentForm(forms.ModelForm):
         fields = ['invoice', 'amount', 'payment_method', 'transaction_id', 'reason', 'notes']
         widgets = {
             'invoice': forms.Select(attrs={'class': 'glass-input'}),
-            'amount': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': 'To‘lov summasi'}),
+            'amount': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': 'To‘lov summasi', 'step': 'any', 'min': '0'}),
             'payment_method': forms.Select(attrs={'class': 'glass-input'}),
             'transaction_id': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Tranzaksiya / Kvitansiya ID'}),
             'reason': forms.Textarea(attrs={'class': 'glass-input', 'rows': 2, 'placeholder': 'To‘lov sababi / Chegirma izohi'}),
@@ -285,3 +288,47 @@ class TeacherReplaceForm(forms.ModelForm):
         )
         self.fields['primary_teacher'].required = True
         self.fields['assistant_teacher'].required = False
+
+
+class ExpenseForm(forms.ModelForm):
+    class Meta:
+        model = Expense
+        fields = ['title', 'amount', 'category', 'payment_method', 'date', 'description', 'receipt_number']
+        widgets = {
+            'title': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Masalan: Oziq-ovqat xaridi, Avans, Kommunal'}),
+            'amount': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '0.00', 'step': '1000'}),
+            'category': forms.Select(attrs={'class': 'glass-select'}),
+            'payment_method': forms.Select(attrs={'class': 'glass-select'}),
+            'date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
+            'description': forms.Textarea(attrs={'class': 'glass-input', 'rows': 3, 'placeholder': 'Qo\'shimcha izoh yoki sababi...'}),
+            'receipt_number': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Chek yoki kvitansiya raqami (ixtiyoriy)'}),
+        }
+
+
+class WarehouseItemForm(forms.ModelForm):
+    class Meta:
+        model = WarehouseItem
+        fields = ['name', 'unit', 'min_threshold', 'min_quantity', 'unit_price', 'description', 'is_active']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Mahsulot nomi (masalan: Go\'sht, Sut, Kartoshka)'}),
+            'unit': forms.Select(attrs={'class': 'glass-select'}),
+            'min_threshold': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '5.000', 'step': '0.1'}),
+            'min_quantity': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '0.000', 'step': '0.1'}),
+            'unit_price': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '0.00', 'step': '100'}),
+            'description': forms.Textarea(attrs={'class': 'glass-input', 'rows': 2, 'placeholder': 'Mahsulot haqida ma\'lumot...'}),
+            'is_active': forms.CheckboxInput(attrs={'class': 'form-checkbox'}),
+        }
+
+
+class WarehouseLogForm(forms.ModelForm):
+    class Meta:
+        model = WarehouseLog
+        fields = ['item', 'log_type', 'quantity', 'payment_method', 'date', 'notes']
+        widgets = {
+            'item': forms.Select(attrs={'class': 'glass-select'}),
+            'log_type': forms.Select(attrs={'class': 'glass-select'}),
+            'quantity': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '0.000', 'step': '0.05'}),
+            'payment_method': forms.Select(attrs={'class': 'glass-select'}),
+            'date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
+            'notes': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Ishlatilish sababi yoki kimga berilgani...'}),
+        }

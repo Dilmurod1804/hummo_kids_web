@@ -29,9 +29,13 @@
                 <i data-lucide="clock-alert" style="width: 16px; height: 16px;"></i>
                 <span>Kechikkanlar</span>
             </a>
-            <a href="{% url 'export_staff_attendance' %}" class="btn-glass btn-excel" style="padding: 9px 16px; font-size: 13px; text-decoration: none;">
+            <a href="{% url 'export_staff_attendance' %}?month={{ month }}&year={{ year }}" class="btn-glass btn-excel" style="padding: 9px 16px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
                 <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px;"></i>
-                <span>Excel</span>
+                <span>Excel Hisobot</span>
+            </a>
+            <a href="{% url 'export_staff_attendance_pdf' %}?month={{ month }}&year={{ year }}" class="btn-glass" style="padding: 9px 16px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); color: #f87171;">
+                <i data-lucide="file-text" style="width: 16px; height: 16px;"></i>
+                <span>PDF Hisobot</span>
             </a>
         </div>
     </div>

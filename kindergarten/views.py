@@ -20,11 +20,13 @@ from functools import wraps
 from .models import (
     User, KindergartenSettings, Group, Child, ChildAttendance,
     StaffAttendance, MonthlyInvoice, Payment, ChatMessage,
-    StaffBonusPenalty, StaffMonthlySalary, AuditLog, TemporaryChild
+    StaffBonusPenalty, StaffMonthlySalary, AuditLog, TemporaryChild,
+    Expense, WarehouseItem, WarehouseLog
 )
 from .forms import (
     LoginForm, ChildForm, GroupForm, PaymentForm, SettingsForm,
-    StaffForm, TeacherReplaceForm, generate_staff_credentials
+    StaffForm, TeacherReplaceForm, generate_staff_credentials,
+    ExpenseForm, WarehouseItemForm, WarehouseLogForm
 )
 from .haversine import haversine_distance, evaluate_geofence
 from .face_utils import (
@@ -38,9 +40,10 @@ from .face_utils import (
 )
 from .excel_reports import (
     generate_children_excel, generate_attendance_excel,
-    generate_staff_attendance_excel, generate_finance_excel
+    generate_staff_attendance_excel, generate_finance_excel,
+    generate_expenses_excel
 )
-from .pdf_reports import generate_finance_pdf
+from .pdf_reports import generate_finance_pdf, generate_staff_attendance_pdf
 from .audit_utils import (
     log_audit, calculate_late_penalty, calculate_early_leave_penalty, sync_staff_monthly_salary
 )
@@ -942,6 +945,227 @@ def attendance_save_ajax(request):
         except Exception as e:
             return JsonResponse({'success': False, 'message': str(e)}, status=400)
     return JsonResponse({'success': False, 'message': 'Invalid request method'}, status=405)
+
+
+# --- Children Monthly Attendance Matrix (Tabel: '+' va '-' toggle) ---
+@login_required
+def children_attendance_matrix(request):
+    """
+    Bolalar Davomati Kalendar Matritsasi (Tabel: '+' va '-' belgili).
+    Oylik kalendar ko'rinishida har bir bola uchun '+' va '-' toggle orqali qulay va tez ishlaydi.
+    """
+    import calendar
+    today = timezone.localtime(timezone.now()).date()
+    month = int(request.GET.get('month', today.month))
+    year = int(request.GET.get('year', today.year))
+    search_q = request.GET.get('q', '').strip()
+
+    groups = Group.objects.all()
+    if request.user.is_teacher and not request.user.can_manage_all:
+        groups = groups.filter(Q(primary_teacher=request.user) | Q(assistant_teacher=request.user))
+
+    selected_group_id = request.GET.get('group', '')
+    if not selected_group_id and groups.exists():
+        selected_group = groups.first()
+        selected_group_id = str(selected_group.id)
+    else:
+        selected_group = groups.filter(id=selected_group_id).first() if selected_group_id else None
+
+    # Oydagi kunlar soni
+    num_days = calendar.monthrange(year, month)[1]
+    days = []
+    uz_weekdays = ['Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh', 'Ya']
+    for d in range(1, num_days + 1):
+        day_date = date(year, month, d)
+        wd = day_date.weekday()
+        days.append({
+            'day': d,
+            'date': day_date,
+            'weekday_name': uz_weekdays[wd],
+            'is_weekend': wd in [5, 6],
+            'is_today': (day_date == today),
+            'is_future': (day_date > today),
+        })
+
+    children = []
+    matrix_rows = []
+    total_present_all = 0
+    total_excused_all = 0
+    total_unexcused_all = 0
+
+    if selected_group:
+        children_qs = Child.objects.filter(group=selected_group, is_active=True).order_by('first_name', 'last_name')
+        if search_q:
+            children_qs = children_qs.filter(
+                Q(first_name__icontains=search_q) |
+                Q(last_name__icontains=search_q)
+            )
+        children = list(children_qs)
+
+        # Oylik davomat ma'lumotlarini olish
+        month_attendances = ChildAttendance.objects.filter(
+            child__in=children,
+            date__year=year,
+            date__month=month
+        )
+        att_map = {}
+        for att in month_attendances:
+            att_map[(att.child_id, att.date.day)] = att
+
+        for child in children:
+            cells = []
+            child_present = 0
+            child_excused = 0
+            child_unexcused = 0
+
+            for d_info in days:
+                d = d_info['day']
+                att = att_map.get((child.id, d))
+                status = att.status if att else None
+
+                if status == 'PRESENT':
+                    symbol = '+'
+                    badge_class = 'badge-plus'
+                    child_present += 1
+                    total_present_all += 1
+                elif status == 'EXCUSED':
+                    symbol = '- (S)'
+                    badge_class = 'badge-excused'
+                    child_excused += 1
+                    total_excused_all += 1
+                elif status == 'UNEXCUSED':
+                    symbol = '- (Sb)'
+                    badge_class = 'badge-unexcused'
+                    child_unexcused += 1
+                    total_unexcused_all += 1
+                else:
+                    symbol = '·'
+                    badge_class = 'badge-empty'
+
+                cells.append({
+                    'day': d,
+                    'date_str': f"{year}-{month:02d}-{d:02d}",
+                    'status': status,
+                    'symbol': symbol,
+                    'badge_class': badge_class,
+                    'is_weekend': d_info['is_weekend'],
+                    'is_today': d_info['is_today'],
+                    'is_future': d_info['is_future'],
+                    'notes': att.notes if att else '',
+                })
+
+            matrix_rows.append({
+                'child': child,
+                'cells': cells,
+                'present_count': child_present,
+                'excused_count': child_excused,
+                'unexcused_count': child_unexcused,
+                'total_marked': child_present + child_excused + child_unexcused,
+            })
+
+    # Oldingi va keyingi oylar
+    if month == 1:
+        prev_month, prev_year = 12, year - 1
+    else:
+        prev_month, prev_year = month - 1, year
+
+    if month == 12:
+        next_month, next_year = 1, year + 1
+    else:
+        next_month, next_year = month + 1, year
+
+    month_names_uz = [
+        '', 'Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun',
+        'Iyul', 'Avgust', 'Sentyabr', 'Oktyabr', 'Noyabr', 'Dekabr'
+    ]
+
+    return render(request, 'attendance/children_matrix.html', {
+        'groups': groups,
+        'selected_group': selected_group,
+        'month': month,
+        'year': year,
+        'prev_month': prev_month,
+        'prev_year': prev_year,
+        'next_month': next_month,
+        'next_year': next_year,
+        'month_name': month_names_uz[month],
+        'month_names_uz': month_names_uz,
+        'months_range': range(1, 13),
+        'days': days,
+        'matrix_rows': matrix_rows,
+        'search_q': search_q,
+        'total_present_all': total_present_all,
+        'total_excused_all': total_excused_all,
+        'total_unexcused_all': total_unexcused_all,
+        'today': today,
+    })
+
+
+@csrf_exempt
+@login_required
+def child_attendance_toggle_ajax(request):
+    """
+    Bolalar davomatini katakchaga bosganda bir lahzada toggle qilish:
+    Ketma-ketlik: Bo'sh / - -> '+' (PRESENT) -> '- (S)' (EXCUSED) -> '- (Sb)' (UNEXCUSED) -> '+' (PRESENT)
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            child_id = int(data.get('child_id'))
+            date_str = data.get('date')
+            target_status = data.get('target_status')
+            att_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+            child = get_object_or_404(Child, id=child_id)
+            att = ChildAttendance.objects.filter(child=child, date=att_date).first()
+
+            if target_status:
+                new_status = target_status
+            else:
+                # Cycle toggle: Bo'sh -> PRESENT -> EXCUSED -> UNEXCUSED -> PRESENT
+                if not att or att.status == 'UNEXCUSED':
+                    new_status = 'PRESENT'
+                elif att.status == 'PRESENT':
+                    new_status = 'EXCUSED'
+                elif att.status == 'EXCUSED':
+                    new_status = 'UNEXCUSED'
+                else:
+                    new_status = 'PRESENT'
+
+            ChildAttendance.objects.update_or_create(
+                child=child,
+                date=att_date,
+                defaults={
+                    'status': new_status,
+                    'marked_by': request.user
+                }
+            )
+
+            if new_status == 'PRESENT':
+                symbol = '+'
+                badge_class = 'badge-plus'
+                status_display = 'Keldi'
+            elif new_status == 'EXCUSED':
+                symbol = '- (S)'
+                badge_class = 'badge-excused'
+                status_display = 'Sababli'
+            else:
+                symbol = '- (Sb)'
+                badge_class = 'badge-unexcused'
+                status_display = 'Sababsiz'
+
+            return JsonResponse({
+                'success': True,
+                'status': new_status,
+                'status_display': status_display,
+                'symbol': symbol,
+                'badge_class': badge_class,
+                'child_id': child_id,
+                'date': date_str,
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    return JsonResponse({'success': False, 'error': 'Invalid request method'}, status=405)
 
 
 # --- Face ID time-window helpers ---
@@ -1958,6 +2182,83 @@ def staff_attendance_matrix(request):
 
 
 # --- Finance & Recalculation (Перерасчет) ---
+def compute_payments_breakdown(queryset):
+    """
+    To'lovlar queryset'i asosida to'lov usullari va guruhlar kesimidagi tushumlar statistikasini tayyorlaydi.
+    """
+    method_keys = ['CASH', 'CARD', 'TERMINAL', 'CLICK_PAYME', 'BANK_TRANSFER', 'MARTA']
+    method_totals = {k: Decimal('0.00') for k in method_keys}
+    method_counts = {k: 0 for k in method_keys}
+    
+    total_sum = Decimal('0.00')
+    total_count = 0
+    groups_map = {}
+
+    payments = queryset.select_related(
+        'invoice__child__group',
+        'temporary_child__target_group'
+    )
+
+    for p in payments:
+        amt = p.amount or Decimal('0.00')
+        m = p.payment_method if p.payment_method in method_keys else 'CARD'
+        
+        total_sum += amt
+        total_count += 1
+        method_totals[m] += amt
+        method_counts[m] += 1
+
+        g_id = 0
+        g_name = "Guruhsiz / Boshqa"
+        if p.invoice and p.invoice.child and p.invoice.child.group:
+            g_id = p.invoice.child.group.id
+            g_name = p.invoice.child.group.name
+        elif p.temporary_child and p.temporary_child.target_group:
+            g_id = p.temporary_child.target_group.id
+            g_name = p.temporary_child.target_group.name
+
+        if g_id not in groups_map:
+            groups_map[g_id] = {
+                'id': g_id,
+                'name': g_name,
+                'total_amount': Decimal('0.00'),
+                'count': 0,
+                'by_method': {k: Decimal('0.00') for k in method_keys}
+            }
+
+        groups_map[g_id]['total_amount'] += amt
+        groups_map[g_id]['count'] += 1
+        groups_map[g_id]['by_method'][m] += amt
+
+    groups_list = sorted(groups_map.values(), key=lambda x: x['total_amount'], reverse=True)
+
+    json_data = {
+        'total_amount': float(total_sum),
+        'total_count': total_count,
+        'method_totals': {k: float(v) for k, v in method_totals.items()},
+        'method_counts': method_counts,
+        'groups': [
+            {
+                'id': g['id'],
+                'name': g['name'],
+                'total_amount': float(g['total_amount']),
+                'count': g['count'],
+                'by_method': {k: float(v) for k, v in g['by_method'].items()},
+            }
+            for g in groups_list
+        ]
+    }
+
+    return {
+        'total_sum': total_sum,
+        'total_count': total_count,
+        'method_totals': method_totals,
+        'method_counts': method_counts,
+        'groups': groups_list,
+        'json_data': json_data,
+    }
+
+
 def compute_groups_finance_summary(month, year):
     all_groups = Group.objects.all().order_by('name')
     groups_summary = []
@@ -2093,32 +2394,88 @@ def finance_dashboard(request):
 
     # --- 1. Kunlik Tushum (Bugun) ---
     today_payments = Payment.objects.filter(paid_at__date=today)
-    daily_total = today_payments.aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
-    daily_cash = today_payments.filter(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
-    daily_card = today_payments.exclude(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    daily_stats = compute_payments_breakdown(today_payments)
+    daily_total = daily_stats['total_sum']
+    daily_cash = daily_stats['method_totals']['CASH']
+    daily_card = daily_stats['method_totals']['CARD']
+    daily_terminal = daily_stats['method_totals']['TERMINAL']
+    daily_payme = daily_stats['method_totals']['CLICK_PAYME']
+    daily_bank = daily_stats['method_totals']['BANK_TRANSFER']
+    daily_marta = daily_stats['method_totals']['MARTA']
+    daily_card_bank_total = daily_total - daily_cash
 
     # --- 2. Oylik Tushum (Tanlangan oy) ---
     monthly_payments = Payment.objects.filter(paid_at__year=year, paid_at__month=month)
-    monthly_total = monthly_payments.aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
-    monthly_cash = monthly_payments.filter(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
-    monthly_card = monthly_payments.exclude(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    monthly_stats = compute_payments_breakdown(monthly_payments)
+    monthly_total = monthly_stats['total_sum']
+    monthly_cash = monthly_stats['method_totals']['CASH']
+    monthly_card = monthly_stats['method_totals']['CARD']
+    monthly_terminal = monthly_stats['method_totals']['TERMINAL']
+    monthly_payme = monthly_stats['method_totals']['CLICK_PAYME']
+    monthly_bank = monthly_stats['method_totals']['BANK_TRANSFER']
+    monthly_marta = monthly_stats['method_totals']['MARTA']
+    monthly_card_bank_total = monthly_total - monthly_cash
 
-    # --- 3. Kassa Balansi (To'lov Turlari bo'yicha - Barcha davrlar yoki jami kassa) ---
-    cash_total = Payment.objects.filter(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
-    card_total = Payment.objects.filter(payment_method='CARD').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
-    online_total = Payment.objects.filter(payment_method__in=['CLICK_PAYME', 'BANK_TRANSFER']).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
-    total_kassa = cash_total + card_total + online_total
+    # --- 3. Kassa Balansi (To'lov Turlari bo'yicha - Barcha davrlar) ---
+    all_payments = Payment.objects.all()
+    kassa_stats = compute_payments_breakdown(all_payments)
+    total_kassa = kassa_stats['total_sum']
+    cash_total = kassa_stats['method_totals']['CASH']
+    card_total = kassa_stats['method_totals']['CARD']
+    terminal_total = kassa_stats['method_totals']['TERMINAL']
+    payme_total = kassa_stats['method_totals']['CLICK_PAYME']
+    bank_total = kassa_stats['method_totals']['BANK_TRANSFER']
+    online_total = payme_total + bank_total
+    marta_total = kassa_stats['method_totals']['MARTA']
+    card_bank_total = total_kassa - cash_total
 
-    # --- 4. Vaqtinchalik Bolalar ---
+    # --- 4. Chiqimlar (Expenses) & Sof Kassa Balansi Hisobi ---
+    # Bugungi chiqimlar
+    today_expenses = Expense.objects.filter(date=today)
+    daily_exp_total = today_expenses.aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    daily_exp_cash = today_expenses.filter(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    daily_exp_card = today_expenses.filter(payment_method='CARD').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    daily_exp_other = today_expenses.filter(payment_method='OTHER').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    daily_net_balance = daily_total - daily_exp_total
+    daily_net_cash = daily_cash - daily_exp_cash
+    daily_net_card = daily_card_bank_total - daily_exp_card
+
+    # Oylik chiqimlar (Tanlangan oy)
+    monthly_expenses = Expense.objects.filter(date__year=year, date__month=month)
+    monthly_exp_total = monthly_expenses.aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    monthly_exp_cash = monthly_expenses.filter(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    monthly_exp_card = monthly_expenses.filter(payment_method='CARD').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    monthly_exp_other = monthly_expenses.filter(payment_method='OTHER').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    monthly_net_balance = monthly_total - monthly_exp_total
+    monthly_net_cash = monthly_cash - monthly_exp_cash
+    monthly_net_card = monthly_card_bank_total - monthly_exp_card
+
+    # Jami chiqimlar (Barcha davrlar)
+    all_expenses = Expense.objects.all()
+    total_expenses = all_expenses.aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    exp_cash_total = all_expenses.filter(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    exp_card_total = all_expenses.filter(payment_method='CARD').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+    exp_other_total = all_expenses.filter(payment_method='OTHER').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+
+    # SOF KASSA BALANSI (Tushumlar - Chiqimlar)
+    net_total_kassa = total_kassa - total_expenses
+    net_cash_total = cash_total - exp_cash_total
+    net_card_total = card_bank_total - exp_card_total
+
+    # Oxirgi chiqimlar
+    recent_expenses = Expense.objects.select_related('created_by').order_by('-date', '-created_at')[:15]
+    expense_form = ExpenseForm()
+
+    # --- 5. Vaqtinchalik Bolalar ---
     trial_children = TemporaryChild.objects.filter(status='ACTIVE').select_related('target_group', 'registered_by')
     all_groups = Group.objects.all().order_by('name')
 
-    # --- 5. Tranzaksiya Tarixi (Oxirgi to'lovlar) ---
+    # --- 6. Tranzaksiya Tarixi (Oxirgi to'lovlar) ---
     recent_payments = Payment.objects.select_related('invoice__child', 'temporary_child', 'recorded_by').order_by('-paid_at')[:25]
 
     payment_form = PaymentForm()
 
-    # --- 6. Guruhlar bo'yicha Umumiy To'lovlar Hisoboti & Grafik Ma'lumotlari ---
+    # --- 7. Guruhlar bo'yicha Umumiy To'lovlar Hisoboti & Grafik Ma'lumotlari ---
     groups_fin_data = compute_groups_finance_summary(month, year)
 
     return render(request, 'finance/finance_dashboard.html', {
@@ -2135,19 +2492,64 @@ def finance_dashboard(request):
         'daily_total': daily_total,
         'daily_cash': daily_cash,
         'daily_card': daily_card,
+        'daily_terminal': daily_terminal,
+        'daily_payme': daily_payme,
+        'daily_bank': daily_bank,
+        'daily_marta': daily_marta,
+        'daily_card_bank_total': daily_card_bank_total,
+        'daily_count': daily_stats['total_count'],
+        'daily_breakdown_json': json.dumps(daily_stats['json_data']),
         # Oylik
         'monthly_total': monthly_total,
         'monthly_cash': monthly_cash,
         'monthly_card': monthly_card,
+        'monthly_terminal': monthly_terminal,
+        'monthly_payme': monthly_payme,
+        'monthly_bank': monthly_bank,
+        'monthly_marta': monthly_marta,
+        'monthly_card_bank_total': monthly_card_bank_total,
+        'monthly_count': monthly_stats['total_count'],
+        'monthly_breakdown_json': json.dumps(monthly_stats['json_data']),
         # Kassa balansi
         'cash_total': cash_total,
         'card_total': card_total,
+        'terminal_total': terminal_total,
+        'payme_total': payme_total,
+        'bank_total': bank_total,
         'online_total': online_total,
+        'marta_total': marta_total,
+        'card_bank_total': card_bank_total,
         'total_kassa': total_kassa,
+        'kassa_count': kassa_stats['total_count'],
+        'kassa_breakdown_json': json.dumps(kassa_stats['json_data']),
         # Vaqtinchalik bolalar
         'trial_children': trial_children,
         'all_groups': all_groups,
         'default_trial_daily': default_trial_daily,
+        # Chiqimlar va Sof Balans
+        'daily_exp_total': daily_exp_total,
+        'daily_exp_cash': daily_exp_cash,
+        'daily_exp_card': daily_exp_card,
+        'daily_exp_other': daily_exp_other,
+        'daily_net_balance': daily_net_balance,
+        'daily_net_cash': daily_net_cash,
+        'daily_net_card': daily_net_card,
+        'monthly_exp_total': monthly_exp_total,
+        'monthly_exp_cash': monthly_exp_cash,
+        'monthly_exp_card': monthly_exp_card,
+        'monthly_exp_other': monthly_exp_other,
+        'monthly_net_balance': monthly_net_balance,
+        'monthly_net_cash': monthly_net_cash,
+        'monthly_net_card': monthly_net_card,
+        'total_expenses': total_expenses,
+        'exp_cash_total': exp_cash_total,
+        'exp_card_total': exp_card_total,
+        'exp_other_total': exp_other_total,
+        'net_total_kassa': net_total_kassa,
+        'net_cash_total': net_cash_total,
+        'net_card_total': net_card_total,
+        'recent_expenses': recent_expenses,
+        'expense_form': expense_form,
         # Tranzaksiyalar
         'recent_payments': recent_payments,
         'payment_form': payment_form,
@@ -2496,9 +2898,14 @@ def export_attendance(request):
 @login_required
 @user_passes_test(is_director_or_manager)
 def export_staff_attendance(request):
-    buf = generate_staff_attendance_excel()
+    month = request.GET.get('month')
+    year = request.GET.get('year')
+    date_val = request.GET.get('date')
+    staff_id = request.GET.get('staff_id')
+    buf = generate_staff_attendance_excel(month=month, year=year, staff_id=staff_id, date_val=date_val)
+    period = f"_{date_val}" if date_val else (f"_{month}_{year}" if month and year else "")
     response = HttpResponse(buf, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    response['Content-Disposition'] = f'attachment; filename="Xodimlar_FaceID_GPS_{timezone.now().strftime("%Y%m%d")}.xlsx"'
+    response['Content-Disposition'] = f'attachment; filename="Xodimlar_Davomat_Shtraf{period}_{timezone.now().strftime("%Y%m%d")}.xlsx"'
     return response
 
 @login_required
@@ -2914,4 +3321,344 @@ def audit_logs_view(request):
         'query': query,
         'category_choices': AuditLog.CATEGORY_CHOICES,
     })
+
+
+# ============================================================
+#  CHIQIMLAR BOSHQARUVI (EXPENSES MODULE)
+# ============================================================
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def expenses_list(request):
+    """Chiqimlar ro'yxati va statistikasi"""
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
+    category_filter = request.GET.get('category', '')
+    method_filter = request.GET.get('method', '')
+
+    expenses = Expense.objects.select_related('created_by').all()
+
+    if date_from:
+        expenses = expenses.filter(date__gte=date_from)
+    if date_to:
+        expenses = expenses.filter(date__lte=date_to)
+    if category_filter:
+        expenses = expenses.filter(category=category_filter)
+    if method_filter:
+        expenses = expenses.filter(payment_method=method_filter)
+
+    today = timezone.now().date()
+    first_of_month = today.replace(day=1)
+    total_amount = expenses.aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    monthly = Expense.objects.filter(date__gte=first_of_month).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    daily = Expense.objects.filter(date=today).aggregate(total=Sum('amount'))['total'] or Decimal('0.00')
+    cash_total = expenses.filter(payment_method='CASH').aggregate(t=Sum('amount'))['t'] or Decimal('0.00')
+    card_total = expenses.filter(payment_method='CARD').aggregate(t=Sum('amount'))['t'] or Decimal('0.00')
+    other_total = expenses.filter(payment_method='OTHER').aggregate(t=Sum('amount'))['t'] or Decimal('0.00')
+
+    by_category = []
+    for code, label in Expense.CATEGORY_CHOICES:
+        cat_total = expenses.filter(category=code).aggregate(t=Sum('amount'))['t'] or Decimal('0.00')
+        if cat_total > 0:
+            by_category.append({'code': code, 'label': label, 'total': cat_total})
+
+    return render(request, 'finance/expenses_list.html', {
+        'expenses': expenses[:200],
+        'total_amount': total_amount,
+        'monthly_amount': monthly,
+        'daily_amount': daily,
+        'cash_total': cash_total,
+        'card_total': card_total,
+        'other_total': other_total,
+        'by_category': by_category,
+        'date_from': date_from,
+        'date_to': date_to,
+        'category_filter': category_filter,
+        'method_filter': method_filter,
+        'category_choices': Expense.CATEGORY_CHOICES,
+        'method_choices': Expense.PAYMENT_METHODS,
+    })
+
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def expense_add(request):
+    if request.method == 'POST':
+        try:
+            amount_str = request.POST.get('amount', '0').replace(' ', '').replace(',', '.')
+            exp = Expense.objects.create(
+                title=request.POST.get('title', '').strip(),
+                amount=Decimal(amount_str),
+                category=request.POST.get('category', 'OTHER'),
+                payment_method=request.POST.get('payment_method', 'CASH'),
+                date=request.POST.get('date', str(timezone.now().date())),
+                description=request.POST.get('description', ''),
+                receipt_number=request.POST.get('receipt_number', ''),
+                created_by=request.user,
+            )
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'success': True, 'id': exp.id})
+            messages.success(request, f"Chiqim muvaffaqiyatli qo'shildi: {exp.title}")
+        except Exception as e:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'success': False, 'error': str(e)}, status=400)
+            messages.error(request, f"Xatolik: {e}")
+    next_url = request.POST.get('next') or request.META.get('HTTP_REFERER') or 'expenses_list'
+    return redirect(next_url)
+
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def expense_edit(request, pk):
+    exp = get_object_or_404(Expense, pk=pk)
+    if request.method == 'POST':
+        try:
+            exp.title = request.POST.get('title', exp.title).strip()
+            exp.amount = Decimal(request.POST.get('amount', '0').replace(' ', '').replace(',', '.'))
+            exp.category = request.POST.get('category', exp.category)
+            exp.payment_method = request.POST.get('payment_method', exp.payment_method)
+            exp.date = request.POST.get('date', str(exp.date))
+            exp.description = request.POST.get('description', exp.description)
+            exp.receipt_number = request.POST.get('receipt_number', exp.receipt_number)
+            exp.save()
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'success': True})
+            messages.success(request, "Chiqim yangilandi")
+        except Exception as e:
+            messages.error(request, f"Xatolik: {e}")
+    next_url = request.POST.get('next') or request.META.get('HTTP_REFERER') or 'expenses_list'
+    return redirect(next_url)
+
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def expense_delete(request, pk):
+    exp = get_object_or_404(Expense, pk=pk)
+    if request.method == 'POST':
+        title = exp.title
+        exp.delete()
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'success': True})
+        messages.success(request, f"Chiqim o'chirildi: {title}")
+    next_url = request.POST.get('next') or request.META.get('HTTP_REFERER') or 'expenses_list'
+    return redirect(next_url)
+
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def export_expenses(request):
+    date_from = request.GET.get('date_from', '')
+    date_to = request.GET.get('date_to', '')
+    buf = generate_expenses_excel(date_from, date_to)
+    response = HttpResponse(buf, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="Chiqimlar_{timezone.now().strftime("%Y%m%d")}.xlsx"'
+    return response
+
+
+# ============================================================
+#  OMBOR BOSHQARUVI (WAREHOUSE MODULE)
+# ============================================================
+
+def is_warehouse_user(user):
+    return user.role in ('DIRECTOR', 'MANAGER', 'COOK') or user.is_superuser
+
+
+@login_required
+@user_passes_test(is_warehouse_user)
+def warehouse_dashboard(request):
+    items = WarehouseItem.objects.filter(is_active=True).order_by('name')
+    today = timezone.now().date()
+    first_of_month = today.replace(day=1)
+
+    today_logs = WarehouseLog.objects.filter(date=today).select_related('item', 'recorded_by', 'expense').order_by('-created_at')[:50]
+    monthly_out = WarehouseLog.objects.filter(date__gte=first_of_month, log_type='OUT').aggregate(v=Sum('total_price'))['v'] or Decimal('0.00')
+    monthly_in = WarehouseLog.objects.filter(date__gte=first_of_month, log_type='IN').aggregate(v=Sum('total_price'))['v'] or Decimal('0.00')
+    
+    # Kam qolgan mahsulotlar (min_threshold bo'yicha)
+    low_stock_items = [i for i in items if i.is_low_stock]
+    low_stock_reorder_cost = sum(i.reorder_cost for i in low_stock_items)
+
+    month_str = request.GET.get('month', today.strftime('%Y-%m'))
+    try:
+        filter_month = datetime.strptime(month_str, '%Y-%m').date()
+    except Exception:
+        filter_month = today.replace(day=1)
+
+    month_logs = WarehouseLog.objects.filter(
+        date__year=filter_month.year,
+        date__month=filter_month.month
+    ).select_related('item', 'recorded_by', 'expense').order_by('-date', '-created_at')
+
+    return render(request, 'warehouse/warehouse_dashboard.html', {
+        'items': items,
+        'today_logs': today_logs,
+        'month_logs': month_logs,
+        'monthly_out': monthly_out,
+        'monthly_in': monthly_in,
+        'low_stock_items': low_stock_items,
+        'low_stock_count': len(low_stock_items),
+        'low_stock_reorder_cost': low_stock_reorder_cost,
+        'total_items': items.count(),
+        'filter_month': filter_month.strftime('%Y-%m'),
+        'today': today,
+    })
+
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def warehouse_item_add(request):
+    if request.method == 'POST':
+        try:
+            min_thresh_val = request.POST.get('min_threshold', '').strip()
+            min_qty_val = request.POST.get('min_quantity', '').strip()
+            min_thresh = Decimal((min_thresh_val or min_qty_val or '5').replace(',', '.'))
+            unit_pr = Decimal(request.POST.get('unit_price', '0').replace(',', '.') or '0')
+
+            item = WarehouseItem.objects.create(
+                name=request.POST['name'].strip(),
+                unit=request.POST.get('unit', 'kg'),
+                min_threshold=min_thresh,
+                min_quantity=min_thresh,
+                unit_price=unit_pr,
+                description=request.POST.get('description', ''),
+            )
+            init_qty_str = request.POST.get('initial_quantity', '').strip()
+            if init_qty_str:
+                init_qty = Decimal(init_qty_str.replace(',', '.'))
+                if init_qty > 0:
+                    pay_method = request.POST.get('payment_method', 'CASH')
+                    WarehouseLog.objects.create(
+                        item=item,
+                        log_type='IN',
+                        quantity=init_qty,
+                        unit_price=unit_pr,
+                        payment_method=pay_method,
+                        date=timezone.now().date(),
+                        notes="Boshlang'ich kirim",
+                        recorded_by=request.user,
+                    )
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'success': True, 'id': item.id, 'name': item.name})
+            messages.success(request, f"Mahsulot qo'shildi: {item.name}")
+        except Exception as e:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'success': False, 'error': str(e)}, status=400)
+            messages.error(request, f"Xatolik: {e}")
+    return redirect('warehouse_dashboard')
+
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def warehouse_item_edit(request, pk):
+    item = get_object_or_404(WarehouseItem, pk=pk)
+    if request.method == 'POST':
+        try:
+            item.name = request.POST.get('name', item.name).strip()
+            item.unit = request.POST.get('unit', item.unit)
+            min_thresh_val = request.POST.get('min_threshold', '').strip()
+            min_qty_val = request.POST.get('min_quantity', '').strip()
+            if min_thresh_val or min_qty_val:
+                item.min_threshold = Decimal((min_thresh_val or min_qty_val).replace(',', '.'))
+                item.min_quantity = item.min_threshold
+            item.unit_price = Decimal(request.POST.get('unit_price', '0').replace(',', '.') or '0')
+            item.description = request.POST.get('description', item.description or '')
+            item.is_active = request.POST.get('is_active', '1') == '1'
+            item.save()
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'success': True})
+            messages.success(request, f"Mahsulot yangilandi: {item.name}")
+        except Exception as e:
+            messages.error(request, f"Xatolik: {e}")
+    return redirect('warehouse_dashboard')
+
+
+@login_required
+@user_passes_test(is_warehouse_user)
+def warehouse_log_add(request):
+    if request.method == 'POST':
+        try:
+            item = get_object_or_404(WarehouseItem, pk=request.POST['item_id'])
+            qty = Decimal(request.POST.get('quantity', '0').replace(',', '.'))
+            if qty <= 0:
+                raise ValueError("Miqdor musbat bo'lishi kerak")
+            
+            log_type = request.POST.get('log_type', 'OUT')
+            payment_method = request.POST.get('payment_method', 'CASH')
+            unit_price_input = request.POST.get('unit_price', '').strip()
+            unit_price = Decimal(unit_price_input.replace(',', '.')) if unit_price_input else item.unit_price
+
+            log = WarehouseLog.objects.create(
+                item=item,
+                log_type=log_type,
+                quantity=qty,
+                unit_price=unit_price,
+                payment_method=payment_method,
+                date=request.POST.get('date', str(timezone.now().date())),
+                notes=request.POST.get('notes', ''),
+                recorded_by=request.user,
+            )
+            if log_type == 'IN' and log.expense:
+                messages.success(request, f"{item.name} — kirim qilindi va moliya bo'limiga {log.total_price:,.0f} UZS chiqim ({log.get_payment_method_display()}) sifatida biriktirildi")
+            else:
+                messages.success(request, f"{item.name} — operatsiya muvaffaqiyatli saqlandi")
+        except Exception as e:
+            messages.error(request, f"Xatolik: {e}")
+    return redirect('warehouse_dashboard')
+
+
+@login_required
+@user_passes_test(is_warehouse_user)
+def warehouse_log_add_api(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            item = get_object_or_404(WarehouseItem, pk=data['item_id'])
+            qty = Decimal(str(data.get('quantity', 0)))
+            if qty <= 0:
+                return JsonResponse({'success': False, 'error': "Miqdor musbat bo'lishi kerak"}, status=400)
+            
+            log_type = data.get('log_type', 'OUT')
+            payment_method = data.get('payment_method', 'CASH')
+            unit_price = Decimal(str(data.get('unit_price'))) if data.get('unit_price') else item.unit_price
+
+            log = WarehouseLog.objects.create(
+                item=item,
+                log_type=log_type,
+                quantity=qty,
+                unit_price=unit_price,
+                payment_method=payment_method,
+                date=data.get('date', str(timezone.now().date())),
+                notes=data.get('notes', ''),
+                recorded_by=request.user,
+            )
+            # Refresh item from DB
+            item.refresh_from_db()
+            return JsonResponse({
+                'success': True,
+                'new_quantity': float(item.current_quantity),
+                'log_id': log.id,
+                'expense_id': log.expense.id if log.expense else None
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)}, status=400)
+    return JsonResponse({'success': False}, status=405)
+
+
+# ============================================================
+#  STAFF ATTENDANCE — PDF EXPORT
+# ============================================================
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def export_staff_attendance_pdf(request):
+    month = request.GET.get('month')
+    year = request.GET.get('year')
+    date_val = request.GET.get('date')
+    staff_id = request.GET.get('staff_id')
+    buf = generate_staff_attendance_pdf(month=month, year=year, staff_id=staff_id, date_val=date_val)
+    period = f"_{date_val}" if date_val else (f"_{month}_{year}" if month and year else "")
+    response = HttpResponse(buf, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="Xodimlar_Davomat_Shtraf{period}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+    return response
+
 

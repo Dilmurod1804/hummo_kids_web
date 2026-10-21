@@ -44,6 +44,8 @@ urlpatterns = [
 
     # Attendance (Children)
     path('attendance/daily/', views.attendance_daily, name='attendance_daily'),
+    path('attendance/children-matrix/', views.children_attendance_matrix, name='children_attendance_matrix'),
+    path('attendance/child-toggle-ajax/', views.child_attendance_toggle_ajax, name='child_attendance_toggle_ajax'),
     path('attendance/save-ajax/', views.attendance_save_ajax, name='attendance_save_ajax'),
 
     # Staff Attendance (Face ID & Geofencing)
@@ -73,12 +75,27 @@ urlpatterns = [
     path('export/children/', views.export_children, name='export_children'),
     path('export/attendance/', views.export_attendance, name='export_attendance'),
     path('export/staff-attendance/', views.export_staff_attendance, name='export_staff_attendance'),
+    path('export/staff-attendance-pdf/', views.export_staff_attendance_pdf, name='export_staff_attendance_pdf'),
     path('export/finance/', views.export_finance, name='export_finance'),
     path('export/finance-pdf/', views.export_finance_pdf, name='export_finance_pdf'),
+    path('export/expenses/', views.export_expenses, name='export_expenses'),
 
     # Real-time Chat
     path('chat/', views.chat_view, name='chat_view'),
     path('chat/messages-api/', views.chat_messages_api, name='chat_messages_api'),
+
+    # Chiqimlar (Expenses)
+    path('expenses/', views.expenses_list, name='expenses_list'),
+    path('expenses/add/', views.expense_add, name='expense_add'),
+    path('expenses/<int:pk>/edit/', views.expense_edit, name='expense_edit'),
+    path('expenses/<int:pk>/delete/', views.expense_delete, name='expense_delete'),
+
+    # Ombor (Warehouse)
+    path('warehouse/', views.warehouse_dashboard, name='warehouse_dashboard'),
+    path('warehouse/item/add/', views.warehouse_item_add, name='warehouse_item_add'),
+    path('warehouse/item/<int:pk>/edit/', views.warehouse_item_edit, name='warehouse_item_edit'),
+    path('warehouse/log/add/', views.warehouse_log_add, name='warehouse_log_add'),
+    path('warehouse/log/add-api/', views.warehouse_log_add_api, name='warehouse_log_add_api'),
 
     # Settings
     path('settings/', views.settings_view, name='settings'),

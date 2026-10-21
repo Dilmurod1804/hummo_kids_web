@@ -91,9 +91,9 @@
                     </a>
                 </li>
                 <li>
-                    <a href="{% url 'attendance_daily' %}" class="nav-link {% if 'attendance/daily' in request.path %}active{% endif %}">
-                        <i data-lucide="calendar-check-2" style="width: 18px; height: 18px;"></i>
-                        <span>Bolalar Davomati</span>
+                    <a href="{% url 'children_attendance_matrix' %}" class="nav-link {% if 'attendance/children-matrix' in request.path or 'attendance/daily' in request.path %}active{% endif %}">
+                        <i data-lucide="calendar-check-2" style="width: 18px; height: 18px; color: #a5b4fc;"></i>
+                        <span>Bolalar Davomati (Tabel)</span>
                     </a>
                 </li>
                 <li>
@@ -105,13 +105,25 @@
                 <li>
                     <a href="{% url 'finance_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'finance_dashboard' %}active{% endif %}">
                         <i data-lucide="credit-card" style="width: 18px; height: 18px;"></i>
-                        <span>Umumiy Moliya</span>
+                        <span>Umumiy Moliya & Kassa</span>
                     </a>
                 </li>
                 <li>
-                    <a href="{% url 'staff_attendance_logs' %}" class="nav-link {% if 'staff-logs' in request.path %}active{% endif %}">
+                    <a href="{% url 'expenses_list' %}" class="nav-link {% if 'expenses' in request.path %}active{% endif %}">
+                        <i data-lucide="receipt" style="width: 18px; height: 18px; color: #f87171;"></i>
+                        <span>Chiqimlar Boshqaruvi</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'warehouse_dashboard' %}" class="nav-link {% if 'warehouse' in request.path %}active{% endif %}">
+                        <i data-lucide="warehouse" style="width: 18px; height: 18px; color: #34d399;"></i>
+                        <span>Ombor & Sklad (Oziq-ovqat)</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'staff_attendance_matrix' %}" class="nav-link {% if 'staff-matrix' in request.path or 'staff-logs' in request.path %}active{% endif %}">
                         <i data-lucide="map-pin" style="width: 18px; height: 18px;"></i>
-                        <span>Geofencing Jurnali</span>
+                        <span>Xodimlar Davomati</span>
                     </a>
                 </li>
                 <li>
@@ -122,7 +134,19 @@
                 </li>
 
                 {% elif user.is_manager %}
-                <!-- MENEJER UCHUN FAQAT FACE ID VA SHAXSIY PROFIL -->
+                <!-- MENEJER UCHUN OMBOR, DAVOMAT VA SHAXSIY PROFIL -->
+                <li>
+                    <a href="{% url 'warehouse_dashboard' %}" class="nav-link {% if 'warehouse' in request.path %}active{% endif %}">
+                        <i data-lucide="warehouse" style="width: 18px; height: 18px; color: #34d399;"></i>
+                        <span>Ombor & Sklad (Oziq-ovqat)</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'staff_attendance_logs' %}" class="nav-link {% if 'staff-logs' in request.path %}active{% endif %}">
+                        <i data-lucide="clipboard-check" style="width: 18px; height: 18px; color: #a78bfa;"></i>
+                        <span>Xodimlar Monitoringi</span>
+                    </a>
+                </li>
                 <li>
                     <a href="{% url 'staff_attendance_portal' %}" class="nav-link {% if 'staff-portal' in request.path %}active{% endif %}">
                         <i data-lucide="scan-face" style="width: 18px; height: 18px; color: #38bdf8;"></i>
@@ -145,9 +169,9 @@
                     </a>
                 </li>
                 <li>
-                    <a href="{% url 'attendance_daily' %}" class="nav-link {% if 'attendance/daily' in request.path %}active{% endif %}">
+                    <a href="{% url 'children_attendance_matrix' %}" class="nav-link {% if 'attendance' in request.path %}active{% endif %}">
                         <i data-lucide="calendar-check-2" style="width: 18px; height: 18px;"></i>
-                        <span>Guruh Bolalar Davomati</span>
+                        <span>Guruh Davomat Jadvali</span>
                     </a>
                 </li>
                 <li>
@@ -167,7 +191,15 @@
                 </li>
 
                 {% else %}
-                <!-- GURUH BIRIKTIRILMAGAN XODIM (Boshqa xodimlar) -->
+                <!-- GURUH BIRIKTIRILMAGAN XODIM (Oshpaz, Enaga va boshqalar) -->
+                {% if user.role == 'COOK' %}
+                <li>
+                    <a href="{% url 'warehouse_dashboard' %}" class="nav-link {% if 'warehouse' in request.path %}active{% endif %}">
+                        <i data-lucide="warehouse" style="width: 18px; height: 18px; color: #34d399;"></i>
+                        <span>Ombor & Oziq-ovqat Sarfi</span>
+                    </a>
+                </li>
+                {% endif %}
                 <li>
                     <a href="{% url 'staff_attendance_portal' %}" class="nav-link {% if 'staff-portal' in request.path %}active{% endif %}">
                         <i data-lucide="scan-face" style="width: 18px; height: 18px;"></i>
@@ -177,7 +209,7 @@
                 <li>
                     <a href="{% url 'staff_profile' %}" class="nav-link {% if request.resolver_match.url_name == 'staff_profile' or request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
                         <i data-lucide="user-check" style="width: 18px; height: 18px;"></i>
-                        <span>Xodimlar Paneli (Shaxsiy Profil)</span>
+                        <span>Shaxsiy Profil</span>
                     </a>
                 </li>
                 {% endif %}

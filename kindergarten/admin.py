@@ -2,7 +2,8 @@ from django.contrib import admin
 from .models import (
     User, KindergartenSettings, Group, Child, ChildAttendance,
     StaffAttendance, MonthlyInvoice, Payment, ChatMessage,
-    StaffBonusPenalty, StaffMonthlySalary, AuditLog, TemporaryChild
+    StaffBonusPenalty, StaffMonthlySalary, AuditLog, TemporaryChild,
+    Expense, WarehouseItem, WarehouseLog
 )
 
 @admin.register(User)
@@ -88,3 +89,28 @@ class AuditLogAdmin(admin.ModelAdmin):
     list_display = ('created_at', 'category', 'user', 'action', 'ip_address')
     list_filter = ('category', 'created_at')
     search_fields = ('action', 'description', 'user__username', 'user__first_name')
+
+
+@admin.register(Expense)
+class ExpenseAdmin(admin.ModelAdmin):
+    list_display = ('date', 'title', 'category', 'amount', 'payment_method', 'created_by')
+    list_filter = ('category', 'payment_method', 'date')
+    search_fields = ('title', 'description', 'receipt_number')
+    date_hierarchy = 'date'
+
+
+@admin.register(WarehouseItem)
+class WarehouseItemAdmin(admin.ModelAdmin):
+    list_display = ('name', 'unit', 'current_quantity', 'min_threshold', 'min_quantity', 'unit_price', 'is_active', 'is_low_stock')
+    list_filter = ('unit', 'is_active')
+    search_fields = ('name', 'description')
+    readonly_fields = ('current_quantity',)
+
+
+@admin.register(WarehouseLog)
+class WarehouseLogAdmin(admin.ModelAdmin):
+    list_display = ('date', 'item', 'log_type', 'quantity', 'unit_price', 'total_price', 'payment_method', 'expense', 'quantity_after', 'recorded_by')
+    list_filter = ('log_type', 'payment_method', 'date', 'item')
+    search_fields = ('item__name', 'notes')
+    date_hierarchy = 'date'
+

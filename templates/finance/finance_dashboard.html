@@ -16,9 +16,17 @@
     </div>
 
     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button type="button" onclick="openAddExpenseModal()" class="btn-glass" style="background: rgba(239, 68, 68, 0.18); border-color: rgba(239, 68, 68, 0.45); color: #fca5a5; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.25);">
+            <i data-lucide="trending-down" style="width: 16px; height: 16px;"></i>
+            <span>+ Yangi Chiqim Qayd Qilish</span>
+        </button>
+        <a href="{% url 'expenses_list' %}" class="btn-glass btn-secondary" style="display: inline-flex; align-items: center; gap: 6px;">
+            <i data-lucide="receipt" style="width: 16px; height: 16px;"></i>
+            <span>Chiqimlar Jurnali</span>
+        </a>
         <button type="button" onclick="openAddTrialModal()" class="btn-glass btn-primary" style="box-shadow: 0 4px 14px rgba(168, 85, 247, 0.4);">
             <i data-lucide="user-plus" style="width: 16px; height: 16px;"></i>
-            <span>+ Vaqtinchalik Bolani Ro'yxatga Olish</span>
+            <span>+ Vaqtinchalik Bola</span>
         </button>
         <a href="{% url 'export_finance' %}?month={{ month }}&year={{ year }}" class="btn-glass btn-excel">
             <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px;"></i>
@@ -36,87 +44,132 @@
 </div>
 
 <!-- 1. Yangi Statistika Kartochkalari (Top Dashboard Widgets) -->
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; margin-bottom: 24px;">
-    <!-- Kunlik Tushum -->
-    <div class="glass-card" style="padding: 20px; position: relative; overflow: hidden; border-left: 4px solid #a855f7;">
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; margin-bottom: 24px;">
+    <!-- Kunlik Moliya (Bugun) -->
+    <div class="glass-card stat-interactive-card" onclick="openFinanceBreakdownModal('daily', 'ALL')" title="Kunlik tushum bo'yicha guruhlar kesimini ko'rish uchun bosing" style="padding: 20px; position: relative; overflow: hidden; border-left: 4px solid #a855f7; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
                 <p class="stat-label" style="display: flex; align-items: center; gap: 6px;">
                     <i data-lucide="calendar" style="width: 14px; height: 14px; color: #c084fc;"></i>
-                    <span>Kunlik Tushum (Bugun)</span>
+                    <span>Kunlik Sof Balans (Bugun)</span>
                 </p>
-                <h3 class="stat-value" style="font-size: 24px; color: white; margin-top: 4px;">
-                    {{ daily_total|floatformat:0 }} <span style="font-size: 13px; font-weight: 500; color: var(--text-dim);">UZS</span>
+                <h3 class="stat-value" style="font-size: 24px; color: {% if daily_net_balance >= 0 %}#34d399{% else %}#f43f5e{% endif %}; margin-top: 4px; font-family: 'Outfit', sans-serif;">
+                    {{ daily_net_balance|floatformat:0 }} <span style="font-size: 13px; font-weight: 500; color: var(--text-dim);">UZS</span>
                 </h3>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: flex; gap: 10px;">
+                    <span style="color: #a855f7;">Tushum: +{{ daily_total|floatformat:0 }}</span>
+                    <span style="color: #f43f5e;">Chiqim: -{{ daily_exp_total|floatformat:0 }}</span>
+                </div>
             </div>
-            <div class="stat-icon-wrapper icon-purple" style="box-shadow: 0 0 15px rgba(168, 85, 247, 0.25);">
-                <i data-lucide="sparkles" style="width: 22px; height: 22px;"></i>
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                <div class="stat-icon-wrapper icon-purple" style="box-shadow: 0 0 15px rgba(168, 85, 247, 0.25);">
+                    <i data-lucide="sparkles" style="width: 22px; height: 22px;"></i>
+                </div>
+                <span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.35); font-size: 10px; padding: 2px 7px;">
+                    {{ daily_count }} ta to'lov
+                </span>
             </div>
         </div>
-        <div style="display: flex; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px;">
-            <div style="flex: 1; background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.25); border-radius: 8px; padding: 6px 10px;">
-                <span style="color: var(--text-dim); display: block; font-size: 10px;">💵 Naqd:</span>
-                <strong style="color: #34d399;">{{ daily_cash|floatformat:0 }} UZS</strong>
+
+        <!-- Kunlik Chiqim va Tushum Detallari -->
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+            <div style="background: rgba(52, 211, 153, 0.08); border: 1px solid rgba(52, 211, 153, 0.22); border-radius: 8px; padding: 6px 8px;">
+                <span style="color: var(--text-dim); display: block; font-size: 9px;">💵 Sof Naqd:</span>
+                <strong style="color: #34d399; font-size: 11px; display: block; margin-top: 1px;">{{ daily_net_cash|floatformat:0 }}</strong>
             </div>
-            <div style="flex: 1; background: rgba(96, 165, 250, 0.1); border: 1px solid rgba(96, 165, 250, 0.25); border-radius: 8px; padding: 6px 10px;">
-                <span style="color: var(--text-dim); display: block; font-size: 10px;">💳 Karta / Bank:</span>
-                <strong style="color: #60a5fa;">{{ daily_card|floatformat:0 }} UZS</strong>
+            <div style="background: rgba(96, 165, 250, 0.08); border: 1px solid rgba(96, 165, 250, 0.22); border-radius: 8px; padding: 6px 8px;">
+                <span style="color: var(--text-dim); display: block; font-size: 9px;">💳 Sof Karta:</span>
+                <strong style="color: #60a5fa; font-size: 11px; display: block; margin-top: 1px;">{{ daily_net_card|floatformat:0 }}</strong>
+            </div>
+            <div style="background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.22); border-radius: 8px; padding: 6px 8px;">
+                <span style="color: var(--text-dim); display: block; font-size: 9px;">📤 Kunlik Chiqim:</span>
+                <strong style="color: #f43f5e; font-size: 11px; display: block; margin-top: 1px;">{{ daily_exp_total|floatformat:0 }}</strong>
             </div>
         </div>
     </div>
 
-    <!-- Oylik Tushum -->
-    <div class="glass-card" style="padding: 20px; position: relative; overflow: hidden; border-left: 4px solid #34d399;">
+    <!-- Oylik Moliya (Tanlangan oy) -->
+    <div class="glass-card stat-interactive-card" onclick="openFinanceBreakdownModal('monthly', 'ALL')" title="Oylik tushum bo'yicha guruhlar kesimini ko'rish uchun bosing" style="padding: 20px; position: relative; overflow: hidden; border-left: 4px solid #34d399; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
                 <p class="stat-label" style="display: flex; align-items: center; gap: 6px;">
                     <i data-lucide="trending-up" style="width: 14px; height: 14px; color: #34d399;"></i>
-                    <span>Oylik Tushum ({{ month }}/{{ year }})</span>
+                    <span>Oylik Sof Balans ({{ month }}/{{ year }})</span>
                 </p>
-                <h3 class="stat-value" style="font-size: 24px; color: #34d399; margin-top: 4px;">
-                    {{ monthly_total|floatformat:0 }} <span style="font-size: 13px; font-weight: 500; color: var(--text-dim);">UZS</span>
+                <h3 class="stat-value" style="font-size: 24px; color: {% if monthly_net_balance >= 0 %}#34d399{% else %}#f43f5e{% endif %}; margin-top: 4px; font-family: 'Outfit', sans-serif;">
+                    {{ monthly_net_balance|floatformat:0 }} <span style="font-size: 13px; font-weight: 500; color: var(--text-dim);">UZS</span>
                 </h3>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: flex; gap: 10px;">
+                    <span style="color: #34d399;">Tushum: +{{ monthly_total|floatformat:0 }}</span>
+                    <span style="color: #f43f5e;">Chiqim: -{{ monthly_exp_total|floatformat:0 }}</span>
+                </div>
             </div>
-            <div class="stat-icon-wrapper icon-emerald" style="box-shadow: 0 0 15px rgba(52, 211, 153, 0.25);">
-                <i data-lucide="receipt" style="width: 22px; height: 22px;"></i>
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                <div class="stat-icon-wrapper icon-emerald" style="box-shadow: 0 0 15px rgba(52, 211, 153, 0.25);">
+                    <i data-lucide="receipt" style="width: 22px; height: 22px;"></i>
+                </div>
+                <span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.35); font-size: 10px; padding: 2px 7px;">
+                    {{ monthly_count }} ta to'lov
+                </span>
             </div>
         </div>
-        <div style="display: flex; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px;">
-            <div style="flex: 1; background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.25); border-radius: 8px; padding: 6px 10px;">
-                <span style="color: var(--text-dim); display: block; font-size: 10px;">💵 Oylik Naqd:</span>
-                <strong style="color: #34d399;">{{ monthly_cash|floatformat:0 }} UZS</strong>
+
+        <!-- Oylik Detallar -->
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+            <div style="background: rgba(52, 211, 153, 0.08); border: 1px solid rgba(52, 211, 153, 0.22); border-radius: 8px; padding: 6px 8px;">
+                <span style="color: var(--text-dim); display: block; font-size: 9px;">💵 Sof Naqd:</span>
+                <strong style="color: #34d399; font-size: 11px; display: block; margin-top: 1px;">{{ monthly_net_cash|floatformat:0 }}</strong>
             </div>
-            <div style="flex: 1; background: rgba(96, 165, 250, 0.1); border: 1px solid rgba(96, 165, 250, 0.25); border-radius: 8px; padding: 6px 10px;">
-                <span style="color: var(--text-dim); display: block; font-size: 10px;">💳 Oylik Karta:</span>
-                <strong style="color: #60a5fa;">{{ monthly_card|floatformat:0 }} UZS</strong>
+            <div style="background: rgba(96, 165, 250, 0.08); border: 1px solid rgba(96, 165, 250, 0.22); border-radius: 8px; padding: 6px 8px;">
+                <span style="color: var(--text-dim); display: block; font-size: 9px;">💳 Sof Karta:</span>
+                <strong style="color: #60a5fa; font-size: 11px; display: block; margin-top: 1px;">{{ monthly_net_card|floatformat:0 }}</strong>
+            </div>
+            <div style="background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.22); border-radius: 8px; padding: 6px 8px;">
+                <span style="color: var(--text-dim); display: block; font-size: 9px;">📤 Oylik Chiqim:</span>
+                <strong style="color: #f43f5e; font-size: 11px; display: block; margin-top: 1px;">{{ monthly_exp_total|floatformat:0 }}</strong>
             </div>
         </div>
     </div>
 
-    <!-- Kassa Balansi (To'lov turlari bo'yicha) -->
-    <div class="glass-card" style="padding: 20px; position: relative; overflow: hidden; border-left: 4px solid #60a5fa;">
+    <!-- Kassa Balansi (Jami Sof Qoldiq) -->
+    <div class="glass-card stat-interactive-card" onclick="openFinanceBreakdownModal('kassa', 'ALL')" title="Kassa balansi bo'yicha guruhlar kesimini ko'rish uchun bosing" style="padding: 20px; position: relative; overflow: hidden; border-left: 4px solid #60a5fa; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
                 <p class="stat-label" style="display: flex; align-items: center; gap: 6px;">
                     <i data-lucide="landmark" style="width: 14px; height: 14px; color: #60a5fa;"></i>
-                    <span>Kassa Balansi (Jami)</span>
+                    <span>Haqiqiy Sof Kassa Balansi</span>
                 </p>
-                <h3 class="stat-value" style="font-size: 24px; color: #60a5fa; margin-top: 4px;">
-                    {{ total_kassa|floatformat:0 }} <span style="font-size: 13px; font-weight: 500; color: var(--text-dim);">UZS</span>
+                <h3 class="stat-value" style="font-size: 24px; color: {% if net_total_kassa >= 0 %}#60a5fa{% else %}#f43f5e{% endif %}; margin-top: 4px; font-family: 'Outfit', sans-serif;">
+                    {{ net_total_kassa|floatformat:0 }} <span style="font-size: 13px; font-weight: 500; color: var(--text-dim);">UZS</span>
                 </h3>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: flex; gap: 10px;">
+                    <span style="color: #60a5fa;">Tushum: +{{ total_kassa|floatformat:0 }}</span>
+                    <span style="color: #f43f5e;">Chiqim: -{{ total_expenses|floatformat:0 }}</span>
+                </div>
             </div>
-            <div class="stat-icon-wrapper icon-blue" style="box-shadow: 0 0 15px rgba(96, 165, 250, 0.25);">
-                <i data-lucide="credit-card" style="width: 22px; height: 22px;"></i>
+            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                <div class="stat-icon-wrapper icon-blue" style="box-shadow: 0 0 15px rgba(96, 165, 250, 0.25);">
+                    <i data-lucide="credit-card" style="width: 22px; height: 22px;"></i>
+                </div>
+                <span class="badge" style="background: rgba(96, 165, 250, 0.15); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.35); font-size: 10px; padding: 2px 7px;">
+                    Jami Sof Kassa
+                </span>
             </div>
         </div>
-        <div style="display: flex; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px;">
-            <div style="flex: 1; background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.25); border-radius: 8px; padding: 6px 10px;">
-                <span style="color: var(--text-dim); display: block; font-size: 10px;">💵 Naqd Kassa:</span>
-                <strong style="color: #34d399;">{{ cash_total|floatformat:0 }} UZS</strong>
+
+        <!-- To'lov Usullari Kesimi (Sof Balans) -->
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+            <div style="background: rgba(52, 211, 153, 0.08); border: 1px solid rgba(52, 211, 153, 0.22); border-radius: 8px; padding: 6px 8px;">
+                <span style="color: var(--text-dim); display: block; font-size: 9px;">💵 Sof Naqd Kassa:</span>
+                <strong style="color: #34d399; font-size: 11px; display: block; margin-top: 1px;">{{ net_cash_total|floatformat:0 }}</strong>
             </div>
-            <div style="flex: 1; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 8px; padding: 6px 10px;">
-                <span style="color: var(--text-dim); display: block; font-size: 10px;">💳 Karta & Bank:</span>
-                <strong style="color: #c084fc;">{{ card_total|add:online_total|floatformat:0 }} UZS</strong>
+            <div style="background: rgba(96, 165, 250, 0.08); border: 1px solid rgba(96, 165, 250, 0.22); border-radius: 8px; padding: 6px 8px;">
+                <span style="color: var(--text-dim); display: block; font-size: 9px;">💳 Sof Karta / Bank:</span>
+                <strong style="color: #60a5fa; font-size: 11px; display: block; margin-top: 1px;">{{ net_card_total|floatformat:0 }}</strong>
+            </div>
+            <div style="background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.22); border-radius: 8px; padding: 6px 8px;">
+                <span style="color: var(--text-dim); display: block; font-size: 9px;">📤 Jami Chiqimlar:</span>
+                <strong style="color: #f43f5e; font-size: 11px; display: block; margin-top: 1px;">{{ total_expenses|floatformat:0 }}</strong>
             </div>
         </div>
     </div>
@@ -703,6 +756,92 @@
     </div>
 </div>
 
+<!-- 5. Chiqimlar (Xarajatlar) Boshqaruvi Jadvali -->
+<div class="glass-card" style="margin-bottom: 24px; border-left: 4px solid #ef4444;">
+    <div class="glass-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <h3 class="glass-card-title" style="display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="trending-down" style="color: #ef4444; width: 20px; height: 20px;"></i>
+            <span>Chiqimlar va Xarajatlar Monitoringi (Oxirgi amallar)</span>
+        </h3>
+        <div style="display: flex; gap: 8px;">
+            <button type="button" onclick="openAddExpenseModal()" class="btn-glass" style="font-size: 12px; padding: 6px 14px; background: rgba(239, 68, 68, 0.18); border-color: rgba(239, 68, 68, 0.45); color: #fca5a5;">
+                <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
+                <span>+ Yangi Chiqim</span>
+            </button>
+            <a href="{% url 'expenses_list' %}" class="btn-glass btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                Barcha Chiqimlar Jurnali &rarr;
+            </a>
+        </div>
+    </div>
+
+    <div class="glass-table-wrapper">
+        <table class="glass-table">
+            <thead>
+                <tr>
+                    <th>Sana</th>
+                    <th>Nomi / Sababi</th>
+                    <th>Kategoriya</th>
+                    <th>To'lov Turi</th>
+                    <th>Summa (UZS)</th>
+                    <th>Chek / Hujjat</th>
+                    <th>Izoh</th>
+                    <th>Kiritgan Xodim</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for exp in recent_expenses %}
+                <tr>
+                    <td style="font-size: 12px; color: var(--text-dim); white-space: nowrap;">
+                        {{ exp.date|date:"d.m.Y" }}
+                    </td>
+                    <td>
+                        <strong style="color: white; font-size: 13px;">{{ exp.title }}</strong>
+                    </td>
+                    <td>
+                        <span class="badge" style="background: rgba(239, 68, 68, 0.12); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.25); font-size: 11px;">
+                            {{ exp.get_category_display }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if exp.payment_method == 'CASH' %}
+                        <span class="badge" style="background: rgba(52, 211, 153, 0.12); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.25);">
+                            💵 Naqd pul
+                        </span>
+                        {% elif exp.payment_method == 'CARD' %}
+                        <span class="badge" style="background: rgba(96, 165, 250, 0.12); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.25);">
+                            💳 Karta / Bank
+                        </span>
+                        {% else %}
+                        <span class="badge" style="background: rgba(255, 255, 255, 0.08); color: white;">
+                            {{ exp.get_payment_method_display }}
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <strong style="color: #ef4444; font-size: 14px; white-space: nowrap;">-{{ exp.amount|floatformat:0 }} UZS</strong>
+                    </td>
+                    <td style="font-size: 12px; color: var(--text-dim);">
+                        {{ exp.receipt_number|default:"—" }}
+                    </td>
+                    <td style="font-size: 12px; color: var(--text-muted); max-width: 220px;">
+                        {{ exp.description|default:"—" }}
+                    </td>
+                    <td style="font-size: 12px; color: white; white-space: nowrap;">
+                        👤 {{ exp.created_by.get_full_name|default:exp.created_by.username|default:"Tizim" }}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 24px;">
+                        Hozircha chiqimlar kiritilmagan.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
 <!-- ================= MODALLAR ================= -->
 
 <!-- 1. Record Payment Modal (Doimiy Invoys uchun - Qisman / Istalgan to'lov) -->
@@ -739,7 +878,7 @@
                     <label class="form-label" style="margin: 0;">To'lanayotgan Summa (UZS) *</label>
                     <span style="font-size: 11px; color: #38bdf8;">Qisman yoki to'liq kiritish mumkin</span>
                 </div>
-                <input type="number" id="payAmount" required class="glass-input" step="1000" min="1" placeholder="Summani kiriting..." oninput="updateLiveDebtPreview()" style="width: 100%; font-size: 17px; font-weight: 700; color: #34d399;">
+                <input type="number" id="payAmount" required class="glass-input" step="any" min="0" placeholder="Summani kiriting..." oninput="updateLiveDebtPreview()" style="width: 100%; font-size: 17px; font-weight: 700; color: #34d399;">
             </div>
 
             <!-- Quick Buttons for partial / full payment -->
@@ -919,7 +1058,7 @@
 
             <div class="form-group">
                 <label class="form-label">To'lov Summasi (UZS) *</label>
-                <input type="number" id="trialPayAmount" required class="glass-input" placeholder="Summani kiriting...">
+                <input type="number" id="trialPayAmount" required class="glass-input" step="any" min="0" placeholder="Summani kiriting...">
             </div>
 
             <div class="form-group">
@@ -1016,6 +1155,151 @@
         </form>
     </div>
 </div>
+
+<!-- Chiqim Qayd Qilish Modali -->
+<div id="modalAddExpense" class="glass-modal-backdrop" style="display: none;">
+    <div class="glass-modal" style="max-width: 520px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(135deg, #ef4444, #f97316); display: flex; align-items: center; justify-content: center; color: white;">
+                    <i data-lucide="trending-down" style="width: 20px; height: 20px;"></i>
+                </div>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white; margin: 0;">Yangi Chiqim (Xarajat) Qayd Qilish</h3>
+            </div>
+            <button type="button" onclick="closeAddExpenseModal()" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form action="{% url 'expense_add' %}" method="POST">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label class="form-label">Chiqim Nomi / Sababi *</label>
+                <input type="text" name="title" required class="glass-input" placeholder="Masalan: Oziq-ovqat xaridi, Xodim avansi, Kommunal to'lov">
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 14px; margin-bottom: 14px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Summasi (UZS) *</label>
+                    <input type="number" step="1000" name="amount" required class="glass-input" placeholder="0.00" style="font-weight: 800; font-size: 16px; color: #fca5a5;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Sana *</label>
+                    <input type="date" name="date" value="{{ today|date:'Y-m-d' }}" required class="glass-input">
+                </div>
+            </div>
+
+            <!-- To'lov Turi: Ochiq, tanlanadigan tugmalar + Select menyu -->
+            <div class="form-group" style="margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label class="form-label" style="margin-bottom: 0;">To'lov Turi *</label>
+                    <span style="font-size: 11px; color: var(--text-dim);">Tezkor tanlang yoki ro'yxatdan bosing:</span>
+                </div>
+
+                <!-- 3 ta ochiq, ko'rinadigan tugma -->
+                <div class="payment-pills-container" style="margin-bottom: 8px;">
+                    <div class="payment-pill-btn pill-cash active" id="pill_CASH" onclick="selectExpensePaymentMethod('CASH')">
+                        <span style="font-size: 16px; margin-bottom: 2px;">💵</span>
+                        <span>Naqd pul</span>
+                    </div>
+                    <div class="payment-pill-btn pill-card" id="pill_CARD" onclick="selectExpensePaymentMethod('CARD')">
+                        <span style="font-size: 16px; margin-bottom: 2px;">💳</span>
+                        <span>Karta / Bank</span>
+                    </div>
+                    <div class="payment-pill-btn pill-other" id="pill_OTHER" onclick="selectExpensePaymentMethod('OTHER')">
+                        <span style="font-size: 16px; margin-bottom: 2px;">📦</span>
+                        <span>Boshqa</span>
+                    </div>
+                </div>
+
+                <!-- Select Dropdown -->
+                <select name="payment_method" id="expensePaymentMethodSelect" class="glass-select" required onchange="syncExpensePaymentPills(this.value)">
+                    <option value="CASH">💵 Naqd pul</option>
+                    <option value="CARD">💳 Plastik Karta / Bank</option>
+                    <option value="OTHER">📦 Boshqa usul</option>
+                </select>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Kategoriya *</label>
+                    <select name="category" class="glass-select" required>
+                        <option value="FOOD">🍲 Oziq-ovqat va Ovqat</option>
+                        <option value="ADVANCE">💰 Avans (Xodimlar)</option>
+                        <option value="UTILITY">💡 Kommunal xizmatlar</option>
+                        <option value="SALARY">👥 Oylik maosh to'lovi</option>
+                        <option value="MATERIAL">🧼 Xo'jalik mollari va jihozlar</option>
+                        <option value="REPAIR">🔧 Ta'mirlash va xizmat</option>
+                        <option value="OTHER">📁 Boshqa chiqimlar</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Chek / Hujjat Raqami</label>
+                    <input type="text" name="receipt_number" class="glass-input" placeholder="Chek № (ixtiyoriy)">
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 22px;">
+                <label class="form-label">Qo'shimcha Izoh</label>
+                <textarea name="description" rows="2" class="glass-input" placeholder="Chiqim bo'yicha batafsil izoh..."></textarea>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" onclick="closeAddExpenseModal()" class="btn-glass btn-secondary">Bekor qilish</button>
+                <button type="submit" class="btn-glass" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; font-weight: 700;">
+                    ✓ Chiqimni Saqlash
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Finance Breakdown Detail Modal -->
+<div id="financeBreakdownModal" class="glass-modal-backdrop" style="display:none; z-index: 9999;">
+    <div class="glass-modal" style="max-width: 620px; width: 95%; max-height: 85vh; display: flex; flex-direction: column;">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div id="fbModalIcon" style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #8b5cf6, #6366f1); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0;">
+                    <i data-lucide="bar-chart-3" style="width: 20px; height: 20px;"></i>
+                </div>
+                <div>
+                    <h3 id="fbModalTitle" style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 800; color: white; margin: 0;"></h3>
+                    <p id="fbModalSubtitle" style="font-size: 11px; color: var(--text-muted); margin: 2px 0 0 0;"></p>
+                </div>
+            </div>
+            <button onclick="document.getElementById('financeBreakdownModal').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer; padding: 4px;">
+                <i data-lucide="x" style="width: 22px; height: 22px;"></i>
+            </button>
+        </div>
+
+        <!-- Summary Row -->
+        <div id="fbSummaryRow" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 18px; flex-shrink: 0;"></div>
+
+        <!-- Groups Table -->
+        <div style="overflow-y: auto; flex: 1;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background: rgba(255,255,255,0.06); border-bottom: 2px solid rgba(255,255,255,0.1);">
+                        <th style="padding: 10px 12px; text-align: left; color: #94a3b8; font-size: 12px; font-weight: 700;">#</th>
+                        <th style="padding: 10px 12px; text-align: left; color: #94a3b8; font-size: 12px; font-weight: 700;">Guruh nomi</th>
+                        <th style="padding: 10px 12px; text-align: right; color: #94a3b8; font-size: 12px; font-weight: 700;">To'lovlar soni</th>
+                        <th style="padding: 10px 12px; text-align: right; color: #94a3b8; font-size: 12px; font-weight: 700;">Tushum (UZS)</th>
+                        <th style="padding: 10px 12px; text-align: right; color: #94a3b8; font-size: 12px; font-weight: 700;">Ulush</th>
+                    </tr>
+                </thead>
+                <tbody id="fbGroupsTableBody"></tbody>
+            </table>
+            <div id="fbEmptyMsg" style="display:none; text-align:center; padding: 32px; color: var(--text-dim);">
+                <i data-lucide="inbox" style="width: 36px; height: 36px; margin-bottom: 10px; opacity: 0.4;"></i>
+                <p style="font-size: 13px;">Ushbu davr va to'lov turi bo'yicha ma'lumot yo'q</p>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_scripts %}
@@ -1104,6 +1388,35 @@ async function submitPayment(e) {
     } catch (err) {
         alert("Aloqa xatoligi: " + err.message);
     }
+}
+
+// --- Chiqim Qayd Qilish Modali ---
+function openAddExpenseModal() {
+    const el = document.getElementById('modalAddExpense');
+    if (el) el.style.display = 'flex';
+}
+function closeAddExpenseModal() {
+    const el = document.getElementById('modalAddExpense');
+    if (el) el.style.display = 'none';
+}
+function selectExpensePaymentMethod(val) {
+    const selectEl = document.getElementById('expensePaymentMethodSelect');
+    if (selectEl) {
+        selectEl.value = val;
+    }
+    syncExpensePaymentPills(val);
+}
+function syncExpensePaymentPills(val) {
+    ['CASH', 'CARD', 'OTHER'].forEach(k => {
+        const pill = document.getElementById(`pill_${k}`);
+        if (pill) {
+            if (k === val) {
+                pill.classList.add('active');
+            } else {
+                pill.classList.remove('active');
+            }
+        }
+    });
 }
 
 // --- Vaqtinchalik Bola Qo'shish ---
@@ -1429,6 +1742,143 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+});
+
+// ======================= Finance Breakdown Modal =======================
+const BREAKDOWN_DATA = {
+    daily:   {{ daily_breakdown_json|safe }},
+    monthly: {{ monthly_breakdown_json|safe }},
+    kassa:   {{ kassa_breakdown_json|safe }},
+};
+
+const METHOD_LABELS = {
+    'ALL':           { label: "Barcha to'lov usullari", emoji: '📊', color: '#94a3b8' },
+    'CASH':          { label: 'Naqd pul',               emoji: '💵', color: '#34d399' },
+    'CARD':          { label: 'Karta (Uzcard / Humo)',  emoji: '💳', color: '#60a5fa' },
+    'TERMINAL':      { label: 'Terminal',               emoji: '📟', color: '#818cf8' },
+    'CLICK_PAYME':   { label: 'Payme / Click Online',   emoji: '⚡', color: '#c084fc' },
+    'BANK_TRANSFER': { label: "Bank O'tkazmasi",        emoji: '🏦', color: '#38bdf8' },
+    'MARTA':         { label: 'Marta orqali',           emoji: '🚇', color: '#ec4899' },
+};
+
+const PERIOD_LABELS = {
+    daily:   { title: 'Kunlik Tushum (Bugun)', subtitle: 'Bugungi jami to\'lovlar — guruhlar kesimida' },
+    monthly: { title: 'Oylik Tushum', subtitle: 'Tanlangan oy bo\'yicha to\'lovlar — guruhlar kesimida' },
+    kassa:   { title: 'Kassa Balansi (Jami)', subtitle: 'Barcha davrdagi to\'lovlar — guruhlar kesimida' },
+};
+
+function formatNum(n) {
+    return Number(n).toLocaleString('uz-UZ') + ' UZS';
+}
+
+function openFinanceBreakdownModal(period, method) {
+    const data = BREAKDOWN_DATA[period];
+    if (!data) return;
+
+    const methodInfo = METHOD_LABELS[method] || METHOD_LABELS['ALL'];
+    const periodInfo = PERIOD_LABELS[period];
+
+    // Modal sarlavhasi
+    document.getElementById('fbModalTitle').textContent =
+        periodInfo.title + ' — ' + methodInfo.emoji + ' ' + methodInfo.label;
+    document.getElementById('fbModalSubtitle').textContent = periodInfo.subtitle;
+
+    // Icon rangini o'zgartirish
+    const iconEl = document.getElementById('fbModalIcon');
+    iconEl.style.background = `linear-gradient(135deg, ${methodInfo.color}cc, ${methodInfo.color}66)`;
+
+    // Summary qatorini to'ldirish
+    const summaryEl = document.getElementById('fbSummaryRow');
+    let totalShown, countShown;
+
+    if (method === 'ALL') {
+        totalShown = data.total_amount;
+        countShown = data.total_count;
+    } else {
+        totalShown = data.method_totals[method] || 0;
+        countShown = data.method_counts[method] || 0;
+    }
+
+    const pct = data.total_amount > 0 ? ((totalShown / data.total_amount) * 100).toFixed(1) : '0.0';
+    summaryEl.innerHTML = `
+        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); border-radius: 10px; padding: 12px 14px; text-align:center;">
+            <div style="font-size: 10px; color: var(--text-dim); margin-bottom: 4px;">Jami tushum</div>
+            <div style="font-size: 15px; font-weight: 800; color: ${methodInfo.color}; font-family: 'Outfit', sans-serif;">${formatNum(totalShown)}</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); border-radius: 10px; padding: 12px 14px; text-align:center;">
+            <div style="font-size: 10px; color: var(--text-dim); margin-bottom: 4px;">Operatsiyalar soni</div>
+            <div style="font-size: 15px; font-weight: 800; color: white; font-family: 'Outfit', sans-serif;">${countShown} ta</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10); border-radius: 10px; padding: 12px 14px; text-align:center;">
+            <div style="font-size: 10px; color: var(--text-dim); margin-bottom: 4px;">Jami kassadan ulushi</div>
+            <div style="font-size: 15px; font-weight: 800; color: #f59e0b; font-family: 'Outfit', sans-serif;">${pct}%</div>
+        </div>
+    `;
+
+    // Guruhlar jadvalini to'ldirish
+    const tbody = document.getElementById('fbGroupsTableBody');
+    const emptyMsg = document.getElementById('fbEmptyMsg');
+    tbody.innerHTML = '';
+
+    // Guruhlarni filtrlash va tartiblash
+    let groups = (data.groups || []).map(g => {
+        const amt = method === 'ALL' ? g.total_amount : (g.by_method[method] || 0);
+        return { ...g, shown_amount: amt };
+    }).filter(g => g.shown_amount > 0).sort((a, b) => b.shown_amount - a.shown_amount);
+
+    if (groups.length === 0) {
+        emptyMsg.style.display = 'block';
+    } else {
+        emptyMsg.style.display = 'none';
+        const grandTotal = groups.reduce((s, g) => s + g.shown_amount, 0);
+        const rowColors = ['rgba(56, 189, 248, 0.06)', 'transparent'];
+
+        groups.forEach((g, idx) => {
+            const rowPct = grandTotal > 0 ? ((g.shown_amount / grandTotal) * 100).toFixed(1) : '0.0';
+            const bgColor = rowColors[idx % 2];
+            const barWidth = grandTotal > 0 ? Math.max(4, Math.round((g.shown_amount / grandTotal) * 100)) : 0;
+            const cnt = method === 'ALL' ? g.count : (g.by_method ? (g.by_method[method] || 0) > 0 ? '—' : 0 : 0);
+
+            tbody.innerHTML += `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.04); background: ${bgColor}; transition: background 0.15s;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.07)'"
+                    onmouseout="this.style.background='${bgColor}'">
+                    <td style="padding: 10px 12px; color: #64748b; font-size: 12px;">${idx + 1}</td>
+                    <td style="padding: 10px 12px;">
+                        <div style="font-weight: 700; color: white; font-size: 13px;">${g.name}</div>
+                        <div style="height: 3px; background: rgba(255,255,255,0.06); border-radius: 2px; margin-top: 4px; overflow: hidden;">
+                            <div style="height: 100%; width: ${barWidth}%; background: ${methodInfo.color}; border-radius: 2px; transition: width 0.6s ease;"></div>
+                        </div>
+                    </td>
+                    <td style="padding: 10px 12px; text-align: right; color: #94a3b8; font-size: 12px;">${g.count} ta</td>
+                    <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: ${methodInfo.color}; font-size: 13px; font-family: 'Outfit', sans-serif;">${formatNum(g.shown_amount)}</td>
+                    <td style="padding: 10px 12px; text-align: right;">
+                        <span style="background: rgba(255,255,255,0.07); border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; color: #e2e8f0;">${rowPct}%</span>
+                    </td>
+                </tr>`;
+        });
+    }
+
+    // Modalni ochish
+    document.getElementById('financeBreakdownModal').style.display = 'flex';
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+}
+
+// Modalni tashqarisini bosib yopish
+document.getElementById('financeBreakdownModal').addEventListener('click', function(e) {
+    if (e.target === this) this.style.display = 'none';
+});
+
+// Stat card hover effektlari
+document.querySelectorAll('.stat-interactive-card').forEach(card => {
+    card.addEventListener('mouseenter', function() {
+        this.style.transform = 'translateY(-2px)';
+        this.style.boxShadow = '0 8px 32px rgba(0,0,0,0.3)';
+    });
+    card.addEventListener('mouseleave', function() {
+        this.style.transform = '';
+        this.style.boxShadow = '';
+    });
 });
 </script>
 {% endblock %}

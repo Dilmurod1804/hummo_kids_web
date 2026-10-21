@@ -2,6 +2,7 @@ import io
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from decimal import Decimal
 from django.utils import timezone
 from .models import Child, Group, ChildAttendance, StaffAttendance, MonthlyInvoice, KindergartenSettings
 
@@ -146,20 +147,30 @@ def generate_attendance_excel(group_id=None, date_filter=None):
     return buf
 
 
-def generate_staff_attendance_excel():
+def generate_staff_attendance_excel(month=None, year=None, staff_id=None, date_val=None):
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Xodimlar FaceID & GPS"
+    ws.title = "Xodimlar Davomati & Jarimalar"
 
     settings = KindergartenSettings.get_settings()
-    apply_title_banner(ws, f"{settings.name} — Xodimlar Face ID & GPS Davomat Jurnali", 9, row=1)
+    apply_title_banner(ws, f"{settings.name} — Xodimlar Davomat, Kechikish va Jarimalar Hisoboti", 12, row=1)
 
-    ws.cell(row=2, column=1, value=f"Eksport qilingan: {timezone.now().strftime('%d.%m.%Y %H:%M')}")
+    period_parts = []
+    if date_val:
+        period_parts.append(f"Sana: {date_val}")
+    if month and year:
+        period_parts.append(f"Davr: {int(month):02d}/{year}")
+    elif year:
+        period_parts.append(f"Yil: {year}")
+    period_str = " | ".join(period_parts) if period_parts else "Barcha Davrlar"
+
+    ws.cell(row=2, column=1, value=f"Hisobot Davri: {period_str} | Eksport qilingan: {timezone.now().strftime('%d.%m.%Y %H:%M')}")
     ws.cell(row=2, column=1).font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
 
     headers = [
-        "№", "Xodim (O'qituvchi)", "Sana", "Kelgan Vaqti", "Ketgan Vaqti", 
-        "Masofa (Bog'chagacha)", "GPS Koordinatalari", "Geofencing Holati", "Tizim Xulosasi"
+        "№", "Xodim (F.I.SH)", "Lavozim", "Sana", "Kelgan Vaqti", "Ketgan Vaqti", 
+        "Kechikish (daq)", "Barvaqt Ketish (daq)", "Shtraf Summasi (UZS)",
+        "Masofa (Bog'chagacha)", "Geofencing Holati", "Tizim Xulosasi"
     ]
     ws.row_dimensions[3].height = 26
     for col_num, header in enumerate(headers, 1):
@@ -167,18 +178,53 @@ def generate_staff_attendance_excel():
         apply_header_style(cell, header, "0F766E")
 
     staff_logs = StaffAttendance.objects.select_related('teacher').order_by('-date', '-created_at')
+    if date_val:
+        staff_logs = staff_logs.filter(date=date_val)
+    if month:
+        staff_logs = staff_logs.filter(date__month=int(month))
+    if year:
+        staff_logs = staff_logs.filter(date__year=int(year))
+    if staff_id:
+        staff_logs = staff_logs.filter(teacher_id=staff_id)
+
     row_idx = 4
+    total_penalties = Decimal('0.00')
+    total_late_min = 0
+
     for idx, log in enumerate(staff_logs, 1):
         ws.row_dimensions[row_idx].height = 22
         ws.cell(row=row_idx, column=1, value=idx).alignment = Alignment(horizontal="center")
         ws.cell(row=row_idx, column=2, value=log.teacher.get_full_name() or log.teacher.username)
-        ws.cell(row=row_idx, column=3, value=log.date.strftime("%d.%m.%Y")).alignment = Alignment(horizontal="center")
-        ws.cell(row=row_idx, column=4, value=log.check_in_time.strftime("%H:%M:%S") if log.check_in_time else "—").alignment = Alignment(horizontal="center")
-        ws.cell(row=row_idx, column=5, value=log.check_out_time.strftime("%H:%M:%S") if log.check_out_time else "—").alignment = Alignment(horizontal="center")
-        ws.cell(row=row_idx, column=6, value=f"{log.distance_meters or 0} metr").alignment = Alignment(horizontal="center")
-        ws.cell(row=row_idx, column=7, value=f"{log.latitude or 0:.5f}, {log.longitude or 0:.5f}" if log.latitude else "Mavjud emas").alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=3, value=log.teacher.position_display).alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=4, value=log.date.strftime("%d.%m.%Y")).alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=5, value=log.check_in_time.strftime("%H:%M:%S") if log.check_in_time else "—").alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=6, value=log.check_out_time.strftime("%H:%M:%S") if log.check_out_time else "—").alignment = Alignment(horizontal="center")
         
-        geo_cell = ws.cell(row=row_idx, column=8, value="Hudud Ichida (<= 50m)" if log.is_within_geofence else "Hududdan Tashqarida (> 50m)")
+        # Kechikish
+        late_cell = ws.cell(row=row_idx, column=7, value=log.late_minutes if log.is_late else 0)
+        late_cell.alignment = Alignment(horizontal="center")
+        if log.is_late and log.late_minutes > 0:
+            late_cell.font = Font(name="Segoe UI", color="DC2626", bold=True)
+            total_late_min += log.late_minutes
+
+        # Barvaqt ketish
+        early_cell = ws.cell(row=row_idx, column=8, value=log.early_leave_minutes if log.is_early_leave else 0)
+        early_cell.alignment = Alignment(horizontal="center")
+        if log.is_early_leave and log.early_leave_minutes > 0:
+            early_cell.font = Font(name="Segoe UI", color="EA580C", bold=True)
+
+        # Shtraf
+        penalty = (log.penalty_amount or Decimal('0.00')) + (log.early_leave_penalty_amount or Decimal('0.00'))
+        total_penalties += penalty
+        pen_cell = ws.cell(row=row_idx, column=9, value=float(penalty))
+        pen_cell.number_format = '#,##0 "UZS"'
+        pen_cell.alignment = Alignment(horizontal="right")
+        if penalty > 0:
+            pen_cell.font = Font(name="Segoe UI", color="DC2626", bold=True)
+
+        ws.cell(row=row_idx, column=10, value=f"{log.distance_meters or 0:.0f} metr").alignment = Alignment(horizontal="center")
+        
+        geo_cell = ws.cell(row=row_idx, column=11, value="Hudud Ichida" if log.is_within_geofence else "Hududdan Tashqarida")
         geo_cell.alignment = Alignment(horizontal="center")
         if log.is_within_geofence:
             geo_cell.fill = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid")
@@ -187,8 +233,23 @@ def generate_staff_attendance_excel():
             geo_cell.fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
             geo_cell.font = Font(name="Segoe UI", color="991B1B", bold=True)
 
-        ws.cell(row=row_idx, column=9, value=log.get_status_display()).alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=12, value=log.get_status_display()).alignment = Alignment(horizontal="center")
         row_idx += 1
+
+    # Jami qator
+    if len(staff_logs) > 0:
+        ws.row_dimensions[row_idx].height = 24
+        ws.cell(row=row_idx, column=1, value="")
+        total_title = ws.cell(row=row_idx, column=2, value="JAMI:")
+        total_title.font = Font(name="Segoe UI", size=10, bold=True, color="0F172A")
+        
+        ws.cell(row=row_idx, column=7, value=total_late_min).alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=7).font = Font(name="Segoe UI", bold=True, color="DC2626")
+
+        tot_pen = ws.cell(row=row_idx, column=9, value=float(total_penalties))
+        tot_pen.number_format = '#,##0 "UZS"'
+        tot_pen.font = Font(name="Segoe UI", bold=True, color="DC2626")
+        tot_pen.alignment = Alignment(horizontal="right")
 
     auto_fit_columns(ws, len(headers))
     buf = io.BytesIO()
@@ -312,3 +373,95 @@ def generate_finance_excel(month=None, year=None):
     wb.save(buf)
     buf.seek(0)
     return buf
+
+
+def generate_expenses_excel(date_from=None, date_to=None):
+    """Chiqimlar (Xarajatlar) Excel hisoboti"""
+    from .models import Expense
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Chiqimlar"
+
+    settings = KindergartenSettings.get_settings()
+    apply_title_banner(ws, f"{settings.name} — Chiqimlar va Xarajatlar Hisoboti", 8, row=1)
+
+    period_str = ""
+    if date_from and date_to:
+        period_str = f"{date_from} dan {date_to} gacha"
+    elif date_from:
+        period_str = f"{date_from} dan"
+    elif date_to:
+        period_str = f"{date_to} gacha"
+    ws.cell(row=2, column=1, value=f"Eksport: {settings.timezone if hasattr(settings, 'timezone') else 'O\'zbekiston vaqti'} | Davr: {period_str or 'Barcha davrlar'}")
+    ws.cell(row=2, column=1).font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
+
+    headers = [
+        "№", "Sana", "Nomi / Sababi", "Kategoriya", "To'lov Usuli",
+        "Chek / Hujjat", "Summa (UZS)", "Kiritgan Xodim"
+    ]
+    ws.row_dimensions[3].height = 26
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=3, column=col_num)
+        apply_header_style(cell, header, "9F1239")  # Red for expenses
+
+    expenses = Expense.objects.select_related('created_by').order_by('-date')
+    if date_from:
+        expenses = expenses.filter(date__gte=date_from)
+    if date_to:
+        expenses = expenses.filter(date__lte=date_to)
+
+    row_idx = 4
+    total_amount = 0
+    total_cash = 0
+    total_card = 0
+
+    for idx, exp in enumerate(expenses, 1):
+        ws.row_dimensions[row_idx].height = 22
+        ws.cell(row=row_idx, column=1, value=idx).alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=2, value=exp.date.strftime("%d.%m.%Y")).alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=3, value=exp.title)
+        ws.cell(row=row_idx, column=4, value=exp.get_category_display()).alignment = Alignment(horizontal="center")
+
+        method_cell = ws.cell(row=row_idx, column=5, value=exp.get_payment_method_display())
+        method_cell.alignment = Alignment(horizontal="center")
+        if exp.payment_method == 'CASH':
+            method_cell.fill = PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid")
+            method_cell.font = Font(name="Segoe UI", color="065F46")
+        elif exp.payment_method == 'CARD':
+            method_cell.fill = PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid")
+            method_cell.font = Font(name="Segoe UI", color="1E40AF")
+
+        ws.cell(row=row_idx, column=6, value=exp.receipt_number or "—").alignment = Alignment(horizontal="center")
+
+        amt_cell = ws.cell(row=row_idx, column=7, value=float(exp.amount))
+        amt_cell.number_format = '#,##0'
+        amt_cell.font = Font(name="Segoe UI", bold=True, color="9F1239")
+
+        ws.cell(row=row_idx, column=8, value=exp.created_by.get_full_name() if exp.created_by else "—")
+
+        total_amount += float(exp.amount)
+        if exp.payment_method == 'CASH':
+            total_cash += float(exp.amount)
+        elif exp.payment_method == 'CARD':
+            total_card += float(exp.amount)
+        row_idx += 1
+
+    # Totals row
+    ws.row_dimensions[row_idx].height = 26
+    ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=6)
+    tot_label = ws.cell(row=row_idx, column=1, value="JAMI CHIQIMLAR:")
+    tot_label.font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+    tot_label.fill = PatternFill(start_color="9F1239", end_color="9F1239", fill_type="solid")
+    tot_label.alignment = Alignment(horizontal="right", vertical="center")
+
+    tc = ws.cell(row=row_idx, column=7, value=total_amount)
+    tc.number_format = '#,##0'
+    tc.font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+    tc.fill = PatternFill(start_color="9F1239", end_color="9F1239", fill_type="solid")
+
+    auto_fit_columns(ws, len(headers))
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+

@@ -1,0 +1,301 @@
+{% extends 'base.html' %}
+{% block title %}Chiqimlar Boshqaruvi — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:16px;">
+    <div>
+        <h2 style="font-family:'Outfit',sans-serif;font-size:26px;font-weight:800;color:white;">💸 Chiqimlar Boshqaruvi</h2>
+        <p style="font-size:13px;color:var(--text-muted);">Barcha xarajatlarni to'lov usuli va kategoriya bo'yicha kuzating</p>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <a href="{% url 'export_expenses' %}?date_from={{ date_from }}&date_to={{ date_to }}" class="btn-glass btn-excel">
+            <i data-lucide="file-spreadsheet" style="width:16px;height:16px;"></i>
+            <span>Excel Yuklab Olish</span>
+        </a>
+        <button class="btn-glass btn-primary" onclick="document.getElementById('addExpenseModal').style.display='flex'">
+            <i data-lucide="plus-circle" style="width:16px;height:16px;"></i>
+            <span>Yangi Chiqim</span>
+        </button>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;">
+    <div class="glass-card" style="padding:18px;border-left:3px solid #f43f5e;">
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">📅 Bugungi Chiqim</div>
+        <div style="font-size:20px;font-weight:800;color:#f43f5e;font-family:'Outfit',sans-serif;">{{ daily_amount|floatformat:0 }} UZS</div>
+    </div>
+    <div class="glass-card" style="padding:18px;border-left:3px solid #f97316;">
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">📉 Oylik Chiqim</div>
+        <div style="font-size:20px;font-weight:800;color:#f97316;font-family:'Outfit',sans-serif;">{{ monthly_amount|floatformat:0 }} UZS</div>
+    </div>
+    <div class="glass-card" style="padding:18px;border-left:3px solid #34d399;">
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">💵 Naqd Chiqim</div>
+        <div style="font-size:20px;font-weight:800;color:#34d399;font-family:'Outfit',sans-serif;">{{ cash_total|floatformat:0 }} UZS</div>
+    </div>
+    <div class="glass-card" style="padding:18px;border-left:3px solid #60a5fa;">
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">💳 Karta Chiqim</div>
+        <div style="font-size:20px;font-weight:800;color:#60a5fa;font-family:'Outfit',sans-serif;">{{ card_total|floatformat:0 }} UZS</div>
+    </div>
+    <div class="glass-card" style="padding:18px;border-left:3px solid #c084fc;background:rgba(192,132,252,0.05);">
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">🧾 Filtrdagi Jami</div>
+        <div style="font-size:20px;font-weight:800;color:#c084fc;font-family:'Outfit',sans-serif;">{{ total_amount|floatformat:0 }} UZS</div>
+    </div>
+</div>
+
+<!-- Category Breakdown -->
+{% if by_category %}
+<div class="glass-card" style="padding:16px 22px;margin-bottom:20px;">
+    <div style="font-size:13px;font-weight:700;color:white;margin-bottom:12px;">📊 Kategoriyalar bo'yicha</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        {% for cat in by_category %}
+        <div style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;padding:8px 14px;">
+            <div style="font-size:10px;color:var(--text-dim);">{{ cat.label }}</div>
+            <div style="font-size:14px;font-weight:800;color:#fbbf24;font-family:'Outfit',sans-serif;">{{ cat.total|floatformat:0 }} UZS</div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Filters -->
+<div class="glass-card" style="padding:14px 20px;margin-bottom:18px;">
+    <form method="GET" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+        <div>
+            <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">Dan:</label>
+            <input type="date" name="date_from" value="{{ date_from }}" class="glass-input" style="padding:7px 12px;">
+        </div>
+        <div>
+            <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">Gacha:</label>
+            <input type="date" name="date_to" value="{{ date_to }}" class="glass-input" style="padding:7px 12px;">
+        </div>
+        <div>
+            <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">Kategoriya:</label>
+            <select name="category" class="glass-select" style="padding:7px 12px;">
+                <option value="">Barcha kategoriyalar</option>
+                {% for code, label in category_choices %}<option value="{{ code }}" {% if category_filter == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label style="font-size:11px;color:var(--text-dim);display:block;margin-bottom:3px;">To'lov usuli:</label>
+            <select name="method" class="glass-select" style="padding:7px 12px;">
+                <option value="">Barchasi</option>
+                {% for code, label in method_choices %}<option value="{{ code }}" {% if method_filter == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button type="submit" class="btn-glass btn-primary" style="padding:8px 14px;font-size:13px;">
+                <i data-lucide="search" style="width:14px;height:14px;"></i> Qidirish
+            </button>
+            <a href="{% url 'expenses_list' %}" class="btn-glass btn-secondary" style="padding:8px 12px;font-size:13px;text-decoration:none;">Tozalash</a>
+        </div>
+    </form>
+</div>
+
+<!-- Expenses Table -->
+<div class="glass-card">
+    <div class="glass-card-header">
+        <h3 class="glass-card-title">
+            <i data-lucide="list" style="width:20px;height:20px;color:#f43f5e;"></i>
+            <span>Chiqimlar Ro'yxati ({{ expenses|length }} ta)</span>
+        </h3>
+    </div>
+    <div class="glass-table-wrapper">
+        <table class="glass-table">
+            <thead>
+                <tr>
+                    <th style="width:40px;">№</th>
+                    <th>Sana</th>
+                    <th>Nomi / Sababi</th>
+                    <th>Kategoriya</th>
+                    <th>To'lov Usuli</th>
+                    <th>Chek</th>
+                    <th style="text-align:right;">Summa (UZS)</th>
+                    <th>Kiritgan</th>
+                    <th style="width:90px;text-align:center;">Amallar</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for exp in expenses %}
+                <tr>
+                    <td style="text-align:center;color:var(--text-dim);">{{ forloop.counter }}</td>
+                    <td><span style="font-weight:700;color:white;">{{ exp.date|date:"d.m.Y" }}</span></td>
+                    <td>
+                        <div style="font-weight:700;color:white;">{{ exp.title }}</div>
+                        {% if exp.description %}<div style="font-size:11px;color:var(--text-dim);">{{ exp.description|truncatechars:45 }}</div>{% endif %}
+                    </td>
+                    <td>
+                        <span style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.3);color:#fbbf24;padding:3px 9px;border-radius:6px;font-size:12px;font-weight:600;">{{ exp.get_category_display }}</span>
+                    </td>
+                    <td>
+                        {% if exp.payment_method == 'CASH' %}
+                        <span style="background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.3);color:#34d399;padding:3px 9px;border-radius:6px;font-size:12px;font-weight:600;">💵 Naqd</span>
+                        {% elif exp.payment_method == 'CARD' %}
+                        <span style="background:rgba(96,165,250,0.12);border:1px solid rgba(96,165,250,0.3);color:#60a5fa;padding:3px 9px;border-radius:6px;font-size:12px;font-weight:600;">💳 Karta</span>
+                        {% else %}
+                        <span style="background:rgba(148,163,184,0.12);border:1px solid rgba(148,163,184,0.3);color:#94a3b8;padding:3px 9px;border-radius:6px;font-size:12px;font-weight:600;">Boshqa</span>
+                        {% endif %}
+                    </td>
+                    <td style="color:var(--text-muted);font-size:12px;">{{ exp.receipt_number|default:"—" }}</td>
+                    <td style="text-align:right;font-weight:800;color:#f43f5e;font-family:'Outfit',sans-serif;font-size:14px;">{{ exp.amount|floatformat:0 }} UZS</td>
+                    <td style="font-size:12px;color:var(--text-dim);">{{ exp.created_by.get_full_name|default:"—" }}</td>
+                    <td style="text-align:center;">
+                        <div style="display:flex;gap:4px;justify-content:center;">
+                            <button onclick="openEditModal({{ exp.id }},'{{ exp.title|escapejs }}',{{ exp.amount }},'{{ exp.category }}','{{ exp.payment_method }}','{{ exp.date }}','{{ exp.description|default:''|escapejs }}','{{ exp.receipt_number|default:'' }}')"
+                                style="background:rgba(96,165,250,0.12);border:1px solid rgba(96,165,250,0.3);color:#60a5fa;padding:5px 9px;border-radius:6px;cursor:pointer;">
+                                <i data-lucide="edit-2" style="width:12px;height:12px;"></i>
+                            </button>
+                            <button onclick="deleteExpense({{ exp.id }},'{{ exp.title|escapejs }}')"
+                                style="background:rgba(244,63,94,0.12);border:1px solid rgba(244,63,94,0.3);color:#f43f5e;padding:5px 9px;border-radius:6px;cursor:pointer;">
+                                <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="9" style="text-align:center;padding:40px;color:var(--text-dim);">
+                        <i data-lucide="inbox" style="width:36px;height:36px;opacity:0.4;display:block;margin:0 auto 10px;"></i>
+                        Hozircha chiqimlar yo'q. Yangi chiqim qo'shing!
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Modal -->
+<div id="addExpenseModal" class="glass-modal-backdrop" style="display:none;">
+    <div class="glass-modal" style="max-width:500px;width:95%;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#f43f5e,#e11d48);display:flex;align-items:center;justify-content:center;color:white;">
+                    <i data-lucide="minus-circle" style="width:18px;height:18px;"></i>
+                </div>
+                <h3 style="font-family:'Outfit',sans-serif;font-size:17px;font-weight:800;color:white;margin:0;">Yangi Chiqim Qo'shish</h3>
+            </div>
+            <button onclick="document.getElementById('addExpenseModal').style.display='none'" style="background:transparent;border:none;color:var(--text-dim);cursor:pointer;"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+        </div>
+        <form method="POST" action="{% url 'expense_add' %}">
+            {% csrf_token %}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div style="grid-column:1/-1;">
+                    <label class="form-label">Nomi / Sababi *</label>
+                    <input type="text" name="title" class="glass-input" placeholder="Masalan: Oshpaz avonsi" required>
+                </div>
+                <div>
+                    <label class="form-label">Summasi (UZS) *</label>
+                    <input type="number" name="amount" step="any" min="0" class="glass-input" placeholder="500000" required>
+                </div>
+                <div>
+                    <label class="form-label">Sana *</label>
+                    <input type="date" name="date" class="glass-input" value="{% now 'Y-m-d' %}" required>
+                </div>
+                <div>
+                    <label class="form-label">Kategoriya</label>
+                    <select name="category" class="glass-select">
+                        {% for code, label in category_choices %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">To'lov usuli</label>
+                    <select name="payment_method" class="glass-select">
+                        {% for code, label in method_choices %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div style="grid-column:1/-1;">
+                    <label class="form-label">Chek / Hujjat raqami</label>
+                    <input type="text" name="receipt_number" class="glass-input" placeholder="Ixtiyoriy">
+                </div>
+                <div style="grid-column:1/-1;">
+                    <label class="form-label">Izoh</label>
+                    <textarea name="description" class="glass-input" rows="2" placeholder="Qo'shimcha ma'lumot..."></textarea>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:18px;">
+                <button type="submit" class="btn-glass btn-primary" style="flex:1;"><i data-lucide="check" style="width:15px;height:15px;"></i> Saqlash</button>
+                <button type="button" onclick="document.getElementById('addExpenseModal').style.display='none'" class="btn-glass btn-secondary">Bekor</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="editExpenseModal" class="glass-modal-backdrop" style="display:none;">
+    <div class="glass-modal" style="max-width:500px;width:95%;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+            <h3 style="font-family:'Outfit',sans-serif;font-size:17px;font-weight:800;color:white;margin:0;">Chiqimni Tahrirlash</h3>
+            <button onclick="document.getElementById('editExpenseModal').style.display='none'" style="background:transparent;border:none;color:var(--text-dim);cursor:pointer;"><i data-lucide="x" style="width:20px;height:20px;"></i></button>
+        </div>
+        <form id="editExpenseForm" method="POST" action="">
+            {% csrf_token %}
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                <div style="grid-column:1/-1;">
+                    <label class="form-label">Nomi / Sababi *</label>
+                    <input type="text" name="title" id="editTitle" class="glass-input" required>
+                </div>
+                <div>
+                    <label class="form-label">Summasi (UZS) *</label>
+                    <input type="number" name="amount" id="editAmount" step="any" min="0" class="glass-input" required>
+                </div>
+                <div>
+                    <label class="form-label">Sana *</label>
+                    <input type="date" name="date" id="editDate" class="glass-input" required>
+                </div>
+                <div>
+                    <label class="form-label">Kategoriya</label>
+                    <select name="category" id="editCategory" class="glass-select">
+                        {% for code, label in category_choices %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">To'lov usuli</label>
+                    <select name="payment_method" id="editMethod" class="glass-select">
+                        {% for code, label in method_choices %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div style="grid-column:1/-1;">
+                    <label class="form-label">Chek raqami</label>
+                    <input type="text" name="receipt_number" id="editReceipt" class="glass-input">
+                </div>
+                <div style="grid-column:1/-1;">
+                    <label class="form-label">Izoh</label>
+                    <textarea name="description" id="editDescription" class="glass-input" rows="2"></textarea>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:18px;">
+                <button type="submit" class="btn-glass btn-primary" style="flex:1;">Yangilash</button>
+                <button type="button" onclick="document.getElementById('editExpenseModal').style.display='none'" class="btn-glass btn-secondary">Bekor</button>
+            </div>
+        </form>
+    </div>
+</div>
+<form id="deleteExpenseForm" method="POST" action="" style="display:none;">{% csrf_token %}</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function openEditModal(id,title,amount,category,method,date,description,receipt){
+    document.getElementById('editExpenseForm').action='/expenses/'+id+'/edit/';
+    document.getElementById('editTitle').value=title;
+    document.getElementById('editAmount').value=amount;
+    document.getElementById('editCategory').value=category;
+    document.getElementById('editMethod').value=method;
+    document.getElementById('editDate').value=date;
+    document.getElementById('editDescription').value=description;
+    document.getElementById('editReceipt').value=receipt;
+    document.getElementById('editExpenseModal').style.display='flex';
+}
+function deleteExpense(id,title){
+    if(confirm('"'+title+'" chiqimini o\'chirishni tasdiqlaysizmi?')){
+        const f=document.getElementById('deleteExpenseForm');
+        f.action='/expenses/'+id+'/delete/';
+        f.submit();
+    }
+}
+['addExpenseModal','editExpenseModal'].forEach(id=>{
+    document.getElementById(id).addEventListener('click',function(e){if(e.target===this)this.style.display='none';});
+});
+</script>
+{% endblock %}
