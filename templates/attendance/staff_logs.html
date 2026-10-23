@@ -58,8 +58,18 @@
             <i data-lucide="user-x" style="width: 24px; height: 24px; color: #fb7185;"></i>
         </div>
         <div>
-            <div style="font-size: 12px; color: var(--text-muted);">Hali O'tmaganlar (Kelmagan)</div>
+            <div style="font-size: 12px; color: var(--text-muted);">Hali O'tmagan (Ish kuni)</div>
             <div style="font-size: 24px; font-weight: 800; color: #fb7185; font-family: 'Outfit', sans-serif;">{{ staff_pending_count }}</div>
+        </div>
+    </div>
+
+    <div class="glass-card" style="padding: 18px; display: flex; align-items: center; gap: 16px;">
+        <div style="width: 48px; height: 48px; border-radius: 14px; background: rgba(56,189,248,0.15); border: 1px solid rgba(56,189,248,0.3); display: flex; align-items: center; justify-content: center;">
+            <i data-lucide="coffee" style="width: 24px; height: 24px; color: #38bdf8;"></i>
+        </div>
+        <div>
+            <div style="font-size: 12px; color: var(--text-muted);">Dam Olish Kuni (Xodimlar)</div>
+            <div style="font-size: 24px; font-weight: 800; color: #38bdf8; font-family: 'Outfit', sans-serif;">{{ staff_off_count }}</div>
         </div>
     </div>
 </div>
@@ -123,13 +133,13 @@
         </div>
     </div>
 
-    <!-- 2. Hali Face ID'dan O'tmaganlar (Kelmaganlar) -->
+    <!-- 2. Hali Face ID'dan O'tmaganlar (Ish kuni bo'lganlar) -->
     <div class="glass-card" style="padding: 22px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 12px;">
             <div style="display: flex; align-items: center; gap: 10px;">
                 <span style="width: 10px; height: 10px; border-radius: 50%; background: #fb7185; box-shadow: 0 0 10px #fb7185;"></span>
                 <h3 style="font-size: 16px; font-weight: 700; color: white;">
-                    Hali Face ID'dan O'tmaganlar (Kelmaganlar)
+                    Hali Face ID'dan O'tmaganlar (Ish Kuni)
                 </h3>
             </div>
             <span style="font-size: 12px; font-weight: 700; color: #fb7185; background: rgba(244,63,94,0.15); padding: 4px 10px; border-radius: 20px;">
@@ -150,8 +160,9 @@
                     </div>
                     <div>
                         <div style="font-weight: 700; color: white; font-size: 14px;">{{ staff.get_full_name|default:staff.username }}</div>
-                        <div style="font-size: 12px; color: var(--text-dim);">
-                            {{ staff.position_display }}
+                        <div style="font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                            <span>{{ staff.position_display }}</span>
+                            <span style="font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(56, 189, 248, 0.15); color: #38bdf8;">📅 {{ staff.working_days_display }}</span>
                             {% if staff.phone_number %} &bull; <a href="tel:{{ staff.phone_number }}" style="color: #c084fc; text-decoration: none;">{{ staff.phone_number }}</a>{% endif %}
                         </div>
                     </div>
@@ -167,13 +178,56 @@
             </div>
             {% empty %}
             <div style="text-align: center; color: #34d399; padding: 36px 12px; font-size: 13px;">
-                🎉 Barcha xodimlar bugun Face ID orqali davomatdan muvaffaqiyatli o'tgan!
+                🎉 Bugungi ish kunida bo'lgan barcha xodimlar davomatdan muvaffaqiyatli o'tgan!
             </div>
             {% endfor %}
         </div>
     </div>
 
 </div>
+
+{% if staff_off_list %}
+<!-- 3. Bugun Dam Olish Kuni Bo'lgan Xodimlar -->
+<div class="glass-card" style="padding: 20px; margin-bottom: 28px; border: 1px solid rgba(56, 189, 248, 0.25);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <i data-lucide="coffee" style="width: 18px; height: 18px; color: #38bdf8;"></i>
+            <h3 style="font-size: 15px; font-weight: 700; color: white;">
+                Bugun Dam Olish Kuni Bo'lgan Xodimlar (Davomat talab qilinmaydi)
+            </h3>
+        </div>
+        <span style="font-size: 12px; font-weight: 700; color: #38bdf8; background: rgba(56,189,248,0.15); padding: 4px 10px; border-radius: 20px;">
+            {{ staff_off_count }} nafar
+        </span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
+        {% for staff in staff_off_list %}
+        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(56,189,248,0.1); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                    {% if staff.avatar %}
+                    <img src="{{ staff.avatar.url }}" alt="avatar" style="width: 100%; height: 100%; object-fit: cover;">
+                    {% else %}
+                    <i data-lucide="user" style="width: 18px; height: 18px; color: #38bdf8;"></i>
+                    {% endif %}
+                </div>
+                <div>
+                    <div style="font-weight: 600; color: white; font-size: 13px;">{{ staff.get_full_name|default:staff.username }}</div>
+                    <div style="font-size: 11px; color: var(--text-dim);">{{ staff.position_display }}</div>
+                </div>
+            </div>
+            <div style="text-align: right;">
+                <span style="font-size: 10px; padding: 3px 8px; border-radius: 6px; background: rgba(56,189,248,0.15); color: #38bdf8; font-weight: 600;">
+                    📅 {{ staff.working_days_display }}
+                </span>
+                <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">Dam olish kuni</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
 
 <!-- Filters Bar -->
 <div class="glass-card" style="padding: 16px; margin-bottom: 24px;">

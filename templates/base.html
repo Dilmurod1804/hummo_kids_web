@@ -104,20 +104,14 @@
                 </li>
                 <li>
                     <a href="{% url 'finance_dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'finance_dashboard' %}active{% endif %}">
-                        <i data-lucide="credit-card" style="width: 18px; height: 18px;"></i>
+                        <i data-lucide="credit-card" style="width: 18px; height: 18px; color: #a855f7;"></i>
                         <span>Umumiy Moliya & Kassa</span>
                     </a>
                 </li>
                 <li>
                     <a href="{% url 'expenses_list' %}" class="nav-link {% if 'expenses' in request.path %}active{% endif %}">
-                        <i data-lucide="receipt" style="width: 18px; height: 18px; color: #f87171;"></i>
-                        <span>Chiqimlar Boshqaruvi</span>
-                    </a>
-                </li>
-                <li>
-                    <a href="{% url 'warehouse_dashboard' %}" class="nav-link {% if 'warehouse' in request.path %}active{% endif %}">
-                        <i data-lucide="warehouse" style="width: 18px; height: 18px; color: #34d399;"></i>
-                        <span>Ombor & Sklad (Oziq-ovqat)</span>
+                        <i data-lucide="arrow-left-right" style="width: 18px; height: 18px; color: #f43f5e;"></i>
+                        <span>Kirim-Chiqim Boshqaruvi</span>
                     </a>
                 </li>
                 <li>
@@ -134,11 +128,11 @@
                 </li>
 
                 {% elif user.is_manager %}
-                <!-- MENEJER UCHUN OMBOR, DAVOMAT VA SHAXSIY PROFIL -->
+                <!-- MENEJER UCHUN KIRIM-CHIQIM, DAVOMAT VA SHAXSIY PROFIL -->
                 <li>
-                    <a href="{% url 'warehouse_dashboard' %}" class="nav-link {% if 'warehouse' in request.path %}active{% endif %}">
-                        <i data-lucide="warehouse" style="width: 18px; height: 18px; color: #34d399;"></i>
-                        <span>Ombor & Sklad (Oziq-ovqat)</span>
+                    <a href="{% url 'expenses_list' %}" class="nav-link {% if 'expenses' in request.path %}active{% endif %}">
+                        <i data-lucide="arrow-left-right" style="width: 18px; height: 18px; color: #f43f5e;"></i>
+                        <span>Kirim-Chiqim Boshqaruvi</span>
                     </a>
                 </li>
                 <li>
@@ -192,14 +186,6 @@
 
                 {% else %}
                 <!-- GURUH BIRIKTIRILMAGAN XODIM (Oshpaz, Enaga va boshqalar) -->
-                {% if user.role == 'COOK' %}
-                <li>
-                    <a href="{% url 'warehouse_dashboard' %}" class="nav-link {% if 'warehouse' in request.path %}active{% endif %}">
-                        <i data-lucide="warehouse" style="width: 18px; height: 18px; color: #34d399;"></i>
-                        <span>Ombor & Oziq-ovqat Sarfi</span>
-                    </a>
-                </li>
-                {% endif %}
                 <li>
                     <a href="{% url 'staff_attendance_portal' %}" class="nav-link {% if 'staff-portal' in request.path %}active{% endif %}">
                         <i data-lucide="scan-face" style="width: 18px; height: 18px;"></i>

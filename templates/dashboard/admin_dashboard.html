@@ -144,7 +144,7 @@
                     <span>Bugungi Xodimlar Face ID Davomati</span>
                 </h3>
                 <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
-                    Kelganlar: <b style="color: #34d399;">{{ staff_passed_count }}</b> / Kutilayotganlar: <b style="color: #fb7185;">{{ staff_pending_count }}</b> (Jami: {{ staff_total_count }})
+                    Kelganlar: <b style="color: #34d399;">{{ staff_passed_count }}</b> / Kutilayotganlar: <b style="color: #fb7185;">{{ staff_pending_count }}</b>{% if staff_off_count %} / Dam olish: <b style="color: #38bdf8;">{{ staff_off_count }}</b>{% endif %} (Jami: {{ staff_total_count }})
                 </div>
             </div>
             <a href="{% url 'staff_attendance_logs' %}" style="color: #34d399; font-size: 12px; text-decoration: none; font-weight: 600;">To'liq Jurnal &rarr;</a>
@@ -189,7 +189,7 @@
             <!-- 2. Hali o'tmaganlar (Kelmaganlar) -->
             <div style="background: rgba(244, 63, 94, 0.05); border: 1px solid rgba(244, 63, 94, 0.2); border-radius: var(--radius-sm); padding: 12px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 12px; font-weight: 700; color: #fb7185;">
-                    <span>❌ Hali O'tmaganlar</span>
+                    <span>❌ Hali O'tmaganlar (Ish kuni)</span>
                     <span style="background: rgba(244, 63, 94, 0.2); padding: 2px 8px; border-radius: 12px;">{{ staff_pending_count }}</span>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto;">

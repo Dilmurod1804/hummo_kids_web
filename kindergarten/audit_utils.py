@@ -30,10 +30,11 @@ def log_audit(category, action, description, user=None, request=None):
         print(f"Error logging audit: {e}")
         return None
 
-def calculate_late_penalty(check_in_time, work_start_time=None, salary=None, staff_user=None):
+def calculate_late_penalty(check_in_time, work_start_time=None, salary=None, staff_user=None, check_date=None):
     """
     Kechikish Shtraflari hisob-kitobi (Yangi 2-darajali tizim):
       - Har bir xodim shaxsiy 'work_start_time' ga ega (default: 08:00)
+      - Agar bugun xodimning ish kuni bo'lmasa, shtraf 0 qaytariladi.
       - Agar kelgan vaqt ish boshlanish vaqtidan kech bo'lsa:
           * Kechikkan daqiqalar (late_minutes) hisoblanadi.
           * Agar late_minutes <= late_grace_period_minutes (default: 15 min):
@@ -49,6 +50,10 @@ def calculate_late_penalty(check_in_time, work_start_time=None, salary=None, sta
     if hasattr(work_start_time, 'salary') and staff_user is None:
         staff_user = work_start_time
         work_start_time = None
+
+    if staff_user and hasattr(staff_user, 'is_working_day'):
+        if not staff_user.is_working_day(check_date or date.today()):
+            return 0, Decimal('0.00'), Decimal('0.00'), 0
 
     if staff_user:
         if not work_start_time:
@@ -106,10 +111,11 @@ def calculate_late_penalty(check_in_time, work_start_time=None, salary=None, sta
     return late_minutes, penalty_pct, penalty_amount, tier_applied
 
 
-def calculate_early_leave_penalty(check_out_time, work_end_time=None, salary=None, staff_user=None):
+def calculate_early_leave_penalty(check_out_time, work_end_time=None, salary=None, staff_user=None, check_date=None):
     """
     Barvaqt ketish (Erta chiqib ketish) shtraflarini hisoblash:
       - Xodimning shaxsiy 'work_end_time' (default: 18:00) bilan taqqoslanadi.
+      - Agar bugun xodimning ish kuni bo'lmasa, shtraf 0 qaytariladi.
       - Agar xodim ish tugashidan oldin chiqsa:
           * Erta ketgan daqiqalar (early_minutes) hisoblanadi.
           * Agar early_minutes <= late_grace_period_minutes bo'lsa: 1-darajali foiz (penalty_rate_tier1)
@@ -123,6 +129,10 @@ def calculate_early_leave_penalty(check_out_time, work_end_time=None, salary=Non
     if hasattr(work_end_time, 'salary') and staff_user is None:
         staff_user = work_end_time
         work_end_time = None
+
+    if staff_user and hasattr(staff_user, 'is_working_day'):
+        if not staff_user.is_working_day(check_date or date.today()):
+            return 0, Decimal('0.00'), Decimal('0.00'), 0
 
     if staff_user:
         if not work_end_time:

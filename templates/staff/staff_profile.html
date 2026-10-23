@@ -54,6 +54,7 @@
             <div style="display: flex; gap: 16px; font-size: 12px; color: var(--text-dim); flex-wrap: wrap;">
                 <span>Face ID: <strong style="color: {% if user_profile.face_image %}#34d399{% else %}#fbbf24{% endif %};">{% if user_profile.face_image %}✓ Etalon rasm tasdiqlangan{% else %}! Etalon rasm yuklanmagan{% endif %}</strong></span>
                 <span>Ish vaqti: <strong style="color: #38bdf8;">{{ user_profile.work_start_time|time:"H:i"|default:"08:00" }} - {{ user_profile.work_end_time|time:"H:i"|default:"18:00" }}</strong></span>
+                <span>Ish kunlari: <strong style="color: #a78bfa;">📅 {{ user_profile.working_days_display }}</strong></span>
                 <span>Chegara: <strong style="color: #fbbf24;">{{ user_profile.late_grace_period_minutes|default:15 }} daqiqa</strong></span>
                 <span>Shtraf: <strong style="color: #fb7185;">1-bosqich: {{ user_profile.penalty_rate_tier1|default:"10.00" }}% / 2-bosqich: {{ user_profile.penalty_rate_tier2|default:"20.00" }}%</strong></span>
                 {% if user_profile.has_assigned_group %}

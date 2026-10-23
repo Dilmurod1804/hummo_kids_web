@@ -21,12 +21,12 @@ from .models import (
     User, KindergartenSettings, Group, Child, ChildAttendance,
     StaffAttendance, MonthlyInvoice, Payment, ChatMessage,
     StaffBonusPenalty, StaffMonthlySalary, AuditLog, TemporaryChild,
-    Expense, WarehouseItem, WarehouseLog
+    Expense
 )
 from .forms import (
     LoginForm, ChildForm, GroupForm, PaymentForm, SettingsForm,
     StaffForm, TeacherReplaceForm, generate_staff_credentials,
-    ExpenseForm, WarehouseItemForm, WarehouseLogForm
+    ExpenseForm
 )
 from .haversine import haversine_distance, evaluate_geofence
 from .face_utils import (
@@ -231,6 +231,7 @@ def admin_dashboard(request):
 
     staff_passed_list = []
     staff_pending_list = []
+    staff_off_list = []
 
     for staff in all_active_staff:
         if staff.id in present_logs_map:
@@ -238,11 +239,14 @@ def admin_dashboard(request):
                 'staff': staff,
                 'log': present_logs_map[staff.id],
             })
-        else:
+        elif staff.is_working_day(today):
             staff_pending_list.append(staff)
+        else:
+            staff_off_list.append(staff)
 
     staff_passed_count = len(staff_passed_list)
     staff_pending_count = len(staff_pending_list)
+    staff_off_count = len(staff_off_list)
     staff_total_count = len(all_active_staff)
     staff_on_duty_count = staff_passed_count
 
@@ -276,8 +280,10 @@ def admin_dashboard(request):
         'staff_on_duty_count': staff_on_duty_count,
         'staff_passed_list': staff_passed_list,
         'staff_pending_list': staff_pending_list,
+        'staff_off_list': staff_off_list,
         'staff_passed_count': staff_passed_count,
         'staff_pending_count': staff_pending_count,
+        'staff_off_count': staff_off_count,
         'staff_total_count': staff_total_count,
         'total_expected_revenue': total_expected_revenue,
         'total_collected_revenue': total_collected_revenue,
@@ -541,7 +547,7 @@ def staff_update(request, pk):
             log_audit(
                 'STAFF',
                 f"Xodim sozlamalari yangilandi: {user.get_full_name() or user.username}",
-                f"Ish vaqti: {user.work_start_time} - {user.work_end_time}, T1: {user.penalty_rate_tier1}%, T2: {user.penalty_rate_tier2}%, Chegara: {user.late_grace_period_minutes}m",
+                f"Ish vaqti: {user.work_start_time} - {user.work_end_time}, Ish kunlari: {user.working_days_display}, T1: {user.penalty_rate_tier1}%, T2: {user.penalty_rate_tier2}%, Chegara: {user.late_grace_period_minutes}m",
                 user=request.user,
                 request=request
             )
@@ -1445,22 +1451,32 @@ def staff_check_in_api(request):
         is_late = False
         is_early_leave = False
 
-        if action_type != 'check_out':
+        is_scheduled_work_day = staff_user.is_working_day(today)
+
+        if not is_scheduled_work_day:
+            # Bugun xodimning ish kuni emas (Dam olish kuni) - shtraf hisoblanmaydi
+            late_minutes, penalty_pct, penalty_amount, tier_applied = 0, Decimal('0.00'), Decimal('0.00'), 0
+            early_minutes, early_penalty_pct, early_penalty_amount, early_tier = 0, Decimal('0.00'), Decimal('0.00'), 0
+            is_late = False
+            is_early_leave = False
+            status_val = 'VERIFIED'
+        elif action_type != 'check_out':
             late_minutes, penalty_pct, penalty_amount, tier_applied = calculate_late_penalty(
-                current_time, work_start_time=work_start, salary=staff_user.salary, staff_user=staff_user
+                current_time, work_start_time=work_start, salary=staff_user.salary, staff_user=staff_user, check_date=today
             )
             is_late = (late_minutes > 0)
             status_val = 'LATE' if is_late else 'ON_TIME'
         else:
             early_minutes, early_penalty_pct, early_penalty_amount, early_tier = calculate_early_leave_penalty(
-                current_time, work_end_time=work_end, salary=staff_user.salary, staff_user=staff_user
+                current_time, work_end_time=work_end, salary=staff_user.salary, staff_user=staff_user, check_date=today
             )
             is_early_leave = (early_minutes > 0)
             status_val = 'VERIFIED'
 
+        schedule_note = "" if is_scheduled_work_day else " (Dam olish kunidagi tashrif — shtraf hisoblanmadi)"
         face_note = (
             f"Face ID 1:1 AI tasdiqlandi (masofa: {face_distance:.3f}, {similarity_pct:.1f}%). "
-            f"GPS: {distance:.1f}m."
+            f"GPS: {distance:.1f}m.{schedule_note}"
         )
 
         if not log_entry:
@@ -1778,22 +1794,32 @@ def face_identify_api(request):
         is_late = False
         is_early_leave = False
 
-        if action_type != 'check_out':
+        is_scheduled_work_day = matched_user.is_working_day(today)
+
+        if not is_scheduled_work_day:
+            # Bugun xodimning ish kuni emas (Dam olish kuni) - shtraf hisoblanmaydi
+            late_minutes, penalty_pct, penalty_amount, tier_applied = 0, Decimal('0.00'), Decimal('0.00'), 0
+            early_minutes, early_penalty_pct, early_penalty_amount, early_tier = 0, Decimal('0.00'), Decimal('0.00'), 0
+            is_late = False
+            is_early_leave = False
+            status_val = 'VERIFIED'
+        elif action_type != 'check_out':
             late_minutes, penalty_pct, penalty_amount, tier_applied = calculate_late_penalty(
-                current_time, work_start_time=work_start, salary=matched_user.salary, staff_user=matched_user
+                current_time, work_start_time=work_start, salary=matched_user.salary, staff_user=matched_user, check_date=today
             )
             is_late = (late_minutes > 0)
             status_val = 'LATE' if is_late else 'ON_TIME'
         else:
             early_minutes, early_penalty_pct, early_penalty_amount, early_tier = calculate_early_leave_penalty(
-                current_time, work_end_time=work_end, salary=matched_user.salary, staff_user=matched_user
+                current_time, work_end_time=work_end, salary=matched_user.salary, staff_user=matched_user, check_date=today
             )
             is_early_leave = (early_minutes > 0)
             status_val = 'VERIFIED'
 
+        schedule_note = "" if is_scheduled_work_day else " (Dam olish kunidagi tashrif — shtraf hisoblanmadi)"
         face_note = (
             f"Kiosk Face ID 1:N tasdiqlandi (masofa: {face_dist:.3f}, {face_sim:.1f}%). "
-            f"GPS: {distance:.1f}m."
+            f"GPS: {distance:.1f}m.{schedule_note}"
         )
 
         if not log_entry:
@@ -1983,6 +2009,7 @@ def staff_attendance_logs(request):
 
     staff_passed_list = []
     staff_pending_list = []
+    staff_off_list = []
 
     for staff in all_active_staff:
         if staff.id in present_logs_map:
@@ -1990,8 +2017,10 @@ def staff_attendance_logs(request):
                 'staff': staff,
                 'log': present_logs_map[staff.id],
             })
-        else:
+        elif staff.is_working_day(selected_date):
             staff_pending_list.append(staff)
+        else:
+            staff_off_list.append(staff)
 
     return render(request, 'attendance/staff_logs.html', {
         'logs': logs,
@@ -2001,8 +2030,10 @@ def staff_attendance_logs(request):
         'today': today,
         'staff_passed_list': staff_passed_list,
         'staff_pending_list': staff_pending_list,
+        'staff_off_list': staff_off_list,
         'staff_passed_count': len(staff_passed_list),
         'staff_pending_count': len(staff_pending_list),
+        'staff_off_count': len(staff_off_list),
         'staff_total_count': len(all_active_staff),
     })
 
@@ -2134,10 +2165,13 @@ def staff_attendance_matrix(request):
                     'is_early': is_early,
                 })
             else:
+                day_date = d_info['date']
+                is_scheduled_day = staff.is_working_day(day_date)
+
                 if d_info['is_future']:
                     symbol = '·'
                     status_class = 'cell-future'
-                elif d_info['is_weekend']:
+                elif not is_scheduled_day:
                     symbol = '—'
                     status_class = 'cell-weekend'
                 else:
@@ -2702,6 +2736,249 @@ def record_payment_api(request):
             return JsonResponse({'success': False, 'message': str(e)}, status=400)
 
     return JsonResponse({'success': False, 'message': 'Invalid request'}, status=405)
+
+
+@csrf_exempt
+@login_required
+@director_or_manager_required
+def update_invoice_tariff_api(request):
+    """
+    Bolaning oylik invoysi tarifini (base_fee) tahrirlash API.
+    Tarif o'zgarganda sababli kunlar chegirmasi va yakuniy qoldiq qarz avtomatik yangilanadi.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Faqat POST so\'rovi qabul qilinadi.'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        invoice_id = data.get('invoice_id')
+        raw_base_fee = data.get('base_fee')
+        reason = data.get('reason', '').strip()
+        update_group_default = data.get('update_group_default', False)
+
+        if invoice_id is None or raw_base_fee is None:
+            return JsonResponse({'success': False, 'message': 'Invoys ID va yangi tarif kiritilishi shart!'}, status=400)
+
+        new_base_fee = Decimal(str(raw_base_fee))
+        if new_base_fee < Decimal('0.00'):
+            return JsonResponse({'success': False, 'message': 'Tarif manfiy bo\'lishi mumkin emas!'}, status=400)
+
+        invoice = get_object_or_404(MonthlyInvoice, id=invoice_id)
+        old_tariff = invoice.base_fee
+        invoice.base_fee = new_base_fee
+        invoice.calculate_totals()
+        invoice.save()
+
+        # Agar kelgusi oylar / guruh standarti sifatida ham belgilash tanlansa
+        if update_group_default and invoice.child and invoice.child.group:
+            invoice.child.group.monthly_fee = new_base_fee
+            invoice.child.group.save()
+
+        staff_name = request.user.get_full_name() or request.user.username
+        log_audit(
+            category='PAYMENT',
+            action="Bola tarifi tahrirlandi",
+            description=(
+                f"Bola: {invoice.child.full_name} ({invoice.month}/{invoice.year} oyi). "
+                f"Eski tarif: {old_tariff:,.0f} UZS -> Yangi tarif: {new_base_fee:,.0f} UZS. "
+                f"Hisoblangan summa: {invoice.total_amount:,.0f} UZS, Qoldiq qarz: {invoice.remaining_debt:,.0f} UZS. "
+                f"Izoh: {reason or 'Keltirilmadi'}. Mas'ul: {staff_name}"
+            ),
+            user=request.user,
+            request=request
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': f"'{invoice.child.full_name}' uchun oylik tarif {new_base_fee:,.0f} UZS ga muvaffaqiyatli o'zgartirildi!",
+            'base_fee': float(invoice.base_fee),
+            'recalculation_amount': float(invoice.recalculation_amount),
+            'total_amount': float(invoice.total_amount),
+            'paid_amount': float(invoice.paid_amount),
+            'remaining_debt': float(invoice.remaining_debt),
+            'status': invoice.status,
+            'status_display': invoice.get_status_display(),
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=400)
+
+
+@login_required
+@director_or_manager_required
+def invoice_payments_api(request, invoice_id):
+    """
+    Invoys bo'yicha amalga oshirilgan to'lovlar tarixini JSON formatida qaytaradi.
+    """
+    invoice = get_object_or_404(MonthlyInvoice, id=invoice_id)
+    payments = invoice.payments.select_related('recorded_by').order_by('-paid_at')
+    
+    payments_list = []
+    for p in payments:
+        payments_list.append({
+            'id': p.id,
+            'amount': float(p.amount),
+            'payment_method': p.payment_method,
+            'payment_method_display': p.get_payment_method_display(),
+            'transaction_id': p.transaction_id or '',
+            'paid_at': p.paid_at.strftime('%Y-%m-%d %H:%M'),
+            'date_only': p.paid_at.strftime('%Y-%m-%d'),
+            'recorded_by': (p.recorded_by.get_full_name() or p.recorded_by.username) if p.recorded_by else '—',
+            'reason': p.reason or '',
+            'notes': p.notes or '',
+        })
+
+    return JsonResponse({
+        'success': True,
+        'invoice_id': invoice.id,
+        'child_name': invoice.child.full_name,
+        'group_name': invoice.child.group.name if invoice.child.group else 'Guruhsiz',
+        'month': invoice.month,
+        'year': invoice.year,
+        'base_fee': float(invoice.base_fee),
+        'total_amount': float(invoice.total_amount),
+        'paid_amount': float(invoice.paid_amount),
+        'remaining_debt': float(invoice.remaining_debt),
+        'status_display': invoice.get_status_display(),
+        'payments': payments_list,
+    })
+
+
+@csrf_exempt
+@login_required
+@director_or_manager_required
+def update_payment_api(request, payment_id):
+    """
+    Oldin kiritilgan to'lov ma'lumotlarini (summa, to'lov turi, chek raqami, sana, izoh) tahrirlash API.
+    To'lov o'zgarganda tegishli invoys avtomatik qayta hisoblanadi.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Faqat POST so\'rovi qabul qilinadi.'}, status=405)
+
+    try:
+        payment = get_object_or_404(Payment, id=payment_id)
+        data = json.loads(request.body)
+        raw_amount = data.get('amount')
+        payment_method = data.get('payment_method')
+        transaction_id = data.get('transaction_id', '').strip()
+        reason = data.get('reason', '').strip()
+        notes = data.get('notes', '').strip()
+        paid_at_str = data.get('paid_at', '').strip()
+
+        if raw_amount is None:
+            return JsonResponse({'success': False, 'message': 'To\'lov summasi kiritilishi shart!'}, status=400)
+
+        new_amount = Decimal(str(raw_amount))
+        if new_amount <= Decimal('0.00'):
+            return JsonResponse({'success': False, 'message': 'To\'lov summasi 0 dan katta bo\'lishi kerak!'}, status=400)
+
+        old_amount = payment.amount
+        old_method = payment.get_payment_method_display()
+
+        payment.amount = new_amount
+        if payment_method:
+            payment.payment_method = payment_method
+        payment.transaction_id = transaction_id
+        payment.reason = reason
+        payment.notes = notes or reason
+
+        if paid_at_str:
+            try:
+                parsed_date = datetime.strptime(paid_at_str, '%Y-%m-%d').date()
+                parsed_dt = datetime.combine(parsed_date, time(12, 0))
+                payment.paid_at = timezone.make_aware(parsed_dt)
+            except Exception:
+                pass
+
+        payment.save()  # Invoice paid_amount automatically recalculated!
+
+        if payment.invoice:
+            payment.invoice.refresh_from_db()
+
+        staff_name = request.user.get_full_name() or request.user.username
+        child_label = payment.invoice.child.full_name if payment.invoice else (payment.temporary_child.full_name if payment.temporary_child else "Noma'lum")
+        
+        log_audit(
+            category='PAYMENT',
+            action="To'lov ma'lumotlari tahrirlandi",
+            description=(
+                f"To'lov ID #{payment.id} ({child_label}). "
+                f"Eski: {old_amount:,.0f} UZS ({old_method}) -> Yangi: {new_amount:,.0f} UZS ({payment.get_payment_method_display()}). "
+                f"Chek: {transaction_id or '—'}. Izoh: {reason or '—'}. Mas'ul: {staff_name}"
+            ),
+            user=request.user,
+            request=request
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': f"To'lov muvaffaqiyatli yangilandi ({new_amount:,.0f} UZS)!",
+            'payment': {
+                'id': payment.id,
+                'amount': float(payment.amount),
+                'payment_method': payment.payment_method,
+                'payment_method_display': payment.get_payment_method_display(),
+                'transaction_id': payment.transaction_id or '',
+                'paid_at': payment.paid_at.strftime('%Y-%m-%d %H:%M'),
+                'date_only': payment.paid_at.strftime('%Y-%m-%d'),
+                'reason': payment.reason or '',
+                'notes': payment.notes or '',
+            },
+            'invoice_id': payment.invoice_id,
+            'invoice_paid_amount': float(payment.invoice.paid_amount) if payment.invoice else 0,
+            'invoice_remaining_debt': float(payment.invoice.remaining_debt) if payment.invoice else 0,
+            'invoice_status': payment.invoice.status if payment.invoice else '',
+            'invoice_status_display': payment.invoice.get_status_display() if payment.invoice else '',
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=400)
+
+
+@csrf_exempt
+@login_required
+@director_or_manager_required
+def delete_payment_api(request, payment_id):
+    """
+    Xato kiritilgan to'lovni bekor qilish / o'chirish API.
+    To'lov o'chirilganda invoys avtomatik qayta hisoblanadi.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Faqat POST so\'rovi qabul qilinadi.'}, status=405)
+
+    try:
+        payment = get_object_or_404(Payment, id=payment_id)
+        invoice = payment.invoice
+        amount_deleted = payment.amount
+        method_deleted = payment.get_payment_method_display()
+        child_label = invoice.child.full_name if invoice else "Noma'lum"
+
+        payment.delete()  # Payment.delete recalculates invoice.paid_amount and saves invoice!
+
+        if invoice:
+            invoice.refresh_from_db()
+
+        staff_name = request.user.get_full_name() or request.user.username
+        log_audit(
+            category='PAYMENT',
+            action="To'lov bekor qilindi (o'chirildi)",
+            description=(
+                f"To'lov #{payment_id} o'chirildi ({child_label}). Summasi: {amount_deleted:,.0f} UZS ({method_deleted}). "
+                f"Yangi qoldiq qarz: {invoice.remaining_debt:,.0f} UZS. Mas'ul: {staff_name}"
+            ),
+            user=request.user,
+            request=request
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': f"{amount_deleted:,.0f} UZS to'lov o'chirildi va qarz qayta hisoblandi!",
+            'invoice_id': invoice.id if invoice else None,
+            'invoice_paid_amount': float(invoice.paid_amount) if invoice else 0,
+            'invoice_remaining_debt': float(invoice.remaining_debt) if invoice else 0,
+            'invoice_status': invoice.status if invoice else '',
+            'invoice_status_display': invoice.get_status_display() if invoice else '',
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=400)
 
 
 # --- Vaqtinchalik Bolalar (Trial Children) ---
@@ -3466,195 +3743,6 @@ def export_expenses(request):
     response = HttpResponse(buf, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     response['Content-Disposition'] = f'attachment; filename="Chiqimlar_{timezone.now().strftime("%Y%m%d")}.xlsx"'
     return response
-
-
-# ============================================================
-#  OMBOR BOSHQARUVI (WAREHOUSE MODULE)
-# ============================================================
-
-def is_warehouse_user(user):
-    return user.role in ('DIRECTOR', 'MANAGER', 'COOK') or user.is_superuser
-
-
-@login_required
-@user_passes_test(is_warehouse_user)
-def warehouse_dashboard(request):
-    items = WarehouseItem.objects.filter(is_active=True).order_by('name')
-    today = timezone.now().date()
-    first_of_month = today.replace(day=1)
-
-    today_logs = WarehouseLog.objects.filter(date=today).select_related('item', 'recorded_by', 'expense').order_by('-created_at')[:50]
-    monthly_out = WarehouseLog.objects.filter(date__gte=first_of_month, log_type='OUT').aggregate(v=Sum('total_price'))['v'] or Decimal('0.00')
-    monthly_in = WarehouseLog.objects.filter(date__gte=first_of_month, log_type='IN').aggregate(v=Sum('total_price'))['v'] or Decimal('0.00')
-    
-    # Kam qolgan mahsulotlar (min_threshold bo'yicha)
-    low_stock_items = [i for i in items if i.is_low_stock]
-    low_stock_reorder_cost = sum(i.reorder_cost for i in low_stock_items)
-
-    month_str = request.GET.get('month', today.strftime('%Y-%m'))
-    try:
-        filter_month = datetime.strptime(month_str, '%Y-%m').date()
-    except Exception:
-        filter_month = today.replace(day=1)
-
-    month_logs = WarehouseLog.objects.filter(
-        date__year=filter_month.year,
-        date__month=filter_month.month
-    ).select_related('item', 'recorded_by', 'expense').order_by('-date', '-created_at')
-
-    return render(request, 'warehouse/warehouse_dashboard.html', {
-        'items': items,
-        'today_logs': today_logs,
-        'month_logs': month_logs,
-        'monthly_out': monthly_out,
-        'monthly_in': monthly_in,
-        'low_stock_items': low_stock_items,
-        'low_stock_count': len(low_stock_items),
-        'low_stock_reorder_cost': low_stock_reorder_cost,
-        'total_items': items.count(),
-        'filter_month': filter_month.strftime('%Y-%m'),
-        'today': today,
-    })
-
-
-@login_required
-@user_passes_test(is_director_or_manager)
-def warehouse_item_add(request):
-    if request.method == 'POST':
-        try:
-            min_thresh_val = request.POST.get('min_threshold', '').strip()
-            min_qty_val = request.POST.get('min_quantity', '').strip()
-            min_thresh = Decimal((min_thresh_val or min_qty_val or '5').replace(',', '.'))
-            unit_pr = Decimal(request.POST.get('unit_price', '0').replace(',', '.') or '0')
-
-            item = WarehouseItem.objects.create(
-                name=request.POST['name'].strip(),
-                unit=request.POST.get('unit', 'kg'),
-                min_threshold=min_thresh,
-                min_quantity=min_thresh,
-                unit_price=unit_pr,
-                description=request.POST.get('description', ''),
-            )
-            init_qty_str = request.POST.get('initial_quantity', '').strip()
-            if init_qty_str:
-                init_qty = Decimal(init_qty_str.replace(',', '.'))
-                if init_qty > 0:
-                    pay_method = request.POST.get('payment_method', 'CASH')
-                    WarehouseLog.objects.create(
-                        item=item,
-                        log_type='IN',
-                        quantity=init_qty,
-                        unit_price=unit_pr,
-                        payment_method=pay_method,
-                        date=timezone.now().date(),
-                        notes="Boshlang'ich kirim",
-                        recorded_by=request.user,
-                    )
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return JsonResponse({'success': True, 'id': item.id, 'name': item.name})
-            messages.success(request, f"Mahsulot qo'shildi: {item.name}")
-        except Exception as e:
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return JsonResponse({'success': False, 'error': str(e)}, status=400)
-            messages.error(request, f"Xatolik: {e}")
-    return redirect('warehouse_dashboard')
-
-
-@login_required
-@user_passes_test(is_director_or_manager)
-def warehouse_item_edit(request, pk):
-    item = get_object_or_404(WarehouseItem, pk=pk)
-    if request.method == 'POST':
-        try:
-            item.name = request.POST.get('name', item.name).strip()
-            item.unit = request.POST.get('unit', item.unit)
-            min_thresh_val = request.POST.get('min_threshold', '').strip()
-            min_qty_val = request.POST.get('min_quantity', '').strip()
-            if min_thresh_val or min_qty_val:
-                item.min_threshold = Decimal((min_thresh_val or min_qty_val).replace(',', '.'))
-                item.min_quantity = item.min_threshold
-            item.unit_price = Decimal(request.POST.get('unit_price', '0').replace(',', '.') or '0')
-            item.description = request.POST.get('description', item.description or '')
-            item.is_active = request.POST.get('is_active', '1') == '1'
-            item.save()
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return JsonResponse({'success': True})
-            messages.success(request, f"Mahsulot yangilandi: {item.name}")
-        except Exception as e:
-            messages.error(request, f"Xatolik: {e}")
-    return redirect('warehouse_dashboard')
-
-
-@login_required
-@user_passes_test(is_warehouse_user)
-def warehouse_log_add(request):
-    if request.method == 'POST':
-        try:
-            item = get_object_or_404(WarehouseItem, pk=request.POST['item_id'])
-            qty = Decimal(request.POST.get('quantity', '0').replace(',', '.'))
-            if qty <= 0:
-                raise ValueError("Miqdor musbat bo'lishi kerak")
-            
-            log_type = request.POST.get('log_type', 'OUT')
-            payment_method = request.POST.get('payment_method', 'CASH')
-            unit_price_input = request.POST.get('unit_price', '').strip()
-            unit_price = Decimal(unit_price_input.replace(',', '.')) if unit_price_input else item.unit_price
-
-            log = WarehouseLog.objects.create(
-                item=item,
-                log_type=log_type,
-                quantity=qty,
-                unit_price=unit_price,
-                payment_method=payment_method,
-                date=request.POST.get('date', str(timezone.now().date())),
-                notes=request.POST.get('notes', ''),
-                recorded_by=request.user,
-            )
-            if log_type == 'IN' and log.expense:
-                messages.success(request, f"{item.name} — kirim qilindi va moliya bo'limiga {log.total_price:,.0f} UZS chiqim ({log.get_payment_method_display()}) sifatida biriktirildi")
-            else:
-                messages.success(request, f"{item.name} — operatsiya muvaffaqiyatli saqlandi")
-        except Exception as e:
-            messages.error(request, f"Xatolik: {e}")
-    return redirect('warehouse_dashboard')
-
-
-@login_required
-@user_passes_test(is_warehouse_user)
-def warehouse_log_add_api(request):
-    if request.method == 'POST':
-        try:
-            data = json.loads(request.body)
-            item = get_object_or_404(WarehouseItem, pk=data['item_id'])
-            qty = Decimal(str(data.get('quantity', 0)))
-            if qty <= 0:
-                return JsonResponse({'success': False, 'error': "Miqdor musbat bo'lishi kerak"}, status=400)
-            
-            log_type = data.get('log_type', 'OUT')
-            payment_method = data.get('payment_method', 'CASH')
-            unit_price = Decimal(str(data.get('unit_price'))) if data.get('unit_price') else item.unit_price
-
-            log = WarehouseLog.objects.create(
-                item=item,
-                log_type=log_type,
-                quantity=qty,
-                unit_price=unit_price,
-                payment_method=payment_method,
-                date=data.get('date', str(timezone.now().date())),
-                notes=data.get('notes', ''),
-                recorded_by=request.user,
-            )
-            # Refresh item from DB
-            item.refresh_from_db()
-            return JsonResponse({
-                'success': True,
-                'new_quantity': float(item.current_quantity),
-                'log_id': log.id,
-                'expense_id': log.expense.id if log.expense else None
-            })
-        except Exception as e:
-            return JsonResponse({'success': False, 'error': str(e)}, status=400)
-    return JsonResponse({'success': False}, status=405)
 
 
 # ============================================================

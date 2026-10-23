@@ -61,6 +61,10 @@ urlpatterns = [
     path('finance/groups/', views.groups_finance_view, name='groups_finance'),
     path('finance/recalculate-api/', views.recalculate_invoices_api, name='recalculate_invoices_api'),
     path('finance/payment-api/', views.record_payment_api, name='record_payment_api'),
+    path('finance/invoice/update-tariff/', views.update_invoice_tariff_api, name='update_invoice_tariff_api'),
+    path('finance/invoice/<int:invoice_id>/payments/', views.invoice_payments_api, name='invoice_payments_api'),
+    path('finance/payment/<int:payment_id>/update/', views.update_payment_api, name='update_payment_api'),
+    path('finance/payment/<int:payment_id>/delete/', views.delete_payment_api, name='delete_payment_api'),
 
     # Trial (Vaqtinchalik) Children APIs
     path('finance/trial/create/', views.trial_child_create_api, name='trial_child_create_api'),
@@ -89,13 +93,6 @@ urlpatterns = [
     path('expenses/add/', views.expense_add, name='expense_add'),
     path('expenses/<int:pk>/edit/', views.expense_edit, name='expense_edit'),
     path('expenses/<int:pk>/delete/', views.expense_delete, name='expense_delete'),
-
-    # Ombor (Warehouse)
-    path('warehouse/', views.warehouse_dashboard, name='warehouse_dashboard'),
-    path('warehouse/item/add/', views.warehouse_item_add, name='warehouse_item_add'),
-    path('warehouse/item/<int:pk>/edit/', views.warehouse_item_edit, name='warehouse_item_edit'),
-    path('warehouse/log/add/', views.warehouse_log_add, name='warehouse_log_add'),
-    path('warehouse/log/add-api/', views.warehouse_log_add_api, name='warehouse_log_add_api'),
 
     # Settings
     path('settings/', views.settings_view, name='settings'),

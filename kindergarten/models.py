@@ -50,6 +50,12 @@ class User(AbstractUser):
         verbose_name="1-darajali kechikish chegarasi (daqiqa)",
         help_text="Necha daqiqagacha kechikish 1-darajali hisoblanishi (default: 15 daqiqa)"
     )
+    working_days = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Ish kunlari",
+        help_text="Xodimning ish kunlari (1: Dushanba .. 7: Yakshanba)"
+    )
     phone_number = models.CharField(max_length=25, blank=True, null=True)
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
     face_image = models.ImageField(upload_to='face_registrations/', blank=True, null=True, verbose_name="Face ID Etalon Rasm")
@@ -84,6 +90,46 @@ class User(AbstractUser):
         else:
             import json as _json
             self.face_embedding = _json.dumps([float(x) for x in embedding_vec])
+
+    def get_working_days_list(self):
+        """Hafta kunlari ro'yxatini int formatida qaytaradi (1: Du .. 7: Ya). Standart: [1, 2, 3, 4, 5] (Dushanba-Juma)."""
+        if not self.working_days:
+            return [1, 2, 3, 4, 5]
+        try:
+            return [int(d) for d in self.working_days]
+        except (ValueError, TypeError):
+            return [1, 2, 3, 4, 5]
+
+    def is_working_day(self, check_date=None):
+        """Berilgan sana (default: bugun) xodimning belgilangan ish kuniga to'g'ri kelishini tekshiradi."""
+        from datetime import datetime as _dt
+        if check_date is None:
+            check_date = timezone.localtime(timezone.now()).date()
+        elif isinstance(check_date, _dt):
+            check_date = timezone.localtime(check_date).date()
+        iso_day = check_date.isoweekday()  # 1 = Dushanba, 7 = Yakshanba
+        return iso_day in self.get_working_days_list()
+
+    @property
+    def working_days_display(self):
+        """Ish kunlarining tushunarli qisqa matnli ko'rinishi."""
+        day_names = {
+            1: 'Du',
+            2: 'Se',
+            3: 'Ch',
+            4: 'Pa',
+            5: 'Ju',
+            6: 'Sh',
+            7: 'Ya'
+        }
+        days = sorted(self.get_working_days_list())
+        if len(days) == 5 and days == [1, 2, 3, 4, 5]:
+            return "Du - Ju"
+        if len(days) == 6 and days == [1, 2, 3, 4, 5, 6]:
+            return "Du - Shan"
+        if len(days) == 7:
+            return "Har kuni (7 kun)"
+        return ", ".join(day_names.get(d, str(d)) for d in days)
 
     @property
     def is_director(self):
@@ -368,6 +414,17 @@ class Payment(models.Model):
             self.temporary_child.paid_amount = total_paid
             self.temporary_child.save()
 
+    def delete(self, *args, **kwargs):
+        inv = self.invoice
+        temp_ch = self.temporary_child
+        super().delete(*args, **kwargs)
+        if inv:
+            inv.paid_amount = sum(p.amount for p in inv.payments.all())
+            inv.save()
+        if temp_ch:
+            temp_ch.paid_amount = sum(p.amount for p in temp_ch.payments.all())
+            temp_ch.save()
+
     def __str__(self):
         target = self.invoice.child.full_name if self.invoice else (self.temporary_child.full_name if self.temporary_child else "Noma'lum")
         return f"Payment {self.amount} UZS for {target} ({self.get_payment_method_display()}) on {self.paid_at.strftime('%Y-%m-%d')}"
@@ -575,153 +632,4 @@ class Expense(models.Model):
     def __str__(self):
         return f"[{self.get_category_display()}] {self.title}: {self.amount:,.0f} UZS ({self.date})"
 
-
-class WarehouseItem(models.Model):
-    """Ombordagi mahsulotlar (Sklad)"""
-    UNIT_CHOICES = (
-        ('kg', 'Kilogramm (kg)'),
-        ('litr', 'Litr (l)'),
-        ('dona', 'Dona (pc)'),
-        ('gramm', 'Gramm (g)'),
-        ('metr', 'Metr (m)'),
-        ('paket', 'Paket / Qop'),
-    )
-    name = models.CharField(max_length=150, verbose_name="Mahsulot nomi")
-    unit = models.CharField(max_length=20, choices=UNIT_CHOICES, default='kg', verbose_name="O'lchov birligi")
-    current_quantity = models.DecimalField(max_digits=12, decimal_places=3, default=Decimal('0.000'), verbose_name="Joriy qoldiq")
-    min_quantity = models.DecimalField(max_digits=12, decimal_places=3, default=Decimal('0.000'), verbose_name="Minimum qoldiq (ogohlantirish uchun)")
-    min_threshold = models.DecimalField(max_digits=12, decimal_places=3, default=Decimal('5.000'), verbose_name="Minimal xavfli qoldiq (min_threshold)")
-    unit_price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Birlik narxi (UZS)")
-    description = models.TextField(blank=True, null=True, verbose_name="Izoh")
-    is_active = models.BooleanField(default=True, verbose_name="Faolmi?")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['name']
-        verbose_name = "Ombor Mahsuloti"
-        verbose_name_plural = "Ombor Mahsulotlari"
-
-    @property
-    def effective_threshold(self):
-        if self.min_threshold is not None and self.min_threshold > 0:
-            return self.min_threshold
-        return self.min_quantity or Decimal('0.000')
-
-    @property
-    def is_low_stock(self):
-        thresh = self.effective_threshold
-        return self.current_quantity <= thresh and thresh > 0
-
-    @property
-    def needed_quantity(self):
-        thresh = self.effective_threshold
-        if self.current_quantity < thresh:
-            return thresh - self.current_quantity
-        return Decimal('0.000')
-
-    @property
-    def reorder_cost(self):
-        return self.needed_quantity * self.unit_price
-
-    @property
-    def total_value(self):
-        return self.current_quantity * self.unit_price
-
-    def save(self, *args, **kwargs):
-        if self.min_threshold and (not self.min_quantity or self.min_quantity == 0):
-            self.min_quantity = self.min_threshold
-        elif self.min_quantity and (not self.min_threshold or self.min_threshold == 0):
-            self.min_threshold = self.min_quantity
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.name} — {self.current_quantity} {self.unit}"
-
-
-class WarehouseLog(models.Model):
-    """Ombor Kirim-Chiqim tarixi"""
-    LOG_TYPES = (
-        ('IN', 'Kirim (Qabul qilindi)'),
-        ('OUT', 'Chiqim (Ishlatildi / Berildi)'),
-        ('ADJUST', 'Tuzatish (Inventarizatsiya)'),
-    )
-    item = models.ForeignKey(WarehouseItem, on_delete=models.CASCADE, related_name='logs', verbose_name="Mahsulot")
-    log_type = models.CharField(max_length=10, choices=LOG_TYPES, default='OUT', verbose_name="Operatsiya turi")
-    quantity = models.DecimalField(max_digits=12, decimal_places=3, verbose_name="Miqdor")
-    quantity_before = models.DecimalField(max_digits=12, decimal_places=3, default=Decimal('0.000'), verbose_name="Oldingi qoldiq")
-    quantity_after = models.DecimalField(max_digits=12, decimal_places=3, default=Decimal('0.000'), verbose_name="Keyingi qoldiq")
-    unit_price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Birlik narxi")
-    total_price = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal('0.00'), verbose_name="Jami summa")
-    payment_method = models.CharField(max_length=10, choices=Expense.PAYMENT_METHODS, default='CASH', verbose_name="To'lov usuli (Kirim xaridi)")
-    expense = models.ForeignKey(Expense, on_delete=models.SET_NULL, null=True, blank=True, related_name='warehouse_logs', verbose_name="Bog'langan Chiqim")
-    date = models.DateField(default=timezone.now, verbose_name="Sana")
-    notes = models.CharField(max_length=255, blank=True, null=True, verbose_name="Izoh / Sababi")
-    recorded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='warehouse_logs', verbose_name="Qayd etgan xodim")
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['-date', '-created_at']
-        verbose_name = "Ombor Kirim/Chiqim"
-        verbose_name_plural = "Ombor Kirim/Chiqim Tarixi"
-
-    def save(self, *args, **kwargs):
-        # Narx va jami summani hisoblash
-        if not self.unit_price or self.unit_price == 0:
-            self.unit_price = self.item.unit_price
-        self.total_price = self.quantity * self.unit_price
-
-        # Mahsulot qoldiqlarini yangilash
-        self.quantity_before = self.item.current_quantity
-        if self.log_type == 'IN':
-            self.item.current_quantity += self.quantity
-            if self.unit_price > 0 and self.item.unit_price != self.unit_price:
-                self.item.unit_price = self.unit_price
-        elif self.log_type == 'OUT':
-            self.item.current_quantity = max(Decimal('0.000'), self.item.current_quantity - self.quantity)
-        elif self.log_type == 'ADJUST':
-            self.item.current_quantity = self.quantity
-        self.quantity_after = self.item.current_quantity
-        self.item.save()
-
-        # Sklad Harajatlarini Moliya Bilan Bog'lash (Kirim bo'lganda avtomatik Chiqim yaratish)
-        if self.log_type == 'IN' and self.total_price > 0:
-            lower_name = (self.item.name or '').lower()
-            if any(k in lower_name for k in ['sovun', 'poroshok', 'qogoz', 'tozalash', 'idish', 'mop', 'xojalik', 'supurgi', 'dori', 'paxta']):
-                cat = 'MATERIAL'
-            else:
-                cat = 'FOOD'
-            
-            p_method = self.payment_method or 'CASH'
-            note_str = f" ({self.notes})" if self.notes else ""
-            title_str = f"Sklad xaridi: {self.item.name} ({self.quantity} {self.item.unit})"
-
-            if not self.expense:
-                self.expense = Expense.objects.create(
-                    title=title_str,
-                    amount=self.total_price,
-                    category=cat,
-                    payment_method=p_method,
-                    date=self.date,
-                    description=f"Omborga kirim qilingan mahsulot{note_str}",
-                    created_by=self.recorded_by,
-                )
-            else:
-                self.expense.title = title_str
-                self.expense.amount = self.total_price
-                self.expense.category = cat
-                self.expense.payment_method = p_method
-                self.expense.date = self.date
-                self.expense.description = f"Omborga kirim qilingan mahsulot{note_str}"
-                self.expense.save()
-
-        super().save(*args, **kwargs)
-
-    def delete(self, *args, **kwargs):
-        if self.expense:
-            self.expense.delete()
-        super().delete(*args, **kwargs)
-
-    def __str__(self):
-        return f"{self.get_log_type_display()} — {self.item.name}: {self.quantity} {self.item.unit} ({self.date})"
 

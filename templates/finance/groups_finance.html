@@ -327,14 +327,13 @@
                     <tr>
                         <th>Bola F.I.Sh</th>
                         <th>Ota-onasi / Telefon</th>
-                        <th>Asosiy Badal</th>
+                        <th>Tarifi</th>
                         <th>Sababli (Kun)</th>
                         <th>Qayta Hisoblash</th>
-                        <th>Jami Hisoblangan</th>
                         <th>To'langan Summa</th>
                         <th>Qarzdorlik (Qoldiq)</th>
                         <th>Holati</th>
-                        <th style="text-align: right;">Amal</th>
+                        <th style="text-align: right;">Amallar</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -348,7 +347,20 @@
                             <div style="font-weight: 600; color: #cbd5e1;">{{ inv.child.parent_full_name }}</div>
                             <div style="font-size: 12px; color: #38bdf8;">{{ inv.child.parent_phone }}</div>
                         </td>
-                        <td>{{ inv.base_fee|floatformat:0 }} UZS</td>
+                        <!-- Tarifi (Bolaning belgilangan oylik tarifi) -->
+                        <td>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <strong style="color: white; font-size: 14px;">{{ inv.base_fee|floatformat:0 }} UZS</strong>
+                                <button type="button" onclick="openTariffModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.base_fee }})" class="btn-icon" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; padding: 4px 6px; color: #38bdf8; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;" title="Tarifni tahrirlash">
+                                    <i data-lucide="edit-3" style="width: 13px; height: 13px;"></i>
+                                </button>
+                            </div>
+                            {% if inv.recalculation_amount > 0 %}
+                            <div style="font-size: 11px; color: #34d399; margin-top: 2px;">
+                                Chegirma bilan: <b>{{ inv.total_amount|floatformat:0 }} UZS</b>
+                            </div>
+                            {% endif %}
+                        </td>
                         <td style="text-align: center;">
                             <strong>{{ inv.excused_days_count }} kun</strong>
                         </td>
@@ -359,7 +371,6 @@
                             <span style="color: var(--text-dim);">0 UZS</span>
                             {% endif %}
                         </td>
-                        <td><strong style="color: white;">{{ inv.total_amount|floatformat:0 }} UZS</strong></td>
                         <td>
                             <strong style="color: #34d399; font-size: 14px;">{{ inv.paid_amount|floatformat:0 }} UZS</strong>
                         </td>
@@ -380,15 +391,25 @@
                             {% endif %}
                         </td>
                         <td style="text-align: right;">
-                            <button type="button" onclick="openPaymentModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.remaining_debt }})" class="btn-glass btn-secondary" style="padding: 6px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
-                                <i data-lucide="plus-circle" style="width: 14px; height: 14px; color: #34d399;"></i>
-                                <span>+ To'lov</span>
-                            </button>
+                            <div style="display: flex; gap: 6px; justify-content: flex-end; align-items: center; flex-wrap: wrap;">
+                                <button type="button" onclick="openPaymentModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.remaining_debt }})" class="btn-glass btn-secondary" style="padding: 5px 9px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; color: #34d399; border-color: rgba(52, 211, 153, 0.3);" title="To'lov qabul qilish">
+                                    <i data-lucide="plus-circle" style="width: 13px; height: 13px;"></i>
+                                    <span>To'lov</span>
+                                </button>
+                                <button type="button" onclick="openTariffModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.base_fee }})" class="btn-glass btn-secondary" style="padding: 5px 9px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);" title="Tarifni tahrirlash">
+                                    <i data-lucide="edit-3" style="width: 13px; height: 13px;"></i>
+                                    <span>Tarif</span>
+                                </button>
+                                <button type="button" onclick="openPaymentHistoryModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}')" class="btn-glass btn-secondary" style="padding: 5px 9px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; color: #c084fc; border-color: rgba(192, 132, 252, 0.3);" title="To'lovlar tarixi va tahrirlash">
+                                    <i data-lucide="history" style="width: 13px; height: 13px;"></i>
+                                    <span>Tarix ({{ inv.payments.count }})</span>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="10" style="text-align: center; color: var(--text-dim); padding: 36px;">
+                        <td colspan="9" style="text-align: center; color: var(--text-dim); padding: 36px;">
                             Ushbu guruhda {{ month }}/{{ year }} oyi uchun invoyslar topilmadi. Moliya bo'limida avtomatik hisoblashni ishga tushiring.
                         </td>
                     </tr>
@@ -500,6 +521,175 @@
     </div>
 </div>
 
+<!-- Modal 1: Bolaning Oylik Tarifini Tahrirlash -->
+<div id="modalEditTariff" class="glass-modal-backdrop" style="display: none;">
+    <div class="glass-modal" style="max-width: 480px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #0284c7, #38bdf8); display: flex; align-items: center; justify-content: center; color: white;">
+                    <i data-lucide="edit-3" style="width: 18px; height: 18px;"></i>
+                </div>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white; margin: 0;">Bolaning Tarifini Tahrirlash</h3>
+            </div>
+            <button type="button" onclick="document.getElementById('modalEditTariff').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form id="formEditTariff" onsubmit="submitTariffEdit(event)">
+            <input type="hidden" id="editTariffInvoiceId">
+
+            <div style="background: rgba(255, 255, 255, 0.04); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 18px; border: 1px solid rgba(255, 255, 255, 0.08);">
+                <div style="font-size: 12px; color: var(--text-dim);">Bola:</div>
+                <div id="editTariffChildName" style="font-size: 16px; font-weight: 700; color: white; margin-bottom: 6px;"></div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                    <span style="color: var(--text-dim);">Amaldagi tarif:</span>
+                    <strong id="editTariffCurrentFee" style="color: #38bdf8; font-size: 14px;">0 UZS</strong>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label class="form-label" style="font-weight: 600; color: white;">Yangi Oylik Tarif (UZS) *</label>
+                <input type="number" id="editTariffNewFee" class="glass-input" step="any" min="0" required placeholder="Masalan: 2000000" style="width: 100%; font-size: 16px; font-weight: 700; color: #38bdf8;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">Sabab / Chegirma izohi (Ixtiyoriy):</label>
+                <input type="text" id="editTariffReason" class="glass-input" placeholder="Masalan: Oilaviy chegirma, xato tuzatildi..." style="width: 100%;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: #cbd5e1;">
+                    <input type="checkbox" id="editTariffUpdateDefault" style="width: 16px; height: 16px; accent-color: #38bdf8;">
+                    <span>Kelgusi oylar uchun ham guruh standarti sifatida belgilansin</span>
+                </label>
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" onclick="document.getElementById('modalEditTariff').style.display='none'" class="btn-glass btn-secondary">
+                    Bekor Qilish
+                </button>
+                <button type="submit" id="btnSubmitTariff" class="btn-glass btn-primary" style="font-weight: 700;">
+                    ✓ Tarifni Saqlash
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal 2: To'lovlar Tarixi va Boshqaruvi -->
+<div id="modalPaymentHistory" class="glass-modal-backdrop" style="display: none;">
+    <div class="glass-modal" style="max-width: 760px; width: 95%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #7c3aed, #c084fc); display: flex; align-items: center; justify-content: center; color: white;">
+                    <i data-lucide="history" style="width: 18px; height: 18px;"></i>
+                </div>
+                <div>
+                    <h3 style="font-family: 'Outfit', sans-serif; font-size: 19px; font-weight: 700; color: white; margin: 0;">To'lovlar Tarixi va Tahrirlash</h3>
+                    <div id="histChildSubtitle" style="font-size: 12px; color: var(--text-dim); margin-top: 2px;"></div>
+                </div>
+            </div>
+            <button type="button" onclick="document.getElementById('modalPaymentHistory').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <!-- Summary info bar -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px 16px; margin-bottom: 18px;">
+            <div>
+                <div style="font-size: 11px; color: var(--text-dim);">Tarifi / Hisoblangan:</div>
+                <strong id="histBaseFee" style="font-size: 14px; color: white;">0 UZS</strong>
+            </div>
+            <div>
+                <div style="font-size: 11px; color: var(--text-dim);">Jami To'langan:</div>
+                <strong id="histTotalPaid" style="font-size: 14px; color: #34d399;">0 UZS</strong>
+            </div>
+            <div>
+                <div style="font-size: 11px; color: var(--text-dim);">Qoldiq Qarz:</div>
+                <strong id="histRemainingDebt" style="font-size: 14px; color: #fb7185;">0 UZS</strong>
+            </div>
+        </div>
+
+        <!-- Payments Table / List -->
+        <div id="histPaymentsContainer" style="max-height: 340px; overflow-y: auto; margin-bottom: 18px;">
+            <div style="text-align: center; color: var(--text-dim); padding: 24px;">Yuklanmoqda...</div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px;">
+            <button type="button" id="histBtnAddNewPay" class="btn-glass btn-emerald" style="font-size: 12px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>
+                <span>+ Yangi To'lov Qabul Qilish</span>
+            </button>
+            <button type="button" onclick="document.getElementById('modalPaymentHistory').style.display='none'" class="btn-glass btn-secondary">
+                Yopish
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 3: Kiritilgan To'lovni Tahrirlash -->
+<div id="modalEditPayment" class="glass-modal-backdrop" style="display: none; z-index: 1050;">
+    <div class="glass-modal" style="max-width: 480px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #f59e0b, #ef4444); display: flex; align-items: center; justify-content: center; color: white;">
+                    <i data-lucide="edit" style="width: 18px; height: 18px;"></i>
+                </div>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 19px; font-weight: 700; color: white; margin: 0;">To'lovni Tahrirlash</h3>
+            </div>
+            <button type="button" onclick="document.getElementById('modalEditPayment').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form id="formEditPayment" onsubmit="submitPaymentEdit(event)">
+            <input type="hidden" id="editPaymentId">
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label" style="font-weight: 600; color: white;">To'lov Summasi (UZS) *</label>
+                <input type="number" id="editPaymentAmount" class="glass-input" step="any" min="0" required style="width: 100%; font-size: 16px; font-weight: 700; color: #34d399;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label">To'lov Usuli *</label>
+                <select id="editPaymentMethod" class="glass-select" style="width: 100%;">
+                    <option value="CARD">💳 Karta (Uzcard / Humo)</option>
+                    <option value="TERMINAL">📟 Terminal</option>
+                    <option value="CLICK_PAYME">⚡ Payme / Click</option>
+                    <option value="CASH">💵 Naqd pul</option>
+                    <option value="MARTA">🚇 Marta orqali</option>
+                    <option value="BANK_TRANSFER">🏦 Bank o'tkazmasi</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label">To'lov Sanasi:</label>
+                <input type="date" id="editPaymentDate" class="glass-input" style="width: 100%;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label">Chek / Kvitansiya ID:</label>
+                <input type="text" id="editPaymentTransactionId" class="glass-input" placeholder="Chek raqami..." style="width: 100%;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 18px;">
+                <label class="form-label">To'lov Sababi / Izoh:</label>
+                <input type="text" id="editPaymentReason" class="glass-input" placeholder="Izoh yoki sabab..." style="width: 100%;">
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" onclick="document.getElementById('modalEditPayment').style.display='none'" class="btn-glass btn-secondary">
+                    Bekor Qilish
+                </button>
+                <button type="submit" id="btnSubmitPaymentEdit" class="btn-glass btn-emerald" style="font-weight: 700;">
+                    ✓ O'zgarishlarni Saqlash
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
     let currentModalDebt = 0;
 
@@ -592,6 +782,237 @@
         } finally {
             btn.disabled = false;
             btn.innerText = "✓ To'lovni Saqlash";
+        }
+    }
+
+    // --- Tarifni Tahrirlash Mantiqi ---
+    function openTariffModal(invoiceId, childName, currentBaseFee) {
+        document.getElementById('editTariffInvoiceId').value = invoiceId;
+        document.getElementById('editTariffChildName').innerText = childName;
+        document.getElementById('editTariffCurrentFee').innerText = Number(currentBaseFee).toLocaleString() + ' UZS';
+        document.getElementById('editTariffNewFee').value = currentBaseFee;
+        document.getElementById('editTariffReason').value = '';
+        document.getElementById('editTariffUpdateDefault').checked = false;
+        document.getElementById('modalEditTariff').style.display = 'flex';
+        document.getElementById('editTariffNewFee').focus();
+    }
+
+    async function submitTariffEdit(e) {
+        e.preventDefault();
+        const invoiceId = document.getElementById('editTariffInvoiceId').value;
+        const baseFee = document.getElementById('editTariffNewFee').value;
+        const reason = document.getElementById('editTariffReason').value;
+        const updateGroupDefault = document.getElementById('editTariffUpdateDefault').checked;
+        const btn = document.getElementById('btnSubmitTariff');
+
+        if (!baseFee || parseFloat(baseFee) < 0) {
+            alert("Iltimos, to'g'ri tarif summasini kiriting!");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "Saqlanmoqda...";
+
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const res = await fetch("{% url 'update_invoice_tariff_api' %}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                },
+                body: JSON.stringify({
+                    invoice_id: invoiceId,
+                    base_fee: baseFee,
+                    reason: reason,
+                    update_group_default: updateGroupDefault
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ " + data.message);
+                window.location.reload();
+            } else {
+                alert("Xatolik: " + data.message);
+            }
+        } catch (err) {
+            alert("Aloqa xatosi: " + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "✓ Tarifni Saqlash";
+        }
+    }
+
+    // --- To'lovlar Tarixi va Tahrirlash Mantiqi ---
+    let currentHistoryInvoiceId = null;
+
+    async function openPaymentHistoryModal(invoiceId, childName) {
+        currentHistoryInvoiceId = invoiceId;
+        document.getElementById('histChildSubtitle').innerText = childName;
+        document.getElementById('histPaymentsContainer').innerHTML = '<div style="text-align: center; color: var(--text-dim); padding: 24px;">Yuklanmoqda...</div>';
+        document.getElementById('modalPaymentHistory').style.display = 'flex';
+
+        try {
+            const res = await fetch(`/finance/invoice/${invoiceId}/payments/`);
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('histBaseFee').innerText = Number(data.base_fee).toLocaleString() + ' UZS';
+                document.getElementById('histTotalPaid').innerText = Number(data.paid_amount).toLocaleString() + ' UZS';
+                document.getElementById('histRemainingDebt').innerText = Number(data.remaining_debt).toLocaleString() + ' UZS';
+                
+                document.getElementById('histBtnAddNewPay').onclick = function() {
+                    document.getElementById('modalPaymentHistory').style.display = 'none';
+                    openPaymentModal(invoiceId, childName, data.remaining_debt);
+                };
+
+                renderHistoryList(data.payments);
+            } else {
+                document.getElementById('histPaymentsContainer').innerHTML = '<div style="color: #fb7185; padding: 16px;">Xatolik yuz berdi: ' + data.message + '</div>';
+            }
+        } catch (err) {
+            document.getElementById('histPaymentsContainer').innerHTML = '<div style="color: #fb7185; padding: 16px;">Aloqa xatosi: ' + err.message + '</div>';
+        }
+    }
+
+    function renderHistoryList(payments) {
+        const container = document.getElementById('histPaymentsContainer');
+        if (!payments || payments.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; color: var(--text-dim); padding: 32px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px dashed rgba(255,255,255,0.1);">
+                    <i data-lucide="inbox" style="width: 32px; height: 32px; margin-bottom: 8px; opacity: 0.5;"></i>
+                    <div>Ushbu oy uchun hali hech qanday to'lov amalga oshirilmagan.</div>
+                </div>`;
+            if (window.lucide) lucide.createIcons();
+            return;
+        }
+
+        let html = `
+        <table class="glass-table" style="width: 100%; font-size: 12px; border-collapse: collapse;">
+            <thead>
+                <tr style="background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <th style="padding: 9px 12px; text-align: left;">Sana</th>
+                    <th style="padding: 9px 12px; text-align: right;">Summa</th>
+                    <th style="padding: 9px 12px; text-align: center;">Turi</th>
+                    <th style="padding: 9px 12px; text-align: left;">Chek ID</th>
+                    <th style="padding: 9px 12px; text-align: left;">Qabul qiluvchi</th>
+                    <th style="padding: 9px 12px; text-align: left;">Izoh</th>
+                    <th style="padding: 9px 12px; text-align: right;">Amal</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+        payments.forEach(p => {
+            const safeTx = (p.transaction_id || '').replace(/'/g, "\\'");
+            const safeReason = (p.reason || p.notes || '').replace(/'/g, "\\'");
+            html += `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 9px 12px; white-space: nowrap; color: #cbd5e1;">${p.paid_at}</td>
+                <td style="padding: 9px 12px; text-align: right; font-weight: 700; color: #34d399; white-space: nowrap;">${Number(p.amount).toLocaleString()} UZS</td>
+                <td style="padding: 9px 12px; text-align: center;"><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 10px; padding: 2px 7px;">${p.payment_method_display}</span></td>
+                <td style="padding: 9px 12px; font-family: monospace; color: #e2e8f0;">${p.transaction_id || '—'}</td>
+                <td style="padding: 9px 12px; color: var(--text-dim);">${p.recorded_by}</td>
+                <td style="padding: 9px 12px; color: var(--text-dim); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.reason || p.notes || '—'}</td>
+                <td style="padding: 9px 12px; text-align: right; white-space: nowrap;">
+                    <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                        <button type="button" onclick="openEditPaymentModal(${p.id}, ${p.amount}, '${p.payment_method}', '${safeTx}', '${p.date_only}', '${safeReason}')" class="btn-icon" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 4px 6px; color: #38bdf8; cursor: pointer;" title="Tahrirlash">
+                            <i data-lucide="edit-2" style="width: 12px; height: 12px;"></i>
+                        </button>
+                        <button type="button" onclick="deletePayment(${p.id}, ${p.amount})" class="btn-icon" style="background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 4px; padding: 4px 6px; color: #fb7185; cursor: pointer;" title="O'chirish">
+                            <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>`;
+        });
+
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function openEditPaymentModal(paymentId, amount, method, transactionId, dateOnly, reason) {
+        document.getElementById('editPaymentId').value = paymentId;
+        document.getElementById('editPaymentAmount').value = amount;
+        document.getElementById('editPaymentMethod').value = method;
+        document.getElementById('editPaymentTransactionId').value = transactionId || '';
+        document.getElementById('editPaymentDate').value = dateOnly || '';
+        document.getElementById('editPaymentReason').value = reason || '';
+        document.getElementById('modalEditPayment').style.display = 'flex';
+    }
+
+    async function submitPaymentEdit(e) {
+        e.preventDefault();
+        const paymentId = document.getElementById('editPaymentId').value;
+        const amount = document.getElementById('editPaymentAmount').value;
+        const paymentMethod = document.getElementById('editPaymentMethod').value;
+        const transactionId = document.getElementById('editPaymentTransactionId').value;
+        const paidAt = document.getElementById('editPaymentDate').value;
+        const reason = document.getElementById('editPaymentReason').value;
+        const btn = document.getElementById('btnSubmitPaymentEdit');
+
+        if (!amount || parseFloat(amount) <= 0) {
+            alert("Iltimos, to'g'ri to'lov summasini kiriting!");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "Saqlanmoqda...";
+
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const res = await fetch(`/finance/payment/${paymentId}/update/`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                },
+                body: JSON.stringify({
+                    amount: amount,
+                    payment_method: paymentMethod,
+                    transaction_id: transactionId,
+                    paid_at: paidAt,
+                    reason: reason
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ " + data.message);
+                document.getElementById('modalEditPayment').style.display = 'none';
+                window.location.reload();
+            } else {
+                alert("Xatolik: " + data.message);
+            }
+        } catch (err) {
+            alert("Aloqa xatosi: " + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "✓ O'zgarishlarni Saqlash";
+        }
+    }
+
+    async function deletePayment(paymentId, amount) {
+        if (!confirm(`Haqiqatan ham ushbu ${Number(amount).toLocaleString()} UZS to'lovni bekor qilmoqchimisiz? Invoys qoldig'i avtomatik qayta hisoblanadi.`)) {
+            return;
+        }
+
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const res = await fetch(`/finance/payment/${paymentId}/delete/`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                }
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ " + data.message);
+                window.location.reload();
+            } else {
+                alert("Xatolik: " + data.message);
+            }
+        } catch (err) {
+            alert("Aloqa xatosi: " + err.message);
         }
     }
 

@@ -3,7 +3,7 @@ from .models import (
     User, KindergartenSettings, Group, Child, ChildAttendance,
     StaffAttendance, MonthlyInvoice, Payment, ChatMessage,
     StaffBonusPenalty, StaffMonthlySalary, AuditLog, TemporaryChild,
-    Expense, WarehouseItem, WarehouseLog
+    Expense
 )
 
 @admin.register(User)
@@ -19,8 +19,8 @@ class UserAdmin(admin.ModelAdmin):
         (None, {'fields': ('username', 'password')}),
         ('Shaxsiy ma’lumotlar', {'fields': ('first_name', 'last_name', 'role', 'custom_position', 'phone_number', 'avatar')}),
         ('Ish tartibi va Kechikish shtraflari', {
-            'fields': ('work_start_time', 'work_end_time', 'late_grace_period_minutes', 'penalty_rate_tier1', 'penalty_rate_tier2'),
-            'description': 'Xodimning shaxsiy ish boshlanish/tugash vaqtlari va kechikish/barvaqt ketish shtraflari foizlari (kunlik maoshdan foiz).'
+            'fields': ('work_start_time', 'work_end_time', 'late_grace_period_minutes', 'penalty_rate_tier1', 'penalty_rate_tier2', 'working_days'),
+            'description': 'Xodimning shaxsiy ish boshlanish/tugash vaqtlari, ish kunlari (1-7) va kechikish/barvaqt ketish shtraflari foizlari.'
         }),
         ('Moliya', {'fields': ('salary',)}),
         ('Face ID Biometriya', {'fields': ('face_image', 'face_embedding', 'face_enrolled_at')}),
@@ -96,21 +96,5 @@ class ExpenseAdmin(admin.ModelAdmin):
     list_display = ('date', 'title', 'category', 'amount', 'payment_method', 'created_by')
     list_filter = ('category', 'payment_method', 'date')
     search_fields = ('title', 'description', 'receipt_number')
-    date_hierarchy = 'date'
-
-
-@admin.register(WarehouseItem)
-class WarehouseItemAdmin(admin.ModelAdmin):
-    list_display = ('name', 'unit', 'current_quantity', 'min_threshold', 'min_quantity', 'unit_price', 'is_active', 'is_low_stock')
-    list_filter = ('unit', 'is_active')
-    search_fields = ('name', 'description')
-    readonly_fields = ('current_quantity',)
-
-
-@admin.register(WarehouseLog)
-class WarehouseLogAdmin(admin.ModelAdmin):
-    list_display = ('date', 'item', 'log_type', 'quantity', 'unit_price', 'total_price', 'payment_method', 'expense', 'quantity_after', 'recorded_by')
-    list_filter = ('log_type', 'payment_method', 'date', 'item')
-    search_fields = ('item__name', 'notes')
     date_hierarchy = 'date'
 

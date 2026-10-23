@@ -1,11 +1,11 @@
 {% extends 'base.html' %}
-{% block title %}Chiqimlar Boshqaruvi — Humo Kids{% endblock %}
+{% block title %}Kirim-Chiqim Boshqaruvi — Humo Kids{% endblock %}
 
 {% block content %}
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:16px;">
     <div>
-        <h2 style="font-family:'Outfit',sans-serif;font-size:26px;font-weight:800;color:white;">💸 Chiqimlar Boshqaruvi</h2>
-        <p style="font-size:13px;color:var(--text-muted);">Barcha xarajatlarni to'lov usuli va kategoriya bo'yicha kuzating</p>
+        <h2 style="font-family:'Outfit',sans-serif;font-size:26px;font-weight:800;color:white;">💸 Kirim-Chiqim Boshqaruvi</h2>
+        <p style="font-size:13px;color:var(--text-muted);">Barcha xarajatlar, chiqimlar va to'lov turlari bo'yicha amallarni bitta joyda boshqaring</p>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;">
         <a href="{% url 'export_expenses' %}?date_from={{ date_from }}&date_to={{ date_to }}" class="btn-glass btn-excel">
@@ -14,7 +14,7 @@
         </a>
         <button class="btn-glass btn-primary" onclick="document.getElementById('addExpenseModal').style.display='flex'">
             <i data-lucide="plus-circle" style="width:16px;height:16px;"></i>
-            <span>Yangi Chiqim</span>
+            <span>+ Yangi Chiqim Qayd Qilish</span>
         </button>
     </div>
 </div>

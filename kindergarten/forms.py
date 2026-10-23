@@ -1,7 +1,7 @@
 from django import forms
 from .models import (
     Child, Group, MonthlyInvoice, Payment, KindergartenSettings, User, ChildAttendance,
-    Expense, WarehouseItem, WarehouseLog
+    Expense
 )
 
 class LoginForm(forms.Form):
@@ -216,6 +216,17 @@ def generate_staff_credentials(first_name, last_name=''):
     return candidate, password
 
 
+WEEKDAY_CHOICES = (
+    ('1', 'Dushanba'),
+    ('2', 'Seshanba'),
+    ('3', 'Chorshanba'),
+    ('4', 'Payshanba'),
+    ('5', 'Juma'),
+    ('6', 'Shanba'),
+    ('7', 'Yakshanba'),
+)
+
+
 class StaffForm(forms.ModelForm):
     custom_username = forms.CharField(
         required=False,
@@ -233,12 +244,20 @@ class StaffForm(forms.ModelForm):
             'placeholder': 'Ixtiyoriy parol (bo\'sh qolsa avtomatik generatsiya bo\'ladi)'
         })
     )
+    working_days = forms.MultipleChoiceField(
+        choices=WEEKDAY_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'day-checkbox'}),
+        label="Ish kunlari",
+        help_text="Xodim qaysi kunlari ishga kelishini belgilang"
+    )
 
     class Meta:
         model = User
         fields = [
             'first_name', 'last_name', 'phone_number', 'role', 'custom_position', 'salary', 'avatar',
             'work_start_time', 'work_end_time', 'late_grace_period_minutes', 'penalty_rate_tier1', 'penalty_rate_tier2',
+            'working_days',
         ]
         widgets = {
             'first_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Ism'}),
@@ -265,6 +284,19 @@ class StaffForm(forms.ModelForm):
         if self.instance and self.instance.pk:
             self.fields['custom_username'].initial = self.instance.username
             self.fields['custom_username'].widget.attrs['placeholder'] = self.instance.username
+            days = self.instance.get_working_days_list()
+            self.fields['working_days'].initial = [str(d) for d in days]
+        else:
+            self.fields['working_days'].initial = ['1', '2', '3', '4', '5']
+
+    def clean_working_days(self):
+        days = self.cleaned_data.get('working_days', [])
+        if not days:
+            return [1, 2, 3, 4, 5]
+        try:
+            return [int(d) for d in days]
+        except (ValueError, TypeError):
+            return [1, 2, 3, 4, 5]
 
 
 class TeacherReplaceForm(forms.ModelForm):
@@ -302,33 +334,4 @@ class ExpenseForm(forms.ModelForm):
             'date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
             'description': forms.Textarea(attrs={'class': 'glass-input', 'rows': 3, 'placeholder': 'Qo\'shimcha izoh yoki sababi...'}),
             'receipt_number': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Chek yoki kvitansiya raqami (ixtiyoriy)'}),
-        }
-
-
-class WarehouseItemForm(forms.ModelForm):
-    class Meta:
-        model = WarehouseItem
-        fields = ['name', 'unit', 'min_threshold', 'min_quantity', 'unit_price', 'description', 'is_active']
-        widgets = {
-            'name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Mahsulot nomi (masalan: Go\'sht, Sut, Kartoshka)'}),
-            'unit': forms.Select(attrs={'class': 'glass-select'}),
-            'min_threshold': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '5.000', 'step': '0.1'}),
-            'min_quantity': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '0.000', 'step': '0.1'}),
-            'unit_price': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '0.00', 'step': '100'}),
-            'description': forms.Textarea(attrs={'class': 'glass-input', 'rows': 2, 'placeholder': 'Mahsulot haqida ma\'lumot...'}),
-            'is_active': forms.CheckboxInput(attrs={'class': 'form-checkbox'}),
-        }
-
-
-class WarehouseLogForm(forms.ModelForm):
-    class Meta:
-        model = WarehouseLog
-        fields = ['item', 'log_type', 'quantity', 'payment_method', 'date', 'notes']
-        widgets = {
-            'item': forms.Select(attrs={'class': 'glass-select'}),
-            'log_type': forms.Select(attrs={'class': 'glass-select'}),
-            'quantity': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '0.000', 'step': '0.05'}),
-            'payment_method': forms.Select(attrs={'class': 'glass-select'}),
-            'date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
-            'notes': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Ishlatilish sababi yoki kimga berilgani...'}),
         }
