@@ -43,6 +43,7 @@
                     <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Telefon</th>
                     <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Maosh</th>
                     <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Login / Parol</th>
+                    <th style="padding: 12px; font-weight: 600; color: #fbbf24;">Reyting</th>
                     <th style="padding: 12px; font-weight: 600; color: var(--text-dim);">Holat</th>
                     {% if user.can_manage_all %}
                     <th style="padding: 12px; font-weight: 600; color: var(--text-dim); text-align: right;">Amallar</th>
@@ -102,6 +103,18 @@
                         {% endif %}
                     </td>
                     <td style="padding: 12px;">
+                        {% if st.average_rating %}
+                        <a href="{% url 'staff_rate' st.id %}" style="text-decoration: none; display: inline-flex; align-items: center; gap: 4px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); padding: 2px 8px; border-radius: 12px; color: #fbbf24; font-weight: 700; font-size: 12px;">
+                            <span>⭐ {{ st.average_rating }}</span>
+                            <span style="font-size: 10px; color: var(--text-dim);">({{ st.ratings_count }})</span>
+                        </a>
+                        {% else %}
+                        <a href="{% url 'staff_rate' st.id %}" style="text-decoration: none; font-size: 11px; color: var(--text-dim); background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 8px;">
+                            + Baholash
+                        </a>
+                        {% endif %}
+                    </td>
+                    <td style="padding: 12px;">
                         {% if st.is_active %}
                         <span style="font-size: 11px; padding: 3px 10px; border-radius: 20px; background: rgba(52,211,153,0.15); color: #34d399; font-weight: 600;">Faol</span>
                         {% else %}
@@ -111,11 +124,29 @@
                     {% if user.can_manage_all %}
                     <td style="padding: 12px; text-align: right;">
                         <div style="display: flex; gap: 4px; justify-content: flex-end;">
+                            <!-- Hujjatlar -->
+                            <a
+                                href="{% url 'staff_documents' st.id %}"
+                                class="btn-glass"
+                                style="color: #38bdf8; padding: 6px; display: inline-flex; align-items: center; text-decoration: none;"
+                                title="Xodim Hujjatlari"
+                            >
+                                <i data-lucide="file-text" style="width: 16px; height: 16px;"></i>
+                            </a>
+                            <!-- Reyting / Baholash -->
+                            <a
+                                href="{% url 'staff_rate' st.id %}"
+                                class="btn-glass"
+                                style="color: #fbbf24; padding: 6px; display: inline-flex; align-items: center; text-decoration: none;"
+                                title="Xodimni Baholash (Reyting)"
+                            >
+                                <i data-lucide="star" style="width: 16px; height: 16px;"></i>
+                            </a>
                             <!-- Tahrirlash & Shtraf sozlamalari -->
                             <a
                                 href="{% url 'staff_update' st.id %}"
                                 class="btn-glass"
-                                style="color: #38bdf8; padding: 6px; display: inline-flex; align-items: center; text-decoration: none;"
+                                style="color: #a78bfa; padding: 6px; display: inline-flex; align-items: center; text-decoration: none;"
                                 title="Xodim ma'lumotlari va shtraf sozlamalarini tahrirlash"
                             >
                                 <i data-lucide="pencil" style="width: 16px; height: 16px;"></i>
@@ -158,7 +189,7 @@
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="7" style="padding: 24px; text-align: center; color: var(--text-muted);">Xodimlar topilmadi.</td>
+                    <td colspan="9" style="padding: 24px; text-align: center; color: var(--text-muted);">Xodimlar topilmadi.</td>
                 </tr>
                 {% endfor %}
             </tbody>

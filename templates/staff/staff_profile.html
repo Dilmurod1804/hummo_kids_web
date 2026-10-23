@@ -16,10 +16,18 @@
             </p>
         </div>
 
-        <div style="display: flex; gap: 10px;">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{% url 'staff_documents' user_profile.id %}" class="btn-glass btn-secondary">
+                <i data-lucide="file-text" style="width: 16px; height: 16px; color: #38bdf8;"></i>
+                <span>Mening Hujjatlarim</span>
+            </a>
+            <a href="{% url 'staff_rate' user_profile.id %}" class="btn-glass btn-secondary" style="color: #fbbf24;">
+                <i data-lucide="star" style="width: 16px; height: 16px;"></i>
+                <span>Reytingim ({% if user_profile.average_rating %}⭐ {{ user_profile.average_rating }}{% else %}—{% endif %})</span>
+            </a>
             <a href="{% url 'staff_attendance_portal' %}" class="btn-glass btn-primary" style="padding: 10px 20px; font-weight: 700;">
                 <i data-lucide="scan-face" style="width: 18px; height: 18px;"></i>
-                <span>Face ID Davomat Portali &rarr;</span>
+                <span>Face ID Davomat &rarr;</span>
             </a>
         </div>
     </div>

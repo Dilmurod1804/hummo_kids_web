@@ -1,0 +1,252 @@
+{% extends 'base.html' %}
+
+{% block title %}Marketing Tahlili va Konversiya — Humo Kids{% endblock %}
+
+{% block content %}
+<!-- Top Header -->
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+    <div style="display: flex; align-items: center; gap: 12px;">
+        <a href="{% url 'crm_leads_list' %}" class="btn-glass btn-secondary" style="padding: 8px 12px;">
+            <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
+        </a>
+        <div>
+            <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white; margin: 0;">Marketing Tahlili & Konversiya</h2>
+            <p style="font-size: 13px; color: var(--text-muted); margin: 2px 0 0 0;">Qaysi reklama kanallari eng ko'p va sifatli ota-onalar oqimini olib kelmoqda?</p>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 10px;">
+        <a href="{% url 'crm_leads_list' %}" class="btn-glass btn-primary">
+            <i data-lucide="list" style="width: 16px; height: 16px;"></i>
+            <span>Lidlar Ro'yxatiga O'tish</span>
+        </a>
+    </div>
+</div>
+
+<!-- High Level Summary Cards -->
+<div class="stats-grid" style="margin-bottom: 24px;">
+    <div class="stat-card">
+        <div>
+            <p class="stat-label">Jami Kelgan Murojaatlar</p>
+            <h3 class="stat-value">{{ total_leads }} ta</h3>
+            <p class="stat-subtext">Barcha manbalar bo'yicha</p>
+        </div>
+        <div class="stat-icon-wrapper icon-blue">
+            <i data-lucide="users" style="width: 24px; height: 24px;"></i>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div>
+            <p class="stat-label">Tuzilgan Shartnomalar</p>
+            <h3 class="stat-value" style="color: #34d399;">{{ total_contracted }} ta</h3>
+            <p class="stat-subtext" style="color: #34d399;">Muvaffaqiyatli qabul qilingan</p>
+        </div>
+        <div class="stat-icon-wrapper icon-emerald">
+            <i data-lucide="award" style="width: 24px; height: 24px;"></i>
+        </div>
+    </div>
+
+    <div class="stat-card">
+        <div>
+            <p class="stat-label">Umumiy Konversiya Ko'rsatkichi</p>
+            <h3 class="stat-value" style="color: #818cf8;">{{ overall_conversion }}%</h3>
+            <p class="stat-subtext">Murojaatdan shartnomagacha</p>
+        </div>
+        <div class="stat-icon-wrapper icon-purple">
+            <i data-lucide="trending-up" style="width: 24px; height: 24px;"></i>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 28px;">
+    <!-- Chart: Kanallar ulushi (Doughnut) -->
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <h3 class="glass-card-title">
+                <i data-lucide="pie-chart" style="color: #38bdf8; width: 20px; height: 20px;"></i>
+                <span>Reklama Kanallari Ulushi (%)</span>
+            </h3>
+        </div>
+        <div style="height: 260px; position: relative;">
+            <canvas id="marketingChannelsPieChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Chart: Kanallar bo'yicha Shartnomalar va Konversiya (Bar) -->
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <h3 class="glass-card-title">
+                <i data-lucide="bar-chart-2" style="color: #34d399; width: 20px; height: 20px;"></i>
+                <span>Kanallar Bo'yicha Natijadorlik</span>
+            </h3>
+        </div>
+        <div style="height: 260px; position: relative;">
+            <canvas id="marketingConversionBarChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Detailed Channel Table -->
+<div class="glass-card" style="padding: 0; overflow: hidden; margin-bottom: 28px;">
+    <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; justify-content: space-between; align-items: center;">
+        <h3 class="glass-card-title" style="margin: 0;">
+            <i data-lucide="target" style="width: 18px; height: 18px; color: #f43f5e;"></i>
+            <span>Marketing Kanallari Reytingi va Samaradorligi</span>
+        </h3>
+        <span style="font-size: 12px; color: var(--text-dim);">Lidlar soni bo'yicha tartiblangan</span>
+    </div>
+
+    <div style="overflow-x: auto;">
+        <table class="glass-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); text-align: left; font-size: 12px; color: var(--text-muted);">
+                    <th style="padding: 14px 18px;">MARKETING KANALI</th>
+                    <th style="padding: 14px 18px;">KELGAN LIDLAR</th>
+                    <th style="padding: 14px 18px;">ULUSHI (%)</th>
+                    <th style="padding: 14px 18px;">QABULGA KELDI</th>
+                    <th style="padding: 14px 18px;">SHARTNOMA TUZILDI</th>
+                    <th style="padding: 14px 18px;">RAD ETILDI</th>
+                    <th style="padding: 14px 18px; text-align: right;">KONVERSIYA (%)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ch in channel_stats %}
+                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+                    <td style="padding: 14px 18px;">
+                        <div style="font-weight: 700; font-size: 14px; color: white; display: flex; align-items: center; gap: 8px;">
+                            {% if ch.key == 'TELEGRAM' %}
+                            <span style="width: 8px; height: 8px; border-radius: 50%; background: #38bdf8;"></span>
+                            {% elif ch.key == 'INSTAGRAM' %}
+                            <span style="width: 8px; height: 8px; border-radius: 50%; background: #ec4899;"></span>
+                            {% elif ch.key == 'BANNER' %}
+                            <span style="width: 8px; height: 8px; border-radius: 50%; background: #f59e0b;"></span>
+                            {% elif ch.key == 'WORD_OF_MOUTH' %}
+                            <span style="width: 8px; height: 8px; border-radius: 50%; background: #a855f7;"></span>
+                            {% else %}
+                            <span style="width: 8px; height: 8px; border-radius: 50%; background: #94a3b8;"></span>
+                            {% endif %}
+                            <span>{{ ch.name }}</span>
+                        </div>
+                    </td>
+                    <td style="padding: 14px 18px; font-weight: 700; color: white;">
+                        {{ ch.count }} ta
+                    </td>
+                    <td style="padding: 14px 18px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 13px; color: var(--text-muted); min-width: 38px;">{{ ch.share_percent }}%</span>
+                            <div style="width: 80px; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
+                                <div style="width: {{ ch.share_percent }}%; height: 100%; background: #38bdf8;"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td style="padding: 14px 18px; font-size: 13px; color: #bae6fd;">
+                        {{ ch.visited }} ta
+                    </td>
+                    <td style="padding: 14px 18px; font-weight: 700; color: #34d399;">
+                        {{ ch.contracted }} ta
+                    </td>
+                    <td style="padding: 14px 18px; font-size: 13px; color: #fb7185;">
+                        {{ ch.rejected }} ta
+                    </td>
+                    <td style="padding: 14px 18px; text-align: right;">
+                        <span class="badge" style="font-weight: 800; font-size: 12px;
+                            {% if ch.conversion_rate >= 30 %}background: rgba(52, 211, 153, 0.2); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.4);
+                            {% elif ch.conversion_rate >= 10 %}background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4);
+                            {% else %}background: rgba(255, 255, 255, 0.08); color: var(--text-dim);{% endif %}">
+                            {{ ch.conversion_rate }}%
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const channelLabels = [{% for ch in channel_stats %}"{{ ch.name }}",{% endfor %}];
+    const channelCounts = [{% for ch in channel_stats %}{{ ch.count }},{% endfor %}];
+    const contractedCounts = [{% for ch in channel_stats %}{{ ch.contracted }},{% endfor %}];
+    const colors = ['#38bdf8', '#ec4899', '#f59e0b', '#a855f7', '#94a3b8'];
+
+    // 1. Pie Chart
+    const ctxPie = document.getElementById('marketingChannelsPieChart');
+    if (ctxPie) {
+        new Chart(ctxPie, {
+            type: 'doughnut',
+            data: {
+                labels: channelLabels,
+                datasets: [{
+                    data: channelCounts,
+                    backgroundColor: colors,
+                    borderColor: 'rgba(255,255,255,0.05)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#94a3b8', font: { family: 'Outfit', size: 12 } }
+                    }
+                }
+            }
+        });
+    }
+
+    // 2. Bar Chart
+    const ctxBar = document.getElementById('marketingConversionBarChart');
+    if (ctxBar) {
+        new Chart(ctxBar, {
+            type: 'bar',
+            data: {
+                labels: channelLabels,
+                datasets: [
+                    {
+                        label: 'Kelgan Lidlar',
+                        data: channelCounts,
+                        backgroundColor: 'rgba(56, 189, 248, 0.65)',
+                        borderColor: '#38bdf8',
+                        borderWidth: 1,
+                        borderRadius: 6
+                    },
+                    {
+                        label: 'Shartnomalar',
+                        data: contractedCounts,
+                        backgroundColor: 'rgba(52, 211, 153, 0.8)',
+                        borderColor: '#34d399',
+                        borderWidth: 1,
+                        borderRadius: 6
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#94a3b8', font: { family: 'Outfit' } }
+                    },
+                    y: {
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#94a3b8', font: { family: 'Outfit' }, stepSize: 1 }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { color: '#94a3b8', font: { family: 'Outfit', size: 12 } }
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

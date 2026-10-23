@@ -21,12 +21,12 @@ from .models import (
     User, KindergartenSettings, Group, Child, ChildAttendance,
     StaffAttendance, MonthlyInvoice, Payment, ChatMessage,
     StaffBonusPenalty, StaffMonthlySalary, AuditLog, TemporaryChild,
-    Expense
+    Expense, AdmissionLead, StaffDocument, StaffRating
 )
 from .forms import (
     LoginForm, ChildForm, GroupForm, PaymentForm, SettingsForm,
     StaffForm, TeacherReplaceForm, generate_staff_credentials,
-    ExpenseForm
+    ExpenseForm, AdmissionLeadForm, StaffDocumentForm, StaffRatingForm
 )
 from .haversine import haversine_distance, evaluate_geofence
 from .face_utils import (
@@ -268,6 +268,20 @@ def admin_dashboard(request):
     # Medical notes / alerts
     children_with_allergies = Child.objects.filter(is_active=True).exclude(medical_notes__isnull=True).exclude(medical_notes__exact='')[:5]
 
+    # Bugungi Qabullar Monitoringi (CRM / Admission Leads)
+    today_visits = AdmissionLead.objects.filter(visit_date__date=today).select_related('manager').order_by('visit_date')
+    today_visits_count = today_visits.count()
+    today_visited_done_count = today_visits.filter(status__in=['VISITED', 'CONTRACTED']).count()
+    today_calls = AdmissionLead.objects.filter(next_call_date=today, status__in=['NEW', 'THINKING']).select_related('manager').order_by('next_call_date')
+    today_calls_count = today_calls.count()
+    total_active_leads = AdmissionLead.objects.exclude(status__in=['CONTRACTED', 'REJECTED']).count()
+    total_contracted_leads = AdmissionLead.objects.filter(is_contract_signed=True).count()
+
+    # Guruhlar sig'imi prognozi hisob-kitobi
+    total_capacity = sum(g.capacity for g in groups)
+    total_active_children_in_groups = sum(g.active_children for g in groups)
+    total_available_seats = max(0, total_capacity - total_active_children_in_groups)
+
     return render(request, 'dashboard/admin_dashboard.html', {
         'total_children': total_children,
         'total_groups': total_groups,
@@ -290,8 +304,18 @@ def admin_dashboard(request):
         'total_debt': total_debt,
         'total_recalculated_discounts': total_recalculated_discounts,
         'groups': groups,
+        'total_capacity': total_capacity,
+        'total_active_children_in_groups': total_active_children_in_groups,
+        'total_available_seats': total_available_seats,
         'recent_staff_logs': recent_staff_logs,
         'children_with_allergies': children_with_allergies,
+        'today_visits': today_visits,
+        'today_visits_count': today_visits_count,
+        'today_visited_done_count': today_visited_done_count,
+        'today_calls': today_calls,
+        'today_calls_count': today_calls_count,
+        'total_active_leads': total_active_leads,
+        'total_contracted_leads': total_contracted_leads,
         'today': today,
     })
 
@@ -3761,5 +3785,446 @@ def export_staff_attendance_pdf(request):
     response = HttpResponse(buf, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="Xodimlar_Davomat_Shtraf{period}_{timezone.now().strftime("%Y%m%d")}.pdf"'
     return response
+
+
+# ============================================================
+#  CRM & QABUL (ADMISSION LEADS), MARKETING TAHLILI
+# ============================================================
+
+def can_access_crm(user):
+    """Menejer va Direktor CRM bo'limidan to'liq foydalana oladi"""
+    return user.is_authenticated and (user.role in ['DIRECTOR', 'MANAGER'] or user.is_superuser)
+
+
+@login_required
+@user_passes_test(can_access_crm)
+def leads_list(request):
+    """
+    Qabul va Lidlar CRM Boshqaruv Paneli:
+    Filtrlash, qidiruv, bugungi tashriflar va qayta qo'ng'iroqlar monitoringi.
+    """
+    today = timezone.localtime(timezone.now()).date()
+    
+    # Asosiy queryset
+    leads_qs = AdmissionLead.objects.select_related('manager', 'converted_child').all()
+    
+    # Agar menejer bo'lsa va faqat o'zinikini ko'rish filtri tanlangan bo'lsa:
+    my_only = request.GET.get('my_only')
+    if my_only and request.user.role == 'MANAGER':
+        leads_qs = leads_qs.filter(manager=request.user)
+
+    # Filtrlash parametrlari
+    status_filter = request.GET.get('status', '').strip()
+    channel_filter = request.GET.get('channel', '').strip()
+    quick_filter = request.GET.get('filter', '').strip()
+    search_query = request.GET.get('q', '').strip()
+
+    if status_filter:
+        leads_qs = leads_qs.filter(status=status_filter)
+
+    if channel_filter:
+        leads_qs = leads_qs.filter(marketing_channel=channel_filter)
+
+    if quick_filter == 'today_visits':
+        leads_qs = leads_qs.filter(visit_date__date=today)
+    elif quick_filter == 'today_calls':
+        leads_qs = leads_qs.filter(next_call_date=today)
+    elif quick_filter == 'overdue':
+        leads_qs = leads_qs.filter(next_call_date__lt=today).exclude(status__in=['CONTRACTED', 'REJECTED'])
+    elif quick_filter == 'contracted':
+        leads_qs = leads_qs.filter(is_contract_signed=True)
+    elif quick_filter == 'active':
+        leads_qs = leads_qs.exclude(status__in=['CONTRACTED', 'REJECTED'])
+
+    if search_query:
+        leads_qs = leads_qs.filter(
+            Q(full_name__icontains=search_query) |
+            Q(phone__icontains=search_query) |
+            Q(child_name__icontains=search_query) |
+            Q(interested_direction__icontains=search_query) |
+            Q(notes__icontains=search_query)
+        )
+
+    # KPI Statistikalari
+    all_leads = AdmissionLead.objects.all()
+    total_leads = all_leads.count()
+    today_visits_count = all_leads.filter(visit_date__date=today).count()
+    today_calls_count = all_leads.filter(next_call_date=today).exclude(status__in=['CONTRACTED', 'REJECTED']).count()
+    overdue_calls_count = all_leads.filter(next_call_date__lt=today).exclude(status__in=['CONTRACTED', 'REJECTED']).count()
+    contracted_count = all_leads.filter(is_contract_signed=True).count()
+    conversion_rate = round((contracted_count / total_leads * 100), 1) if total_leads > 0 else 0
+
+    # Guruhlar sig'imi prognozi (Menejer yangi o'quvchini qabul qilishida qaysi guruhda joy borligini ko'rishi uchun)
+    groups = Group.objects.annotate(
+        active_children=Count('children', filter=Q(children__is_active=True))
+    ).order_by('name')
+
+    form = AdmissionLeadForm()
+
+    return render(request, 'crm/leads_list.html', {
+        'leads': leads_qs,
+        'total_leads': total_leads,
+        'today_visits_count': today_visits_count,
+        'today_calls_count': today_calls_count,
+        'overdue_calls_count': overdue_calls_count,
+        'contracted_count': contracted_count,
+        'conversion_rate': conversion_rate,
+        'status_filter': status_filter,
+        'channel_filter': channel_filter,
+        'quick_filter': quick_filter,
+        'search_query': search_query,
+        'groups': groups,
+        'form': form,
+        'today': today,
+        'channel_choices': AdmissionLead.MARKETING_CHANNELS,
+        'status_choices': AdmissionLead.STATUS_CHOICES,
+    })
+
+
+@login_required
+@user_passes_test(can_access_crm)
+def lead_create(request):
+    """Yangi lid qo'shish"""
+    if request.method == 'POST':
+        form = AdmissionLeadForm(request.POST)
+        if form.is_valid():
+            lead = form.save(commit=False)
+            if not lead.manager and request.user.role in ['MANAGER', 'DIRECTOR']:
+                lead.manager = request.user
+            lead.save()
+            log_audit(
+                'SYSTEM',
+                f"Yangi CRM lid kiritildi: {lead.full_name}",
+                f"Telefon: {lead.phone}, Kanal: {lead.get_marketing_channel_display()}, Qiziqish: {lead.interested_direction}",
+                user=request.user,
+                request=request
+            )
+            messages.success(request, f"Lid '{lead.full_name}' muvaffaqiyatli qo'shildi!")
+            return redirect('crm_leads_list')
+        else:
+            messages.error(request, "Ma'lumotlarni kiritishda xatolik yuz berdi. Iltimos tekshirib qaytadan urinib ko'ring.")
+    return redirect('crm_leads_list')
+
+
+@login_required
+@user_passes_test(can_access_crm)
+def lead_update(request, pk):
+    """Lid ma'lumotlarini tahrirlash"""
+    lead = get_object_or_404(AdmissionLead, pk=pk)
+    if request.method == 'POST':
+        form = AdmissionLeadForm(request.POST, instance=lead)
+        if form.is_valid():
+            l = form.save()
+            log_audit(
+                'SYSTEM',
+                f"CRM lid yangilandi: {l.full_name}",
+                f"Status: {l.get_status_display()}, Shartnoma: {l.is_contract_signed}",
+                user=request.user,
+                request=request
+            )
+            messages.success(request, f"Lid '{l.full_name}' muvaffaqiyatli saqlandi!")
+            return redirect('crm_leads_list')
+    else:
+        form = AdmissionLeadForm(instance=lead)
+    
+    return render(request, 'crm/lead_form.html', {
+        'form': form,
+        'lead': lead,
+    })
+
+
+@login_required
+@user_passes_test(can_access_crm)
+def lead_delete(request, pk):
+    """Lidni tizimdan o'chirish"""
+    lead = get_object_or_404(AdmissionLead, pk=pk)
+    if request.method == 'POST':
+        name = lead.full_name
+        lead.delete()
+        log_audit('SYSTEM', f"CRM lid o'chirildi: {name}", f"Lid nomi: {name}", user=request.user, request=request)
+        messages.success(request, f"'{name}' lidi o'chirildi.")
+    return redirect('crm_leads_list')
+
+
+@login_required
+@user_passes_test(can_access_crm)
+def lead_quick_update_api(request, pk):
+    """AJAX orqali lid statusi, tashrif yoki qo'ng'iroq vaqtini tezkor o'zgartirish"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Faqat POST so\'rov qabul qilinadi'}, status=405)
+
+    lead = get_object_or_404(AdmissionLead, pk=pk)
+    try:
+        new_status = request.POST.get('status')
+        if new_status and new_status in dict(AdmissionLead.STATUS_CHOICES):
+            lead.status = new_status
+            if new_status == 'CONTRACTED':
+                lead.is_contract_signed = True
+
+        contract_flag = request.POST.get('is_contract_signed')
+        if contract_flag is not None:
+            lead.is_contract_signed = (contract_flag == 'true' or contract_flag == '1' or contract_flag is True)
+            if lead.is_contract_signed and lead.status not in ['CONTRACTED', 'REJECTED']:
+                lead.status = 'CONTRACTED'
+
+        next_call = request.POST.get('next_call_date')
+        if next_call:
+            lead.next_call_date = next_call
+
+        visit_dt = request.POST.get('visit_date')
+        if visit_dt:
+            lead.visit_date = visit_dt
+
+        notes_val = request.POST.get('notes')
+        if notes_val is not None:
+            lead.notes = notes_val
+
+        lead.save()
+        log_audit('SYSTEM', f"Lid tezkor yangilandi: {lead.full_name}", f"Yangi holati: {lead.get_status_display()}", user=request.user, request=request)
+        return JsonResponse({
+            'success': True,
+            'lead_id': lead.id,
+            'status': lead.status,
+            'status_display': lead.get_status_display(),
+            'is_contract_signed': lead.is_contract_signed
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=400)
+
+
+@login_required
+@user_passes_test(can_access_crm)
+def lead_convert_to_child(request, pk):
+    """
+    Shartnoma tuzilgan lidni to'g'ridan-to'g'ri bog'chaga bola (Child)
+    yoki sinov muddatidagi bola (TemporaryChild) qilib qabul qilish.
+    """
+    lead = get_object_or_404(AdmissionLead, pk=pk)
+    groups = Group.objects.all().order_by('name')
+
+    if request.method == 'POST':
+        convert_type = request.POST.get('convert_type', 'PERMANENT')  # 'PERMANENT' yoki 'TRIAL'
+        child_first_name = request.POST.get('child_first_name', '').strip() or (lead.child_name or lead.full_name)
+        child_last_name = request.POST.get('child_last_name', '').strip() or " "
+        group_id = request.POST.get('group_id')
+        group = Group.objects.filter(id=group_id).first() if group_id else None
+
+        if convert_type == 'PERMANENT':
+            # Doimiy bola yaratish
+            birth_date_val = request.POST.get('birth_date') or timezone.now().date()
+            gender_val = request.POST.get('gender', 'M')
+            child = Child.objects.create(
+                first_name=child_first_name,
+                last_name=child_last_name,
+                birth_date=birth_date_val,
+                gender=gender_val,
+                group=group,
+                parent_full_name=lead.full_name,
+                parent_phone=lead.phone,
+                enrollment_date=timezone.now().date()
+            )
+            lead.converted_child = child
+            lead.status = 'CONTRACTED'
+            lead.is_contract_signed = True
+            lead.save()
+
+            log_audit(
+                'SYSTEM',
+                f"Lid asosida bola ro'yxatga olindi: {child.full_name}",
+                f"Lid: {lead.full_name}, Guruh: {group.name if group else 'Guruhsiz'}",
+                user=request.user,
+                request=request
+            )
+            messages.success(request, f"'{child.full_name}' muvaffaqiyatli doimiy ro'yxatga olindi va guruhga biriktirildi!")
+            return redirect('child_detail', pk=child.pk)
+        else:
+            # Sinovdagi (vaqtinchalik) bola yaratish
+            trial_days = int(request.POST.get('trial_days', 3))
+            daily_fee = Decimal(request.POST.get('daily_fee', '100000.00'))
+            temp_child = TemporaryChild.objects.create(
+                first_name=child_first_name,
+                last_name=child_last_name,
+                parent_full_name=lead.full_name,
+                parent_phone=lead.phone,
+                start_date=timezone.now().date(),
+                trial_days=trial_days,
+                daily_fee=daily_fee,
+                target_group=group,
+                registered_by=request.user,
+                notes=f"CRM lididan yaratildi. Qiziqqan yo'nalishi: {lead.interested_direction}"
+            )
+            lead.status = 'CONTRACTED'
+            lead.is_contract_signed = True
+            lead.save()
+
+            log_audit(
+                'SYSTEM',
+                f"Lid sinov muddatidagi bolaga o'tkazildi: {temp_child.full_name}",
+                f"Lid: {lead.full_name}, Sinov: {trial_days} kun",
+                user=request.user,
+                request=request
+            )
+            messages.success(request, f"'{temp_child.full_name}' sinov muddatidagi bolalar ro'yxatiga qo'shildi!")
+            return redirect('finance_dashboard')
+
+    return render(request, 'crm/lead_convert.html', {
+        'lead': lead,
+        'groups': groups,
+    })
+
+
+@login_required
+@user_passes_test(can_access_crm)
+def marketing_analytics(request):
+    """
+    Marketing Tahlili:
+    Telegram, Instagram, Banner, Flayer va boshqa manbalarning samaradorligi,
+    lidlar oqimi va konversiya ko'rsatkichlari.
+    """
+    all_leads = AdmissionLead.objects.all()
+    total_leads = all_leads.count()
+
+    channel_stats = []
+    channels = AdmissionLead.MARKETING_CHANNELS
+
+    for ch_key, ch_name in channels:
+        ch_leads = all_leads.filter(marketing_channel=ch_key)
+        count = ch_leads.count()
+        contracted = ch_leads.filter(is_contract_signed=True).count()
+        visited = ch_leads.filter(status__in=['VISITED', 'CONTRACTED']).count()
+        rejected = ch_leads.filter(status='REJECTED').count()
+        conv_rate = round((contracted / count * 100), 1) if count > 0 else 0
+        share_percent = round((count / total_leads * 100), 1) if total_leads > 0 else 0
+
+        channel_stats.append({
+            'key': ch_key,
+            'name': ch_name,
+            'count': count,
+            'share_percent': share_percent,
+            'contracted': contracted,
+            'visited': visited,
+            'rejected': rejected,
+            'conversion_rate': conv_rate,
+        })
+
+    # Saralash: eng ko'p lid olib kelgan kanal bo'yicha
+    channel_stats_sorted = sorted(channel_stats, key=lambda x: x['count'], reverse=True)
+
+    # Statuslar bo'yicha umumiy taqsimot
+    status_distribution = []
+    for s_key, s_name in AdmissionLead.STATUS_CHOICES:
+        cnt = all_leads.filter(status=s_key).count()
+        status_distribution.append({
+            'key': s_key,
+            'name': s_name,
+            'count': cnt,
+            'percent': round((cnt / total_leads * 100), 1) if total_leads > 0 else 0
+        })
+
+    total_contracted = all_leads.filter(is_contract_signed=True).count()
+    overall_conversion = round((total_contracted / total_leads * 100), 1) if total_leads > 0 else 0
+
+    return render(request, 'crm/marketing_analytics.html', {
+        'total_leads': total_leads,
+        'total_contracted': total_contracted,
+        'overall_conversion': overall_conversion,
+        'channel_stats': channel_stats_sorted,
+        'status_distribution': status_distribution,
+    })
+
+
+# ============================================================
+#  XODIMLAR HUJJATLARI VA REYTINGI
+# ============================================================
+
+@login_required
+def staff_documents_view(request, staff_id):
+    """
+    Xodim hujjatlarini ko'rish va yangi hujjat yuklash.
+    Direktor barcha xodimlarnikini ko'ra oladi, xodim o'zinikini ko'ra oladi.
+    """
+    staff = get_object_or_404(User, pk=staff_id)
+    if not request.user.can_manage_all and request.user.id != staff.id:
+        messages.error(request, "Sizda ushbu xodim hujjatlarini ko'rish huquqi yo'q.")
+        return redirect('staff_profile')
+
+    if request.method == 'POST':
+        form = StaffDocumentForm(request.POST, request.FILES)
+        if form.is_valid():
+            doc = form.save(commit=False)
+            doc.staff = staff
+            doc.uploaded_by = request.user
+            doc.save()
+            log_audit(
+                'SYSTEM',
+                f"Xodim hujjati yuklandi: {doc.title}",
+                f"Xodim: {staff.get_full_name()}, Hujjat turi: {doc.get_document_type_display()}",
+                user=request.user,
+                request=request
+            )
+            messages.success(request, f"'{doc.title}' hujjati muvaffaqiyatli saqlandi!")
+            return redirect('staff_documents', staff_id=staff.id)
+    else:
+        form = StaffDocumentForm()
+
+    documents = staff.documents.all().order_by('-uploaded_at')
+    return render(request, 'staff/staff_documents.html', {
+        'staff_member': staff,
+        'documents': documents,
+        'form': form,
+    })
+
+
+@login_required
+@director_or_manager_required
+def staff_document_delete(request, pk):
+    """Xodim hujjatini o'chirish"""
+    doc = get_object_or_404(StaffDocument, pk=pk)
+    staff_id = doc.staff_id
+    title = doc.title
+    if request.method == 'POST':
+        doc.delete()
+        log_audit('SYSTEM', f"Xodim hujjati o'chirildi: {title}", f"Xodim ID: {staff_id}", user=request.user, request=request)
+        messages.success(request, f"'{title}' hujjati o'chirildi.")
+    return redirect('staff_documents', staff_id=staff_id)
+
+
+@login_required
+@director_or_manager_required
+def staff_rate_view(request, staff_id):
+    """
+    Xodimga reyting qo'yish (baholash):
+    Direktor yoki Menejer xodimning dars sifati, intizomi va muomalasini baholaydi.
+    """
+    staff = get_object_or_404(User, pk=staff_id)
+    if request.method == 'POST':
+        form = StaffRatingForm(request.POST)
+        if form.is_valid():
+            rating = form.save(commit=False)
+            rating.staff = staff
+            rating.rated_by = request.user
+            rating.save()
+            log_audit(
+                'BONUS',
+                f"Xodimga reyting berildi: {staff.get_full_name()} ({rating.score} ball)",
+                f"Mezon: {rating.get_criteria_display()}, Izoh: {rating.comment or 'Izohsiz'}",
+                user=request.user,
+                request=request
+            )
+            messages.success(request, f"{staff.get_full_name() or staff.username} uchun {rating.score} ballik baholash saqlandi!")
+            return redirect('staff_rate', staff_id=staff.id)
+    else:
+        form = StaffRatingForm()
+
+    ratings = staff.ratings.all().select_related('rated_by').order_by('-date', '-created_at')
+    avg_score = staff.average_rating
+
+    return render(request, 'staff/staff_rating.html', {
+        'staff_member': staff,
+        'ratings': ratings,
+        'avg_score': avg_score,
+        'form': form,
+    })
+
 
 

@@ -185,6 +185,18 @@ class User(AbstractUser):
     def has_assigned_group(self):
         return self.is_teacher and (self.primary_groups.exists() or self.assistant_groups.exists())
 
+    @property
+    def average_rating(self):
+        """Xodimning o'rtacha reyting balli (1.0 dan 5.0 gacha)"""
+        agg = self.ratings.aggregate(avg=models.Avg('score'))
+        if agg['avg'] is not None:
+            return round(float(agg['avg']), 1)
+        return None
+
+    @property
+    def ratings_count(self):
+        return self.ratings.count()
+
     def __str__(self):
         return f"{self.get_full_name() or self.username} ({self.position_display})"
 
@@ -241,6 +253,23 @@ class Group(models.Model):
     @property
     def children_count(self):
         return self.children.filter(is_active=True).count()
+
+    @property
+    def available_seats(self):
+        """Guruhdagi bo'sh o'rinlar soni"""
+        return max(0, self.capacity - self.children_count)
+
+    @property
+    def occupancy_percent(self):
+        """Bandlik foizi"""
+        if self.capacity > 0:
+            return min(100, round((self.children_count / self.capacity) * 100))
+        return 0
+
+    @property
+    def is_full(self):
+        """Guruh to'lganmi"""
+        return self.children_count >= self.capacity
 
     def __str__(self):
         return f"{self.name} ({self.get_age_category_display()})"
@@ -631,5 +660,197 @@ class Expense(models.Model):
 
     def __str__(self):
         return f"[{self.get_category_display()}] {self.title}: {self.amount:,.0f} UZS ({self.date})"
+
+
+class AdmissionLead(models.Model):
+    """
+    Qabul (CRM) va Lidlar Modeli:
+    Ota-onalar murojaati, marketing manbalari, qayta qo'ng'iroq va tashrif monitoringi.
+    """
+    MARKETING_CHANNELS = (
+        ('TELEGRAM', 'Telegram'),
+        ('INSTAGRAM', 'Instagram'),
+        ('BANNER', 'Ko‘chadagi banner'),
+        ('WORD_OF_MOUTH', 'Salafan marketing / Flayer'),
+        ('OTHER', 'Boshqa'),
+    )
+
+    STATUS_CHOICES = (
+        ('NEW', 'Yangi'),
+        ('THINKING', 'O‘ylashmoqda'),
+        ('VISITED', 'Qabulga keldi'),
+        ('CONTRACTED', 'Shartnoma tuzildi'),
+        ('REJECTED', 'Rad etildi'),
+    )
+
+    full_name = models.CharField(max_length=150, verbose_name="Ota-ona ismi (F.I.SH)")
+    phone = models.CharField(max_length=30, verbose_name="Telefon raqami")
+    child_name = models.CharField(max_length=120, blank=True, null=True, verbose_name="Farzandining ismi")
+    child_age = models.PositiveSmallIntegerField(blank=True, null=True, verbose_name="Farzandining yoshi")
+    interested_direction = models.CharField(
+        max_length=150,
+        verbose_name="Qiziqqan yo'nalishi",
+        help_text="Masalan: Standart bog'cha, Rus tili guruhi, Ingliz tili / Mental arifmetika, Sport / Gimnastika"
+    )
+    marketing_channel = models.CharField(
+        max_length=30,
+        choices=MARKETING_CHANNELS,
+        default='TELEGRAM',
+        verbose_name="Marketing kanali"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='NEW',
+        verbose_name="Holati (Status)"
+    )
+    is_contract_signed = models.BooleanField(
+        default=False,
+        verbose_name="Shartnoma tuzilganmi"
+    )
+    manager = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='leads',
+        verbose_name="Biriktirilgan Menejer"
+    )
+    next_call_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Qayta qo'ng'iroq qilish sanasi"
+    )
+    visit_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Qabulga kelish sanasi va vaqti"
+    )
+    notes = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Muloqot xulosasi va izohlar"
+    )
+    converted_child = models.ForeignKey(
+        'Child',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='lead_origin',
+        verbose_name="Qabul qilingan bola"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Kiritilgan sana")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="So'nggi tahrir")
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Qabul Lidi (CRM)"
+        verbose_name_plural = "Qabul Lidlar (CRM)"
+
+    def __str__(self):
+        return f"{self.full_name} ({self.phone}) - {self.get_status_display()}"
+
+    def save(self, *args, **kwargs):
+        # Agar status Shartnoma tuzildi bo'lsa, avtomatik is_contract_signed=True
+        if self.status == 'CONTRACTED':
+            self.is_contract_signed = True
+        elif self.is_contract_signed and self.status not in ['CONTRACTED', 'REJECTED']:
+            self.status = 'CONTRACTED'
+        super().save(*args, **kwargs)
+
+    @property
+    def is_visit_today(self):
+        """Bugun qabulga kelishi rejalashtirilganmi"""
+        if not self.visit_date:
+            return False
+        return timezone.localtime(self.visit_date).date() == timezone.localtime(timezone.now()).date()
+
+    @property
+    def is_call_today(self):
+        """Bugun qayta qo'ng'iroq qilish kerakmi"""
+        if not self.next_call_date:
+            return False
+        return self.next_call_date == timezone.localtime(timezone.now()).date()
+
+    @property
+    def is_call_overdue(self):
+        """Qayta qo'ng'iroq muddati o'tib ketganmi"""
+        if not self.next_call_date or self.status in ['CONTRACTED', 'REJECTED']:
+            return False
+        return self.next_call_date < timezone.localtime(timezone.now()).date()
+
+
+class StaffDocument(models.Model):
+    """
+    Xodimlar hujjatlari: Pasport nusxasi, diplom, tibbiy daftarcha, mehnat shartnomasi va hk.
+    """
+    DOC_TYPES = (
+        ('PASSPORT', 'Pasport nusxasi'),
+        ('DIPLOMA', 'Diplom / Ma\'lumoti haqida hujjat'),
+        ('MEDICAL', 'Tibbiy daftarcha (Sanitariya)'),
+        ('CONTRACT', 'Mehnat shartnomasi / Buyruq'),
+        ('CERTIFICATE', 'Sertifikat / Malaka oshirish'),
+        ('OTHER', 'Boshqa hujjat'),
+    )
+
+    staff = models.ForeignKey(User, on_delete=models.CASCADE, related_name='documents', verbose_name="Xodim")
+    title = models.CharField(max_length=200, verbose_name="Hujjat nomi")
+    document_type = models.CharField(max_length=20, choices=DOC_TYPES, default='OTHER', verbose_name="Hujjat turi")
+    file = models.FileField(upload_to='staff_documents/', verbose_name="Fayl")
+    expiry_date = models.DateField(null=True, blank=True, verbose_name="Amal qilish muddati (agar bo'lsa)")
+    notes = models.TextField(blank=True, null=True, verbose_name="Qo'shimcha izoh")
+    uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='uploaded_docs')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+        verbose_name = "Xodim Hujjati"
+        verbose_name_plural = "Xodimlar Hujjatlari"
+
+    def __str__(self):
+        return f"{self.staff.get_full_name() or self.staff.username} - {self.title}"
+
+    @property
+    def is_expired(self):
+        """Muddati o'tganmi (masalan, tibbiy daftarcha)"""
+        if not self.expiry_date:
+            return False
+        return self.expiry_date < timezone.localtime(timezone.now()).date()
+
+
+class StaffRating(models.Model):
+    """
+    Xodimlar faoliyati reytingi va baholash tizimi:
+    Direktor yoki Menejer tomonidan xodimlarga qo'yiladigan ballar va izohlar.
+    """
+    CRITERIA_CHOICES = (
+        ('PEDAGOGY', 'Pedagogik mahorat va dars sifati'),
+        ('DISCIPLINE', 'Intizom, davomat va aniqlik'),
+        ('PARENT_RELATIONS', 'Ota-onalar bilan muomala va aloqa'),
+        ('HYGIENE', 'Guruh tozaligi va gigiyena'),
+        ('INITIATIVE', 'Tashabbuskorlik va fidoyilik'),
+        ('GENERAL', 'Umumiy oylik baholash'),
+    )
+
+    staff = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ratings', verbose_name="Baholangan xodim")
+    rated_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='given_ratings', verbose_name="Baholagan rahbar")
+    score = models.PositiveSmallIntegerField(
+        default=5,
+        verbose_name="Baho (1 dan 5 gacha)",
+        help_text="1 - Qoniqarsiz, 2 - O'rtacha, 3 - Yaxshi, 4 - A'lo, 5 - Namunali"
+    )
+    criteria = models.CharField(max_length=30, choices=CRITERIA_CHOICES, default='GENERAL', verbose_name="Baholash mezoni")
+    date = models.DateField(default=timezone.now, verbose_name="Sana")
+    comment = models.TextField(blank=True, null=True, verbose_name="Fikr-mulohaza / Izoh")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-date', '-created_at']
+        verbose_name = "Xodim Reytingi"
+        verbose_name_plural = "Xodimlar Reytinglari"
+
+    def __str__(self):
+        return f"{self.staff.get_full_name() or self.staff.username} - {self.score} ball ({self.get_criteria_display()})"
+
 
 

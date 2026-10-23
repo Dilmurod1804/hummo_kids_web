@@ -3,7 +3,7 @@ from .models import (
     User, KindergartenSettings, Group, Child, ChildAttendance,
     StaffAttendance, MonthlyInvoice, Payment, ChatMessage,
     StaffBonusPenalty, StaffMonthlySalary, AuditLog, TemporaryChild,
-    Expense
+    Expense, AdmissionLead, StaffDocument, StaffRating
 )
 
 @admin.register(User)
@@ -97,4 +97,30 @@ class ExpenseAdmin(admin.ModelAdmin):
     list_filter = ('category', 'payment_method', 'date')
     search_fields = ('title', 'description', 'receipt_number')
     date_hierarchy = 'date'
+
+
+@admin.register(AdmissionLead)
+class AdmissionLeadAdmin(admin.ModelAdmin):
+    list_display = (
+        'full_name', 'phone', 'child_name', 'child_age', 'interested_direction',
+        'marketing_channel', 'status', 'is_contract_signed', 'manager', 'visit_date', 'next_call_date'
+    )
+    list_filter = ('status', 'marketing_channel', 'is_contract_signed', 'manager', 'next_call_date')
+    search_fields = ('full_name', 'phone', 'child_name', 'notes')
+    date_hierarchy = 'created_at'
+
+
+@admin.register(StaffDocument)
+class StaffDocumentAdmin(admin.ModelAdmin):
+    list_display = ('staff', 'title', 'document_type', 'expiry_date', 'uploaded_at', 'uploaded_by')
+    list_filter = ('document_type', 'expiry_date', 'uploaded_at')
+    search_fields = ('staff__username', 'staff__first_name', 'staff__last_name', 'title')
+
+
+@admin.register(StaffRating)
+class StaffRatingAdmin(admin.ModelAdmin):
+    list_display = ('staff', 'score', 'criteria', 'rated_by', 'date')
+    list_filter = ('criteria', 'score', 'date')
+    search_fields = ('staff__username', 'staff__first_name', 'staff__last_name', 'comment')
+
 

@@ -55,15 +55,28 @@
                     </a>
                 </li>
                 <li>
+                    <a href="{% url 'crm_leads_list' %}" class="nav-link {% if 'crm/leads' in request.path %}active{% endif %}" style="position: relative;">
+                        <i data-lucide="user-plus" style="width: 18px; height: 18px; color: #38bdf8;"></i>
+                        <span>Qabul & CRM (Lidlar)</span>
+                        <span style="margin-left: auto; background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 8px;">CRM</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'crm_marketing_analytics' %}" class="nav-link {% if 'crm/marketing' in request.path %}active{% endif %}">
+                        <i data-lucide="target" style="width: 18px; height: 18px; color: #f43f5e;"></i>
+                        <span>Marketing Tahlili</span>
+                    </a>
+                </li>
+                <li>
                     <a href="{% url 'groups_list' %}" class="nav-link {% if 'groups' in request.path and 'finance' not in request.path %}active{% endif %}">
                         <i data-lucide="layers" style="width: 18px; height: 18px;"></i>
-                        <span>Guruhlar</span>
+                        <span>Guruhlar Sig'imi</span>
                     </a>
                 </li>
                 <li>
                     <a href="{% url 'staff_list' %}" class="nav-link {% if request.resolver_match.url_name == 'staff_list' %}active{% endif %}">
                         <i data-lucide="users" style="width: 18px; height: 18px;"></i>
-                        <span>Xodimlar Boshqaruvi</span>
+                        <span>Xodimlar & Reyting</span>
                     </a>
                 </li>
                 <li>
@@ -115,12 +128,6 @@
                     </a>
                 </li>
                 <li>
-                    <a href="{% url 'staff_attendance_matrix' %}" class="nav-link {% if 'staff-matrix' in request.path or 'staff-logs' in request.path %}active{% endif %}">
-                        <i data-lucide="map-pin" style="width: 18px; height: 18px;"></i>
-                        <span>Xodimlar Davomati</span>
-                    </a>
-                </li>
-                <li>
                     <a href="{% url 'audit_logs' %}" class="nav-link {% if request.resolver_match.url_name == 'audit_logs' %}active{% endif %}">
                         <i data-lucide="history" style="width: 18px; height: 18px; color: #f59e0b;"></i>
                         <span>Tizim Tarixi (Audit Log)</span>
@@ -128,7 +135,20 @@
                 </li>
 
                 {% elif user.is_manager %}
-                <!-- MENEJER UCHUN KIRIM-CHIQIM, DAVOMAT VA SHAXSIY PROFIL -->
+                <!-- MENEJER UCHUN CRM, KIRIM-CHIQIM, DAVOMAT VA SHAXSIY PROFIL -->
+                <li>
+                    <a href="{% url 'crm_leads_list' %}" class="nav-link {% if 'crm/leads' in request.path %}active{% endif %}" style="position: relative;">
+                        <i data-lucide="user-plus" style="width: 18px; height: 18px; color: #38bdf8;"></i>
+                        <span>Qabul & CRM (Menejer)</span>
+                        <span style="margin-left: auto; background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 8px;">CRM</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="{% url 'crm_marketing_analytics' %}" class="nav-link {% if 'crm/marketing' in request.path %}active{% endif %}">
+                        <i data-lucide="target" style="width: 18px; height: 18px; color: #f43f5e;"></i>
+                        <span>Marketing Tahlili</span>
+                    </a>
+                </li>
                 <li>
                     <a href="{% url 'expenses_list' %}" class="nav-link {% if 'expenses' in request.path %}active{% endif %}">
                         <i data-lucide="arrow-left-right" style="width: 18px; height: 18px; color: #f43f5e;"></i>

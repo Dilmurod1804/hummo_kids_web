@@ -94,6 +94,20 @@ urlpatterns = [
     path('expenses/<int:pk>/edit/', views.expense_edit, name='expense_edit'),
     path('expenses/<int:pk>/delete/', views.expense_delete, name='expense_delete'),
 
+    # CRM (Qabul va Lidlar) & Marketing Tahlili
+    path('crm/leads/', views.leads_list, name='crm_leads_list'),
+    path('crm/leads/create/', views.lead_create, name='crm_lead_create'),
+    path('crm/leads/<int:pk>/edit/', views.lead_update, name='crm_lead_update'),
+    path('crm/leads/<int:pk>/delete/', views.lead_delete, name='crm_lead_delete'),
+    path('crm/leads/<int:pk>/quick-update-api/', views.lead_quick_update_api, name='crm_lead_quick_update_api'),
+    path('crm/leads/<int:pk>/convert/', views.lead_convert_to_child, name='crm_lead_convert'),
+    path('crm/marketing/', views.marketing_analytics, name='crm_marketing_analytics'),
+
+    # Xodimlar Hujjatlari va Reytingi
+    path('staff/<int:staff_id>/documents/', views.staff_documents_view, name='staff_documents'),
+    path('staff/documents/<int:pk>/delete/', views.staff_document_delete, name='staff_document_delete'),
+    path('staff/<int:staff_id>/rate/', views.staff_rate_view, name='staff_rate'),
+
     # Settings
     path('settings/', views.settings_view, name='settings'),
 ]

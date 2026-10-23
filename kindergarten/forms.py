@@ -1,7 +1,7 @@
 from django import forms
 from .models import (
     Child, Group, MonthlyInvoice, Payment, KindergartenSettings, User, ChildAttendance,
-    Expense
+    Expense, AdmissionLead, StaffDocument, StaffRating
 )
 
 class LoginForm(forms.Form):
@@ -335,3 +335,85 @@ class ExpenseForm(forms.ModelForm):
             'description': forms.Textarea(attrs={'class': 'glass-input', 'rows': 3, 'placeholder': 'Qo\'shimcha izoh yoki sababi...'}),
             'receipt_number': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Chek yoki kvitansiya raqami (ixtiyoriy)'}),
         }
+
+
+class AdmissionLeadForm(forms.ModelForm):
+    class Meta:
+        model = AdmissionLead
+        fields = [
+            'full_name', 'phone', 'child_name', 'child_age',
+            'interested_direction', 'marketing_channel', 'status',
+            'is_contract_signed', 'manager', 'visit_date', 'next_call_date', 'notes'
+        ]
+        widgets = {
+            'full_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Ota-ona F.I.SH (masalan: Rustamova Dilnoza)'}),
+            'phone': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': '+998 90 123 45 67'}),
+            'child_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Farzandining ismi (masalan: Amirbek)'}),
+            'child_age': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': 'Farzand yoshi (masalan: 4)', 'min': '1', 'max': '10'}),
+            'interested_direction': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Masalan: Standart bog\'cha, Rus tili guruhi, Mental arifmetika'}),
+            'marketing_channel': forms.Select(attrs={'class': 'glass-select'}),
+            'status': forms.Select(attrs={'class': 'glass-select'}),
+            'is_contract_signed': forms.CheckboxInput(attrs={'class': 'glass-checkbox'}),
+            'manager': forms.Select(attrs={'class': 'glass-select'}),
+            'visit_date': forms.DateTimeInput(attrs={'class': 'glass-input', 'type': 'datetime-local'}),
+            'next_call_date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
+            'notes': forms.Textarea(attrs={'class': 'glass-input', 'rows': 3, 'placeholder': 'Suhbat natijasi, ota-ona talablari yoki eslatmalar...'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['manager'].queryset = User.objects.filter(role__in=['DIRECTOR', 'MANAGER', 'TEACHER'], is_active=True)
+        self.fields['manager'].required = False
+        self.fields['child_name'].required = False
+        self.fields['child_age'].required = False
+        self.fields['visit_date'].required = False
+        self.fields['next_call_date'].required = False
+        self.fields['notes'].required = False
+        self.fields['is_contract_signed'].required = False
+
+
+class StaffDocumentForm(forms.ModelForm):
+    class Meta:
+        model = StaffDocument
+        fields = ['title', 'document_type', 'file', 'expiry_date', 'notes']
+        widgets = {
+            'title': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Masalan: Pasport nusxasi, Diplom, Tibbiy daftarcha'}),
+            'document_type': forms.Select(attrs={'class': 'glass-select'}),
+            'file': forms.FileInput(attrs={'class': 'glass-input-file'}),
+            'expiry_date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
+            'notes': forms.Textarea(attrs={'class': 'glass-input', 'rows': 2, 'placeholder': 'Hujjat bo\'yicha qo\'shimcha ma\'lumot...'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['expiry_date'].required = False
+        self.fields['notes'].required = False
+
+
+class StaffRatingForm(forms.ModelForm):
+    SCORE_CHOICES = (
+        (5, '⭐⭐⭐⭐⭐ 5 Ball (Namunali)'),
+        (4, '⭐⭐⭐⭐ 4 Ball (A\'lo)'),
+        (3, '⭐⭐⭐ 3 Ball (Yaxshi)'),
+        (2, '⭐⭐ 2 Ball (Qoniqarli)'),
+        (1, '⭐ 1 Ball (Qoniqarsiz)'),
+    )
+    score = forms.ChoiceField(
+        choices=SCORE_CHOICES,
+        widget=forms.Select(attrs={'class': 'glass-select'}),
+        label="Baho"
+    )
+
+    class Meta:
+        model = StaffRating
+        fields = ['score', 'criteria', 'date', 'comment']
+        widgets = {
+            'criteria': forms.Select(attrs={'class': 'glass-select'}),
+            'date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
+            'comment': forms.Textarea(attrs={'class': 'glass-input', 'rows': 3, 'placeholder': 'Xodim faoliyati haqida batafsil fikr-mulohaza yoki takliflar...'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['comment'].required = False
+

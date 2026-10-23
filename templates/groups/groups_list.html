@@ -33,14 +33,30 @@
             </div>
         </div>
 
-        <!-- Capacity Progress Bar -->
-        <div style="margin-bottom: 16px;">
-            <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;">
-                <span style="color: var(--text-muted);">Bandlik sig'imi:</span>
-                <span style="font-weight: 700; color: white;">{{ group.active_children }} / {{ group.capacity }} bola</span>
+        <!-- Capacity Progress Bar with Available Seats Forecast -->
+        <div style="margin-bottom: 16px; background: rgba(255, 255, 255, 0.02); padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.05);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-size: 12px; color: var(--text-muted);">Bandlik sig'imi:</span>
+                {% if group.available_seats > 3 %}
+                <span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); font-weight: 700; font-size: 11px;">
+                    ✓ {{ group.available_seats }} ta bo'sh joy bor
+                </span>
+                {% elif group.available_seats > 0 %}
+                <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); font-weight: 700; font-size: 11px;">
+                    ⚠️ Faqat {{ group.available_seats }} ta bo'sh joy qoldi
+                </span>
+                {% else %}
+                <span class="badge" style="background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); font-weight: 700; font-size: 11px;">
+                    ✕ Guruh to'lgan (0 joy)
+                </span>
+                {% endif %}
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); margin-bottom: 4px;">
+                <span>Hozirda: {{ group.active_children }} / {{ group.capacity }} bola</span>
+                <span>{{ group.occupancy_percent }}% to'lgan</span>
             </div>
             <div style="width: 100%; height: 8px; background: rgba(255, 255, 255, 0.08); border-radius: 4px; overflow: hidden;">
-                <div style="width: {% widthratio group.active_children group.capacity 100 %}%; height: 100%; background: var(--primary-gradient);"></div>
+                <div style="width: {{ group.occupancy_percent }}%; height: 100%; background: {% if group.available_seats == 0 %}#f43f5e{% elif group.available_seats <= 3 %}#f59e0b{% else %}linear-gradient(90deg, #10b981, #06b6d4){% endif %};"></div>
             </div>
         </div>
 
