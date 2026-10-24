@@ -375,6 +375,7 @@ class MonthlyInvoice(models.Model):
     month = models.PositiveSmallIntegerField(help_text="1 to 12")
     year = models.PositiveIntegerField(default=2026)
     base_fee = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('2500000.00'))
+    discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), help_text="Chegirma (skidka) summasi")
     meal_rate = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('25000.00'))
     excused_days_count = models.PositiveIntegerField(default=0, help_text="Excused absences from previous month")
     recalculation_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), help_text="excused_days * meal_rate deducted")
@@ -397,8 +398,10 @@ class MonthlyInvoice(models.Model):
 
     def calculate_totals(self):
         self.recalculation_amount = Decimal(self.excused_days_count) * self.meal_rate
-        self.total_amount = max(Decimal('0.00'), self.base_fee - self.recalculation_amount)
-        if self.paid_amount >= self.total_amount and self.total_amount > Decimal('0.00'):
+        self.total_amount = max(Decimal('0.00'), self.base_fee - self.discount - self.recalculation_amount)
+        if self.total_amount == Decimal('0.00'):
+            self.status = 'PAID'
+        elif self.paid_amount >= self.total_amount:
             self.status = 'PAID'
         elif self.paid_amount > Decimal('0.00'):
             self.status = 'PARTIAL'

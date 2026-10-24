@@ -213,3 +213,22 @@ class HumoKidsCRMTests(TestCase):
         self.assertEqual(inv_ctx.payme_amount, Decimal('0.00'))
         self.assertEqual(inv_ctx.paid_amount, Decimal('1200000.00'))
 
+        # Skidka (discount) kiritish API testi
+        import json
+        resp_disc = client.post(
+            reverse('update_invoice_discount_api'),
+            data=json.dumps({
+                'invoice_id': inv1.id,
+                'discount': '300000.00',
+                'reason': 'Ko\'p bolali oila'
+            }),
+            content_type='application/json'
+        )
+        self.assertEqual(resp_disc.status_code, 200)
+        inv1.refresh_from_db()
+        self.assertEqual(inv1.discount, Decimal('300000.00'))
+        # total_amount = base_fee - discount - recalculation_amount
+        expected_total = max(Decimal('0.00'), inv1.base_fee - Decimal('300000.00') - inv1.recalculation_amount)
+        self.assertEqual(inv1.total_amount, expected_total)
+
+

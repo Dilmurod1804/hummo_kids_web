@@ -2345,6 +2345,7 @@ def compute_groups_finance_summary(month, year):
     grand_totals = {
         'children_count': 0,
         'total_expected': Decimal('0.00'),
+        'total_discount': Decimal('0.00'),
         'total_paid': Decimal('0.00'),
         'total_recalc': Decimal('0.00'),
         'total_debt': Decimal('0.00'),
@@ -2362,6 +2363,7 @@ def compute_groups_finance_summary(month, year):
 
         invs = MonthlyInvoice.objects.filter(child_id__in=active_children_ids, month=month, year=year)
         total_exp = invs.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
+        total_disc = invs.aggregate(s=Sum('discount'))['s'] or Decimal('0.00')
         total_pd = invs.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
         total_recalc = invs.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
         total_dbt = max(Decimal('0.00'), total_exp - total_pd)
@@ -2378,6 +2380,7 @@ def compute_groups_finance_summary(month, year):
         # Jami hisob-kitoblar
         grand_totals['children_count'] += children_cnt
         grand_totals['total_expected'] += total_exp
+        grand_totals['total_discount'] += total_disc
         grand_totals['total_paid'] += total_pd
         grand_totals['total_recalc'] += total_recalc
         grand_totals['total_debt'] += total_dbt
@@ -2400,6 +2403,7 @@ def compute_groups_finance_summary(month, year):
             'name': g.name,
             'children_count': children_cnt,
             'total_expected': total_exp,
+            'total_discount': total_disc,
             'total_paid': total_pd,
             'total_recalc': total_recalc,
             'total_debt': total_dbt,
@@ -2802,6 +2806,11 @@ def update_invoice_tariff_api(request):
         invoice = get_object_or_404(MonthlyInvoice, id=invoice_id)
         old_tariff = invoice.base_fee
         invoice.base_fee = new_base_fee
+
+        raw_discount = data.get('discount')
+        if raw_discount is not None:
+            invoice.discount = max(Decimal('0.00'), Decimal(str(raw_discount)))
+
         invoice.calculate_totals()
         invoice.save()
 
@@ -2817,7 +2826,7 @@ def update_invoice_tariff_api(request):
             description=(
                 f"Bola: {invoice.child.full_name} ({invoice.month}/{invoice.year} oyi). "
                 f"Eski tarif: {old_tariff:,.0f} UZS -> Yangi tarif: {new_base_fee:,.0f} UZS. "
-                f"Hisoblangan summa: {invoice.total_amount:,.0f} UZS, Qoldiq qarz: {invoice.remaining_debt:,.0f} UZS. "
+                f"Skidka: {invoice.discount:,.0f} UZS, Hisoblangan summa: {invoice.total_amount:,.0f} UZS, Qoldiq qarz: {invoice.remaining_debt:,.0f} UZS. "
                 f"Izoh: {reason or 'Keltirilmadi'}. Mas'ul: {staff_name}"
             ),
             user=request.user,
@@ -2827,6 +2836,68 @@ def update_invoice_tariff_api(request):
         return JsonResponse({
             'success': True,
             'message': f"'{invoice.child.full_name}' uchun oylik tarif {new_base_fee:,.0f} UZS ga muvaffaqiyatli o'zgartirildi!",
+            'base_fee': float(invoice.base_fee),
+            'discount': float(invoice.discount),
+            'recalculation_amount': float(invoice.recalculation_amount),
+            'total_amount': float(invoice.total_amount),
+            'paid_amount': float(invoice.paid_amount),
+            'remaining_debt': float(invoice.remaining_debt),
+            'status': invoice.status,
+            'status_display': invoice.get_status_display(),
+        })
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=400)
+
+
+@csrf_exempt
+@login_required
+@director_or_manager_required
+def update_invoice_discount_api(request):
+    """
+    Bolaning oylik invoysi skidkasini (discount) kiritish/tahrirlash API.
+    Skidka kiritilganda total_amount = base_fee - discount - recalculation_amount
+    qayta hisoblanadi va audit log yoziladi.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Faqat POST so\'rovi qabul qilinadi.'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        invoice_id = data.get('invoice_id')
+        raw_discount = data.get('discount')
+        reason = data.get('reason', '').strip()
+
+        if invoice_id is None or raw_discount is None:
+            return JsonResponse({'success': False, 'message': 'Invoys ID va skidka summasi kiritilishi shart!'}, status=400)
+
+        new_discount = Decimal(str(raw_discount))
+        if new_discount < Decimal('0.00'):
+            return JsonResponse({'success': False, 'message': 'Skidka manfiy bo\'lishi mumkin emas!'}, status=400)
+
+        invoice = get_object_or_404(MonthlyInvoice, id=invoice_id)
+        old_discount = invoice.discount
+        invoice.discount = new_discount
+        invoice.calculate_totals()
+        invoice.save()
+
+        staff_name = request.user.get_full_name() or request.user.username
+        log_audit(
+            category='PAYMENT',
+            action="Bola skidkasi tahrirlandi",
+            description=(
+                f"Bola: {invoice.child.full_name} ({invoice.month}/{invoice.year} oyi). "
+                f"Eski skidka: {old_discount:,.0f} UZS -> Yangi skidka: {new_discount:,.0f} UZS. "
+                f"Tarif: {invoice.base_fee:,.0f} UZS, Yakuniy summa: {invoice.total_amount:,.0f} UZS, Qoldiq qarz: {invoice.remaining_debt:,.0f} UZS. "
+                f"Izoh: {reason or 'Keltirilmadi'}. Mas'ul: {staff_name}"
+            ),
+            user=request.user,
+            request=request
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': f"'{invoice.child.full_name}' uchun skidka {new_discount:,.0f} UZS ga muvaffaqiyatli saqlandi!",
+            'discount': float(invoice.discount),
             'base_fee': float(invoice.base_fee),
             'recalculation_amount': float(invoice.recalculation_amount),
             'total_amount': float(invoice.total_amount),
@@ -3578,6 +3649,7 @@ def groups_finance_view(request):
     group_invoices = []
     active_group_stats = {
         'total_expected': Decimal('0.00'),
+        'total_discount': Decimal('0.00'),
         'total_paid': Decimal('0.00'),
         'total_debt': Decimal('0.00'),
         'paid_cash': Decimal('0.00'),
@@ -3602,6 +3674,7 @@ def groups_finance_view(request):
         }
 
         total_exp = Decimal('0.00')
+        total_disc = Decimal('0.00')
         total_pd = Decimal('0.00')
         g_cash = Decimal('0.00')
         g_card = Decimal('0.00')
@@ -3617,6 +3690,7 @@ def groups_finance_view(request):
                     month=month,
                     year=year,
                     base_fee=active_group.monthly_fee or kg_settings.default_monthly_fee,
+                    discount=Decimal('0.00'),
                     meal_rate=kg_settings.daily_meal_rate,
                     total_amount=active_group.monthly_fee or kg_settings.default_monthly_fee,
                     paid_amount=Decimal('0.00'),
@@ -3645,6 +3719,7 @@ def groups_finance_view(request):
             inv.payme_amount = c_payme
 
             total_exp += inv.total_amount
+            total_disc += inv.discount
             total_pd += inv.paid_amount
             g_cash += c_cash
             g_card += c_card
@@ -3655,6 +3730,7 @@ def groups_finance_view(request):
 
         active_group_stats = {
             'total_expected': total_exp,
+            'total_discount': total_disc,
             'total_paid': total_pd,
             'total_debt': max(Decimal('0.00'), total_exp - total_pd),
             'paid_cash': g_cash,

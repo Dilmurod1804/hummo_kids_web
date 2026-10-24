@@ -81,6 +81,9 @@
                 <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-weight: 700; font-size: 12px; padding: 6px 12px;">
                     Jami To'langan: {{ grand_totals.total_paid|floatformat:0 }} UZS ({{ grand_totals.paid_percent }}%)
                 </span>
+                <span class="badge" style="background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3); font-weight: 700; font-size: 12px; padding: 6px 12px;">
+                    🎁 Jami Skidka: {{ grand_totals.total_discount|floatformat:0 }} UZS
+                </span>
                 <span class="badge" style="background: rgba(244, 63, 94, 0.15); color: #fda4af; border: 1px solid rgba(244, 63, 94, 0.3); font-weight: 700; font-size: 12px; padding: 6px 12px;">
                     Jami Qoldiq Qarz: {{ grand_totals.total_debt|floatformat:0 }} UZS
                 </span>
@@ -95,6 +98,7 @@
                         <th style="padding: 8px 10px; text-align: left; font-weight: 700; color: #e2e8f0; border-right: 1px solid rgba(255,255,255,0.06);">Guruh</th>
                         <th style="padding: 8px 10px; text-align: center; font-weight: 700; color: #e2e8f0; border-right: 1px solid rgba(255,255,255,0.06);">Bola</th>
                         <th style="padding: 8px 10px; text-align: right; font-weight: 700; color: #94a3b8; border-right: 1px solid rgba(255,255,255,0.06);">Hisoblangan</th>
+                        <th style="padding: 8px 8px; text-align: right; font-weight: 700; color: #ec4899; border-right: 1px solid rgba(255,255,255,0.06);">Skidka</th>
                         <th style="padding: 8px 10px; text-align: right; font-weight: 700; color: #34d399; border-right: 1px solid rgba(255,255,255,0.06);">To'langan</th>
                         <th style="padding: 8px 10px; text-align: right; font-weight: 700; color: #fb7185; border-right: 1px solid rgba(255,255,255,0.06);">Qoldiq</th>
                         <th style="padding: 8px 8px; text-align: right; font-weight: 700; color: #38bdf8; border-right: 1px solid rgba(255,255,255,0.06);">Karta</th>
@@ -121,6 +125,9 @@
                         </td>
                         <td style="padding: 7px 10px; text-align: right; color: #e2e8f0; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
                             {{ gs.total_expected|floatformat:0 }}
+                        </td>
+                        <td style="padding: 7px 8px; text-align: right; color: #ec4899; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.total_discount|floatformat:0 }}
                         </td>
                         <td style="padding: 7px 10px; text-align: right; color: #34d399; font-weight: 700; border-right: 1px solid rgba(255,255,255,0.06);">
                             {{ gs.total_paid|floatformat:0 }}
@@ -159,7 +166,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="11" style="text-align: center; color: var(--text-dim); padding: 20px;">
+                        <td colspan="12" style="text-align: center; color: var(--text-dim); padding: 20px;">
                             Hozircha guruhlar mavjud emas.
                         </td>
                     </tr>
@@ -176,6 +183,9 @@
                         </td>
                         <td style="padding: 9px 10px; text-align: right; font-weight: 900; color: white; border-right: 1px solid rgba(255,255,255,0.1);">
                             {{ grand_totals.total_expected|floatformat:0 }}
+                        </td>
+                        <td style="padding: 9px 8px; text-align: right; font-weight: 900; color: #ec4899; border-right: 1px solid rgba(255,255,255,0.1); font-size: 13px;">
+                            {{ grand_totals.total_discount|floatformat:0 }}
                         </td>
                         <td style="padding: 9px 10px; text-align: right; font-weight: 900; color: #34d399; border-right: 1px solid rgba(255,255,255,0.1); font-size: 13px;">
                             {{ grand_totals.total_paid|floatformat:0 }}
@@ -315,6 +325,9 @@
                 <div style="background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #34d399;">
                     Jami To'langan: <b>{{ active_group_stats.total_paid|floatformat:0 }}</b>
                 </div>
+                <div style="background: rgba(236, 72, 153, 0.12); border: 1px solid rgba(236, 72, 153, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #f472b6;">
+                    🎁 Jami Skidka: <b>{{ active_group_stats.total_discount|floatformat:0 }}</b>
+                </div>
                 <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #fbbf24;">
                     💵 Naqd: <b>{{ active_group_stats.paid_cash|floatformat:0 }}</b>
                 </div>
@@ -334,12 +347,14 @@
         </div>
 
         <div class="glass-table-wrapper" style="overflow-x: auto;">
-            <table class="glass-table compact-finance-table" style="width: 100%; border-collapse: collapse; min-width: 860px; font-size: 12px;">
+            <table class="glass-table compact-finance-table" style="width: 100%; border-collapse: collapse; min-width: 900px; font-size: 12px;">
                 <thead>
                     <tr style="border-bottom: 2px solid rgba(56, 189, 248, 0.35); background: rgba(255, 255, 255, 0.04); font-size: 11px;">
                         <th style="padding: 7px 8px; text-align: left; min-width: 130px;">Bola F.I.Sh</th>
                         <th style="padding: 7px 8px; text-align: left; min-width: 110px;">Ota-onasi / Tel</th>
                         <th style="padding: 7px 8px; text-align: right; min-width: 85px;">Tarifi</th>
+                        <!-- Yangi: Skidka Ustuni -->
+                        <th style="padding: 7px 6px; text-align: right; width: 75px; color: #ec4899; font-weight: 800;">Skidka</th>
                         <th style="padding: 7px 6px; text-align: center; width: 50px;">Sababli</th>
                         <th style="padding: 7px 6px; text-align: right; width: 68px;">Qayta hisob</th>
                         <th style="padding: 7px 8px; text-align: right; min-width: 85px; color: #34d399; font-weight: 800;">Jami to'lov</th>
@@ -374,11 +389,24 @@
                                     <i data-lucide="edit-3" style="width: 11px; height: 11px;"></i>
                                 </button>
                             </div>
-                            {% if inv.recalculation_amount > 0 %}
+                            {% if inv.recalculation_amount > 0 or inv.discount > 0 %}
                             <div style="font-size: 10px; color: #34d399; margin-top: 1px;">
                                 Hisob: <b>{{ inv.total_amount|floatformat:0 }}</b>
                             </div>
                             {% endif %}
+                        </td>
+                        <!-- Skidka (Chegirma) -->
+                        <td style="padding: 7px 6px; text-align: right; white-space: nowrap;">
+                            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px;">
+                                {% if inv.discount > 0 %}
+                                <strong style="color: #ec4899; font-size: 12px;">{{ inv.discount|floatformat:0 }}</strong>
+                                {% else %}
+                                <span style="color: var(--text-dim); font-size: 11px;">0</span>
+                                {% endif %}
+                                <button type="button" onclick="openDiscountModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.discount }}, {{ inv.base_fee }})" style="background: rgba(236, 72, 153, 0.15); border: 1px solid rgba(236, 72, 153, 0.35); border-radius: 4px; padding: 2px 4px; color: #ec4899; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1;" title="Skidkani kiritish / tahrirlash">
+                                    <i data-lucide="percent" style="width: 11px; height: 11px;"></i>
+                                </button>
+                            </div>
                         </td>
                         <!-- Sababli kun -->
                         <td style="padding: 7px 6px; text-align: center; white-space: nowrap; font-size: 11.5px;">
@@ -466,7 +494,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="13" style="text-align: center; color: var(--text-dim); padding: 24px;">
+                        <td colspan="14" style="text-align: center; color: var(--text-dim); padding: 24px;">
                             Ushbu guruhda faol bolalar mavjud emas yoki {{ month }}/{{ year }} oyi uchun invoyslar topilmadi.
                         </td>
                     </tr>
@@ -481,6 +509,10 @@
                         </td>
                         <td style="padding: 8px 8px; text-align: right; font-weight: 800; color: white;">
                             {{ active_group_stats.total_expected|floatformat:0 }}
+                        </td>
+                        <!-- Jami Skidka -->
+                        <td style="padding: 8px 6px; text-align: right; font-weight: 800; color: #ec4899; font-size: 12.5px;">
+                            {{ active_group_stats.total_discount|floatformat:0 }}
                         </td>
                         <td colspan="2" style="padding: 8px 6px; text-align: center; color: var(--text-dim); font-size: 11px;">
                             —
@@ -666,6 +698,62 @@
                 </button>
                 <button type="submit" id="btnSubmitTariff" class="btn-glass btn-primary" style="font-weight: 700;">
                     ✓ Tarifni Saqlash
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Bolaga Chegirma (Skidka) Berish / Tahrirlash -->
+<div id="modalEditDiscount" class="glass-modal-backdrop" style="display: none;">
+    <div class="glass-modal" style="max-width: 480px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #ec4899, #f43f5e); display: flex; align-items: center; justify-content: center; color: white;">
+                    <i data-lucide="percent" style="width: 18px; height: 18px;"></i>
+                </div>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white; margin: 0;">Chegirma (Skidka) Kiritish</h3>
+            </div>
+            <button type="button" onclick="document.getElementById('modalEditDiscount').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form id="formEditDiscount" onsubmit="submitDiscountEdit(event)">
+            <input type="hidden" id="editDiscountInvoiceId">
+
+            <div style="background: rgba(255, 255, 255, 0.04); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 18px; border: 1px solid rgba(255, 255, 255, 0.08);">
+                <div style="font-size: 12px; color: var(--text-dim);">Bola:</div>
+                <div id="editDiscountChildName" style="font-size: 16px; font-weight: 700; color: white; margin-bottom: 6px;"></div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+                    <span style="color: var(--text-dim);">Guruh/Bola tarifi:</span>
+                    <strong id="editDiscountBaseFee" style="color: #38bdf8; font-size: 13px;">0 UZS</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                    <span style="color: var(--text-dim);">Amaldagi chegirma:</span>
+                    <strong id="editDiscountCurrentVal" style="color: #ec4899; font-size: 14px;">0 UZS</strong>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label class="form-label" style="font-weight: 600; color: white; margin: 0;">Chegirma (Skidka) Summasi (UZS) *</label>
+                    <span style="font-size: 11px; color: #ec4899;">0 kiritilsa chegirma bekor bo'ladi</span>
+                </div>
+                <input type="number" id="editDiscountNewVal" class="glass-input" step="any" min="0" required placeholder="Masalan: 200000" style="width: 100%; font-size: 16px; font-weight: 700; color: #ec4899;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 18px;">
+                <label class="form-label">Sabab / Chegirma asosi (Ixtiyoriy):</label>
+                <input type="text" id="editDiscountReason" class="glass-input" placeholder="Masalan: 2-farzand chegirmasi, direktor ruxsati..." style="width: 100%;">
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" onclick="document.getElementById('modalEditDiscount').style.display='none'" class="btn-glass btn-secondary">
+                    Bekor Qilish
+                </button>
+                <button type="submit" id="btnSubmitDiscount" class="btn-glass" style="background: linear-gradient(135deg, #ec4899, #db2777); color: white; font-weight: 700; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer;">
+                    ✓ Skidkani Saqlash
                 </button>
             </div>
         </form>
@@ -935,6 +1023,62 @@
         } finally {
             btn.disabled = false;
             btn.innerText = "✓ Tarifni Saqlash";
+        }
+    }
+
+    // --- Chegirma (Skidka) Tahrirlash Mantiqi ---
+    function openDiscountModal(invoiceId, childName, currentDiscount, baseFee) {
+        document.getElementById('editDiscountInvoiceId').value = invoiceId;
+        document.getElementById('editDiscountChildName').innerText = childName;
+        document.getElementById('editDiscountBaseFee').innerText = Number(baseFee || 0).toLocaleString() + ' UZS';
+        document.getElementById('editDiscountCurrentVal').innerText = Number(currentDiscount || 0).toLocaleString() + ' UZS';
+        document.getElementById('editDiscountNewVal').value = currentDiscount || 0;
+        document.getElementById('editDiscountReason').value = '';
+        document.getElementById('modalEditDiscount').style.display = 'flex';
+        document.getElementById('editDiscountNewVal').focus();
+    }
+
+    async function submitDiscountEdit(e) {
+        e.preventDefault();
+        const invoiceId = document.getElementById('editDiscountInvoiceId').value;
+        const discountVal = document.getElementById('editDiscountNewVal').value;
+        const reason = document.getElementById('editDiscountReason').value;
+        const btn = document.getElementById('btnSubmitDiscount');
+
+        if (discountVal === '' || parseFloat(discountVal) < 0) {
+            alert("Iltimos, to'g'ri chegirma summasini kiriting (kamida 0)!");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "Saqlanmoqda...";
+
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const res = await fetch("{% url 'update_invoice_discount_api' %}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                },
+                body: JSON.stringify({
+                    invoice_id: invoiceId,
+                    discount: discountVal,
+                    reason: reason
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ " + data.message);
+                window.location.reload();
+            } else {
+                alert("Xatolik: " + data.message);
+            }
+        } catch (err) {
+            alert("Aloqa xatosi: " + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "✓ Skidkani Saqlash";
         }
     }
 

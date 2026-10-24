@@ -57,7 +57,7 @@ class StaffAttendanceAdmin(admin.ModelAdmin):
 
 @admin.register(MonthlyInvoice)
 class MonthlyInvoiceAdmin(admin.ModelAdmin):
-    list_display = ('child', 'month', 'year', 'total_amount', 'paid_amount', 'status')
+    list_display = ('child', 'month', 'year', 'base_fee', 'discount', 'total_amount', 'paid_amount', 'status')
     list_filter = ('status', 'month', 'year')
 
 @admin.register(Payment)

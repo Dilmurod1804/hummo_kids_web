@@ -62,6 +62,7 @@ urlpatterns = [
     path('finance/recalculate-api/', views.recalculate_invoices_api, name='recalculate_invoices_api'),
     path('finance/payment-api/', views.record_payment_api, name='record_payment_api'),
     path('finance/invoice/update-tariff/', views.update_invoice_tariff_api, name='update_invoice_tariff_api'),
+    path('finance/invoice/update-discount/', views.update_invoice_discount_api, name='update_invoice_discount_api'),
     path('finance/invoice/<int:invoice_id>/payments/', views.invoice_payments_api, name='invoice_payments_api'),
     path('finance/payment/<int:payment_id>/update/', views.update_payment_api, name='update_payment_api'),
     path('finance/payment/<int:payment_id>/delete/', views.delete_payment_api, name='delete_payment_api'),
