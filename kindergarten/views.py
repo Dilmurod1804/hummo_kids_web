@@ -51,8 +51,8 @@ from .audit_utils import (
 # --- Role Helpers & Custom Decorators ---
 def is_director_or_manager(user):
     """
-    Ruxsat tekshiruvi: Menejer ma'muriy va moliya bo'limlariga KIRA OLMAYDI.
-    Faqat Bog'cha Direktori va Superuser (Admin) ga ruxsat beriladi.
+    Ruxsat tekshiruvi: Faqat Bog'cha Direktori va Superuser (Admin) ga ruxsat beriladi.
+    Menejer (MANAGER) moliya va ma'muriy bo'limlarga KIRA OLMAYDI.
     """
     return user.is_authenticated and (user.role == 'DIRECTOR' or user.is_superuser)
 
@@ -63,47 +63,56 @@ def director_or_manager_required(view_func):
     """
     Ma'muriy bo'limlar (Moliya, Guruhlar, Xodimlar, Sozlamalar) uchun himoya dekoratori.
     Menejer (MANAGER) ushbu sahifalarga kira olmaydi.
-    Agar Manager url orqali kirmoqchi bo'lsa, 'Ruxsat berilmagan' ogohlantirishi bilan
-    Face ID sahifasiga redirect qilinadi (yoki API bo'lsa 403 qaytaradi).
     """
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
         if not request.user.is_authenticated:
             return redirect('login')
         
-        # Menejer uchun cheklov
-        if request.user.role == 'MANAGER':
-            if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.path.endswith('_api'):
-                return JsonResponse({'success': False, 'message': "Ruxsat berilmagan! Menejer uchun bu amal taqiqlangan."}, status=403)
-            messages.error(request, "Ruxsat berilmagan! Menejer faqat Face ID (xodimlar davomati) va shaxsiy profildan foydalanishi mumkin.")
-            return redirect('staff_attendance_portal')
-
         if not request.user.can_manage_all:
             if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.path.endswith('_api'):
-                return JsonResponse({'success': False, 'message': "Ushbu amal faqat Direktor uchun ruxsat etilgan!"}, status=403)
-            messages.error(request, "Ushbu bo'limga kirish faqat Bog'cha Direktori uchun ruxsat etilgan!")
-            if request.user.has_assigned_group:
+                return JsonResponse({'success': False, 'message': "Ruxsat berilmagan! Ushbu amal faqat Bog'cha Direktori uchun ruxsat etilgan."}, status=403)
+            messages.error(request, "Ruxsat berilmagan! Ushbu bo'lim faqat Bog'cha Direktori uchun ruxsat etilgan.")
+            if request.user.role == 'MANAGER':
+                return redirect('crm_leads_list')
+            elif request.user.has_assigned_group:
                 return redirect('teacher_dashboard')
             return redirect('staff_attendance_portal')
 
         return view_func(request, *args, **kwargs)
     return _wrapped
 
-# Admin va Moliya dekoratorlari
-admin_required = director_or_manager_required
-finance_access_required = director_or_manager_required
-group_access_required = director_or_manager_required
-
-def director_only_required(view_func):
+def finance_access_required(view_func):
+    """
+    Moliya, Kassa va Kirim-Chiqimlar (Expenses) bo'limlari uchun qat'iy himoya dekoratori.
+    Menejer (MANAGER), Tarbiyachi (TEACHER) va boshqa xodimlarga QAT'IY TAQIQLANGAN.
+    Faqat Bog'cha Direktori va Superuser/Admin kira oladi.
+    """
     @wraps(view_func)
     def _wrapped(request, *args, **kwargs):
         if not request.user.is_authenticated:
             return redirect('login')
-        if not request.user.is_director:
-            messages.error(request, "Ushbu bo'lim faqat Bog'cha Direktori uchun ruxsat etilgan!")
-            return redirect('dashboard')
+        
+        if not (request.user.role == 'DIRECTOR' or request.user.is_superuser):
+            if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.path.endswith('_api'):
+                return JsonResponse({
+                    'success': False,
+                    'message': "Ruxsat berilmagan! Moliya va Kirim-Chiqim bo'limi faqat Bog'cha Direktori uchun ruxsat etilgan."
+                }, status=403)
+            messages.error(request, "Ruxsat berilmagan! Moliya va Kirim-Chiqim bo'limi faqat Bog'cha Direktori uchun ruxsat etilgan.")
+            if request.user.role == 'MANAGER':
+                return redirect('crm_leads_list')
+            elif request.user.has_assigned_group:
+                return redirect('teacher_dashboard')
+            return redirect('staff_attendance_portal')
+
         return view_func(request, *args, **kwargs)
     return _wrapped
+
+# Aliaslar
+admin_required = director_or_manager_required
+director_only_required = finance_access_required
+group_access_required = director_or_manager_required
 
 def teacher_assigned_or_admin_required(view_func):
     @wraps(view_func)
@@ -2347,16 +2356,19 @@ def compute_groups_finance_summary(month, year):
     }
 
     for g in all_groups:
-        invs = MonthlyInvoice.objects.filter(child__group=g, month=month, year=year)
+        active_children = Child.objects.filter(group=g, is_active=True).order_by('first_name', 'last_name')
+        active_children_ids = list(active_children.values_list('id', flat=True))
+        children_cnt = len(active_children_ids)
+
+        invs = MonthlyInvoice.objects.filter(child_id__in=active_children_ids, month=month, year=year)
         total_exp = invs.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
         total_pd = invs.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
         total_recalc = invs.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
         total_dbt = max(Decimal('0.00'), total_exp - total_pd)
         paid_pct = round((float(total_pd) / float(total_exp) * 100), 1) if total_exp > 0 else 0
-        children_cnt = g.children.filter(is_active=True).count()
 
-        # To'lov turlari bo'yicha guruh to'lovlari (shu oy va yil invoyslari bo'yicha)
-        g_payments = Payment.objects.filter(invoice__child__group=g, invoice__month=month, invoice__year=year)
+        # To'lov turlari bo'yicha guruh to'lovlari (shu guruhning faol bolalari bo'yicha)
+        g_payments = Payment.objects.filter(invoice__child_id__in=active_children_ids, invoice__month=month, invoice__year=year)
         paid_card = g_payments.filter(payment_method__in=['CARD', 'BANK_TRANSFER']).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
         paid_terminal = g_payments.filter(payment_method='TERMINAL').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
         paid_payme = g_payments.filter(payment_method__in=['CLICK_PAYME', 'PAYME']).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
@@ -2432,7 +2444,7 @@ def compute_groups_finance_summary(month, year):
 
 
 @login_required
-@user_passes_test(is_director_or_manager)
+@finance_access_required
 def finance_dashboard(request):
     today = timezone.localtime(timezone.now()).date()
     month = int(request.GET.get('month', today.month))
@@ -2642,7 +2654,7 @@ def finance_dashboard(request):
 
 @csrf_exempt
 @login_required
-@user_passes_test(is_director_or_manager)
+@finance_access_required
 def recalculate_invoices_api(request):
     """
     Automated Recalculation (Перерасчет):
@@ -3008,7 +3020,7 @@ def delete_payment_api(request, payment_id):
 # --- Vaqtinchalik Bolalar (Trial Children) ---
 @csrf_exempt
 @login_required
-@user_passes_test(is_director_or_manager)
+@finance_access_required
 def trial_child_create_api(request):
     """Yangi vaqtinchalik (sinov muddatidagi) bolani ro'yxatga olish"""
     if request.method == 'POST':
@@ -3055,7 +3067,7 @@ def trial_child_create_api(request):
 
 @csrf_exempt
 @login_required
-@user_passes_test(is_director_or_manager)
+@finance_access_required
 def trial_child_payment_api(request):
     """Vaqtinchalik bola uchun to'lov qabul qilish"""
     if request.method == 'POST':
@@ -3100,7 +3112,7 @@ def trial_child_payment_api(request):
 
 @csrf_exempt
 @login_required
-@user_passes_test(is_director_or_manager)
+@finance_access_required
 def trial_child_promote_api(request):
     """Vaqtinchalik bolani doimiy guruhga o'tkazish"""
     if request.method == 'POST':
@@ -3173,7 +3185,7 @@ def trial_child_promote_api(request):
 
 @csrf_exempt
 @login_required
-@user_passes_test(is_director_or_manager)
+@finance_access_required
 def trial_child_update_status_api(request):
     """Vaqtinchalik bola statusini yangilash (LEFT)"""
     if request.method == 'POST':
@@ -3223,7 +3235,7 @@ def export_staff_attendance(request):
     return response
 
 @login_required
-@user_passes_test(is_director_or_manager)
+@finance_access_required
 def export_finance(request):
     month = request.GET.get('month', None)
     year = request.GET.get('year', None)
@@ -3233,7 +3245,7 @@ def export_finance(request):
     return response
 
 @login_required
-@user_passes_test(is_director_or_manager)
+@finance_access_required
 def export_finance_pdf(request):
     month = request.GET.get('month', None)
     year = request.GET.get('year', None)
@@ -3564,17 +3576,91 @@ def groups_finance_view(request):
         active_group = all_groups.first()
 
     group_invoices = []
-    active_group_stats = {}
+    active_group_stats = {
+        'total_expected': Decimal('0.00'),
+        'total_paid': Decimal('0.00'),
+        'total_debt': Decimal('0.00'),
+        'paid_cash': Decimal('0.00'),
+        'paid_card': Decimal('0.00'),
+        'paid_terminal': Decimal('0.00'),
+        'paid_payme': Decimal('0.00'),
+    }
     if active_group:
-        group_invoices = MonthlyInvoice.objects.select_related('child', 'child__group').prefetch_related('payments').filter(
-            child__group=active_group, month=month, year=year
-        ).order_by('child__first_name')
-        total_exp = group_invoices.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
-        total_pd = group_invoices.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
+        kg_settings = KindergartenSettings.get_settings()
+
+        # 1. Guruh o'quvchilarini qat'iy va xatosiz filtrlash:
+        # Faqat va faqat tanlangan guruhga tegishli faol bolalar olinadi (Child.objects.filter(group=active_group, is_active=True))
+        group_children = Child.objects.filter(group=active_group, is_active=True).select_related('group').order_by('first_name', 'last_name')
+        child_ids = [c.id for c in group_children]
+
+        # Shu guruh bolalariga tegishli mavjud oylik invoyslar
+        existing_invoices = {
+            inv.child_id: inv
+            for inv in MonthlyInvoice.objects.filter(
+                child_id__in=child_ids, month=month, year=year
+            ).select_related('child', 'child__group').prefetch_related('payments')
+        }
+
+        total_exp = Decimal('0.00')
+        total_pd = Decimal('0.00')
+        g_cash = Decimal('0.00')
+        g_card = Decimal('0.00')
+        g_term = Decimal('0.00')
+        g_payme = Decimal('0.00')
+
+        for child in group_children:
+            inv = existing_invoices.get(child.id)
+            if not inv:
+                # Agar bola uchun joriy oyda invoice mavjud bo'lmasa, uni yaratamiz
+                inv = MonthlyInvoice.objects.create(
+                    child=child,
+                    month=month,
+                    year=year,
+                    base_fee=active_group.monthly_fee or kg_settings.default_monthly_fee,
+                    meal_rate=kg_settings.daily_meal_rate,
+                    total_amount=active_group.monthly_fee or kg_settings.default_monthly_fee,
+                    paid_amount=Decimal('0.00'),
+                    status='UNPAID',
+                )
+
+            # 2. To'lov turlarini hisoblash: Naqd, Karta, Terminal, Payme
+            c_cash = Decimal('0.00')
+            c_card = Decimal('0.00')
+            c_term = Decimal('0.00')
+            c_payme = Decimal('0.00')
+
+            for p in inv.payments.all():
+                if p.payment_method == 'CASH':
+                    c_cash += p.amount
+                elif p.payment_method in ['CARD', 'BANK_TRANSFER', 'MARTA']:
+                    c_card += p.amount
+                elif p.payment_method == 'TERMINAL':
+                    c_term += p.amount
+                elif p.payment_method in ['CLICK_PAYME', 'PAYME']:
+                    c_payme += p.amount
+
+            inv.cash_amount = c_cash
+            inv.card_amount = c_card
+            inv.terminal_amount = c_term
+            inv.payme_amount = c_payme
+
+            total_exp += inv.total_amount
+            total_pd += inv.paid_amount
+            g_cash += c_cash
+            g_card += c_card
+            g_term += c_term
+            g_payme += c_payme
+
+            group_invoices.append(inv)
+
         active_group_stats = {
             'total_expected': total_exp,
             'total_paid': total_pd,
             'total_debt': max(Decimal('0.00'), total_exp - total_pd),
+            'paid_cash': g_cash,
+            'paid_card': g_card,
+            'paid_terminal': g_term,
+            'paid_payme': g_payme,
         }
 
     return render(request, 'finance/groups_finance.html', {
@@ -3642,7 +3728,7 @@ def audit_logs_view(request):
 # ============================================================
 
 @login_required
-@user_passes_test(is_director_or_manager)
+@finance_access_required
 def expenses_list(request):
     """Chiqimlar ro'yxati va statistikasi"""
     date_from = request.GET.get('date_from', '')
@@ -3695,7 +3781,7 @@ def expenses_list(request):
 
 
 @login_required
-@user_passes_test(is_director_or_manager)
+@finance_access_required
 def expense_add(request):
     if request.method == 'POST':
         try:
@@ -3722,7 +3808,7 @@ def expense_add(request):
 
 
 @login_required
-@user_passes_test(is_director_or_manager)
+@finance_access_required
 def expense_edit(request, pk):
     exp = get_object_or_404(Expense, pk=pk)
     if request.method == 'POST':
@@ -3745,7 +3831,7 @@ def expense_edit(request, pk):
 
 
 @login_required
-@user_passes_test(is_director_or_manager)
+@finance_access_required
 def expense_delete(request, pk):
     exp = get_object_or_404(Expense, pk=pk)
     if request.method == 'POST':
@@ -3759,7 +3845,7 @@ def expense_delete(request, pk):
 
 
 @login_required
-@user_passes_test(is_director_or_manager)
+@finance_access_required
 def export_expenses(request):
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
@@ -4065,7 +4151,9 @@ def lead_convert_to_child(request, pk):
                 request=request
             )
             messages.success(request, f"'{temp_child.full_name}' sinov muddatidagi bolalar ro'yxatiga qo'shildi!")
-            return redirect('finance_dashboard')
+            if request.user.can_manage_all:
+                return redirect('finance_dashboard')
+            return redirect('crm_leads_list')
 
     return render(request, 'crm/lead_convert.html', {
         'lead': lead,

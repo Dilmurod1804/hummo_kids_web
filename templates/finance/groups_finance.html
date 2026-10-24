@@ -89,26 +89,26 @@
 
         <!-- Excel Styled Summary Table -->
         <div class="glass-table-wrapper" style="border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--radius-md); overflow-x: auto;">
-            <table class="glass-table excel-style-table" style="width: 100%; border-collapse: collapse; min-width: 920px;">
+            <table class="glass-table excel-style-table" style="width: 100%; border-collapse: collapse; min-width: 860px; font-size: 12px;">
                 <thead>
-                    <tr style="background: rgba(255, 255, 255, 0.07); border-bottom: 2px solid rgba(56, 189, 248, 0.4);">
-                        <th style="padding: 12px 14px; text-align: left; font-weight: 700; color: #e2e8f0; border-right: 1px solid rgba(255,255,255,0.06);">Guruh</th>
-                        <th style="padding: 12px 14px; text-align: center; font-weight: 700; color: #e2e8f0; border-right: 1px solid rgba(255,255,255,0.06);">Bola soni</th>
-                        <th style="padding: 12px 14px; text-align: right; font-weight: 700; color: #94a3b8; border-right: 1px solid rgba(255,255,255,0.06);">Hisoblangan (Jami qarz)</th>
-                        <th style="padding: 12px 14px; text-align: right; font-weight: 700; color: #34d399; border-right: 1px solid rgba(255,255,255,0.06);">To'langan</th>
-                        <th style="padding: 12px 14px; text-align: right; font-weight: 700; color: #fb7185; border-right: 1px solid rgba(255,255,255,0.06);">Qoldiq</th>
-                        <th style="padding: 12px 14px; text-align: right; font-weight: 700; color: #38bdf8; border-right: 1px solid rgba(255,255,255,0.06);">Karta</th>
-                        <th style="padding: 12px 14px; text-align: right; font-weight: 700; color: #818cf8; border-right: 1px solid rgba(255,255,255,0.06);">Terminal</th>
-                        <th style="padding: 12px 14px; text-align: right; font-weight: 700; color: #c084fc; border-right: 1px solid rgba(255,255,255,0.06);">Payme</th>
-                        <th style="padding: 12px 14px; text-align: right; font-weight: 700; color: #f59e0b; border-right: 1px solid rgba(255,255,255,0.06);">Naqd</th>
-                        <th style="padding: 12px 14px; text-align: right; font-weight: 700; color: #ec4899; border-right: 1px solid rgba(255,255,255,0.06);">Marta</th>
-                        <th style="padding: 12px 14px; text-align: left; font-weight: 700; color: #fbbf24;">Sabab / Izoh</th>
+                    <tr style="background: rgba(255, 255, 255, 0.07); border-bottom: 2px solid rgba(56, 189, 248, 0.4); font-size: 11px;">
+                        <th style="padding: 8px 10px; text-align: left; font-weight: 700; color: #e2e8f0; border-right: 1px solid rgba(255,255,255,0.06);">Guruh</th>
+                        <th style="padding: 8px 10px; text-align: center; font-weight: 700; color: #e2e8f0; border-right: 1px solid rgba(255,255,255,0.06);">Bola</th>
+                        <th style="padding: 8px 10px; text-align: right; font-weight: 700; color: #94a3b8; border-right: 1px solid rgba(255,255,255,0.06);">Hisoblangan</th>
+                        <th style="padding: 8px 10px; text-align: right; font-weight: 700; color: #34d399; border-right: 1px solid rgba(255,255,255,0.06);">To'langan</th>
+                        <th style="padding: 8px 10px; text-align: right; font-weight: 700; color: #fb7185; border-right: 1px solid rgba(255,255,255,0.06);">Qoldiq</th>
+                        <th style="padding: 8px 8px; text-align: right; font-weight: 700; color: #38bdf8; border-right: 1px solid rgba(255,255,255,0.06);">Karta</th>
+                        <th style="padding: 8px 8px; text-align: right; font-weight: 700; color: #818cf8; border-right: 1px solid rgba(255,255,255,0.06);">Terminal</th>
+                        <th style="padding: 8px 8px; text-align: right; font-weight: 700; color: #c084fc; border-right: 1px solid rgba(255,255,255,0.06);">Payme</th>
+                        <th style="padding: 8px 8px; text-align: right; font-weight: 700; color: #f59e0b; border-right: 1px solid rgba(255,255,255,0.06);">Naqd</th>
+                        <th style="padding: 8px 8px; text-align: right; font-weight: 700; color: #ec4899; border-right: 1px solid rgba(255,255,255,0.06);">Marta</th>
+                        <th style="padding: 8px 10px; text-align: left; font-weight: 700; color: #fbbf24;">Sabab / Izoh</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for gs in groups_summary %}
                     <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(56, 189, 248, 0.06)'" onmouseout="this.style.background='transparent'">
-                        <td style="padding: 12px 14px; border-right: 1px solid rgba(255,255,255,0.06);">
+                        <td style="padding: 7px 10px; border-right: 1px solid rgba(255,255,255,0.06);">
                             <a href="?group={{ gs.group.id }}&month={{ month }}&year={{ year }}" style="color: white; text-decoration: none; font-weight: 700; display: flex; align-items: center; gap: 6px;">
                                 <span>{{ gs.name }}</span>
                                 {% if active_group.id == gs.group.id %}
@@ -116,38 +116,38 @@
                                 {% endif %}
                             </a>
                         </td>
-                        <td style="padding: 12px 14px; text-align: center; color: #cbd5e1; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                        <td style="padding: 7px 10px; text-align: center; color: #cbd5e1; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
                             {{ gs.children_count }} ta
                         </td>
-                        <td style="padding: 12px 14px; text-align: right; color: #e2e8f0; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
-                            {{ gs.total_expected|floatformat:0 }} UZS
+                        <td style="padding: 7px 10px; text-align: right; color: #e2e8f0; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.total_expected|floatformat:0 }}
                         </td>
-                        <td style="padding: 12px 14px; text-align: right; color: #34d399; font-weight: 700; border-right: 1px solid rgba(255,255,255,0.06);">
-                            {{ gs.total_paid|floatformat:0 }} UZS
+                        <td style="padding: 7px 10px; text-align: right; color: #34d399; font-weight: 700; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.total_paid|floatformat:0 }}
                         </td>
-                        <td style="padding: 12px 14px; text-align: right; color: {% if gs.total_debt > 0 %}#fb7185{% else %}#34d399{% endif %}; font-weight: 700; border-right: 1px solid rgba(255,255,255,0.06);">
-                            {{ gs.total_debt|floatformat:0 }} UZS
+                        <td style="padding: 7px 10px; text-align: right; color: {% if gs.total_debt > 0 %}#fb7185{% else %}#34d399{% endif %}; font-weight: 700; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.total_debt|floatformat:0 }}
                         </td>
-                        <td style="padding: 12px 14px; text-align: right; color: #38bdf8; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
-                            {{ gs.paid_card|floatformat:0 }} UZS
+                        <td style="padding: 7px 8px; text-align: right; color: #38bdf8; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.paid_card|floatformat:0 }}
                         </td>
-                        <td style="padding: 12px 14px; text-align: right; color: #818cf8; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
-                            {{ gs.paid_terminal|floatformat:0 }} UZS
+                        <td style="padding: 7px 8px; text-align: right; color: #818cf8; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.paid_terminal|floatformat:0 }}
                         </td>
-                        <td style="padding: 12px 14px; text-align: right; color: #c084fc; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
-                            {{ gs.paid_payme|floatformat:0 }} UZS
+                        <td style="padding: 7px 8px; text-align: right; color: #c084fc; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.paid_payme|floatformat:0 }}
                         </td>
-                        <td style="padding: 12px 14px; text-align: right; color: #f59e0b; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
-                            {{ gs.paid_cash|floatformat:0 }} UZS
+                        <td style="padding: 7px 8px; text-align: right; color: #f59e0b; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.paid_cash|floatformat:0 }}
                         </td>
-                        <td style="padding: 12px 14px; text-align: right; color: #ec4899; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
-                            {{ gs.paid_marta|floatformat:0 }} UZS
+                        <td style="padding: 7px 8px; text-align: right; color: #ec4899; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.paid_marta|floatformat:0 }}
                         </td>
-                        <td style="padding: 12px 14px; text-align: left; font-size: 12px;">
+                        <td style="padding: 7px 10px; text-align: left; font-size: 11px;">
                             {% if gs.reasons_list %}
-                                <div style="display: flex; flex-direction: column; gap: 4px; max-width: 220px;">
+                                <div style="display: flex; flex-direction: column; gap: 3px; max-width: 200px;">
                                 {% for r in gs.reasons_list %}
-                                    <span style="display: inline-block; background: rgba(245, 158, 11, 0.15); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.35); padding: 2px 7px; border-radius: 4px; font-size: 11px; white-space: normal; word-break: break-word;">
+                                    <span style="display: inline-block; background: rgba(245, 158, 11, 0.15); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.35); padding: 1px 5px; border-radius: 4px; font-size: 10.5px; white-space: normal; word-break: break-word;">
                                         {{ r }}
                                     </span>
                                 {% endfor %}
@@ -159,7 +159,7 @@
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="11" style="text-align: center; color: var(--text-dim); padding: 24px;">
+                        <td colspan="11" style="text-align: center; color: var(--text-dim); padding: 20px;">
                             Hozircha guruhlar mavjud emas.
                         </td>
                     </tr>
@@ -167,38 +167,38 @@
                 </tbody>
                 <!-- JAMI (Grand Total) Row -->
                 <tfoot>
-                    <tr style="background: rgba(56, 189, 248, 0.14); border-top: 2px solid #38bdf8; font-size: 14px;">
-                        <td style="padding: 14px; font-weight: 900; color: #38bdf8; border-right: 1px solid rgba(255,255,255,0.1); letter-spacing: 0.5px;">
+                    <tr style="background: rgba(56, 189, 248, 0.14); border-top: 2px solid #38bdf8; font-size: 12px;">
+                        <td style="padding: 9px 10px; font-weight: 900; color: #38bdf8; border-right: 1px solid rgba(255,255,255,0.1); letter-spacing: 0.5px;">
                             JAMI
                         </td>
-                        <td style="padding: 14px; text-align: center; font-weight: 900; color: white; border-right: 1px solid rgba(255,255,255,0.1);">
+                        <td style="padding: 9px 10px; text-align: center; font-weight: 900; color: white; border-right: 1px solid rgba(255,255,255,0.1);">
                             {{ grand_totals.children_count }} ta
                         </td>
-                        <td style="padding: 14px; text-align: right; font-weight: 900; color: white; border-right: 1px solid rgba(255,255,255,0.1);">
-                            {{ grand_totals.total_expected|floatformat:0 }} UZS
+                        <td style="padding: 9px 10px; text-align: right; font-weight: 900; color: white; border-right: 1px solid rgba(255,255,255,0.1);">
+                            {{ grand_totals.total_expected|floatformat:0 }}
                         </td>
-                        <td style="padding: 14px; text-align: right; font-weight: 900; color: #34d399; border-right: 1px solid rgba(255,255,255,0.1); font-size: 15px;">
-                            {{ grand_totals.total_paid|floatformat:0 }} UZS
+                        <td style="padding: 9px 10px; text-align: right; font-weight: 900; color: #34d399; border-right: 1px solid rgba(255,255,255,0.1); font-size: 13px;">
+                            {{ grand_totals.total_paid|floatformat:0 }}
                         </td>
-                        <td style="padding: 14px; text-align: right; font-weight: 900; color: #fb7185; border-right: 1px solid rgba(255,255,255,0.1); font-size: 15px;">
-                            {{ grand_totals.total_debt|floatformat:0 }} UZS
+                        <td style="padding: 9px 10px; text-align: right; font-weight: 900; color: #fb7185; border-right: 1px solid rgba(255,255,255,0.1); font-size: 13px;">
+                            {{ grand_totals.total_debt|floatformat:0 }}
                         </td>
-                        <td style="padding: 14px; text-align: right; font-weight: 900; color: #38bdf8; border-right: 1px solid rgba(255,255,255,0.1);">
-                            {{ grand_totals.paid_card|floatformat:0 }} UZS
+                        <td style="padding: 9px 8px; text-align: right; font-weight: 900; color: #38bdf8; border-right: 1px solid rgba(255,255,255,0.1);">
+                            {{ grand_totals.paid_card|floatformat:0 }}
                         </td>
-                        <td style="padding: 14px; text-align: right; font-weight: 900; color: #818cf8; border-right: 1px solid rgba(255,255,255,0.1);">
-                            {{ grand_totals.paid_terminal|floatformat:0 }} UZS
+                        <td style="padding: 9px 8px; text-align: right; font-weight: 900; color: #818cf8; border-right: 1px solid rgba(255,255,255,0.1);">
+                            {{ grand_totals.paid_terminal|floatformat:0 }}
                         </td>
-                        <td style="padding: 14px; text-align: right; font-weight: 900; color: #c084fc; border-right: 1px solid rgba(255,255,255,0.1);">
-                            {{ grand_totals.paid_payme|floatformat:0 }} UZS
+                        <td style="padding: 9px 8px; text-align: right; font-weight: 900; color: #c084fc; border-right: 1px solid rgba(255,255,255,0.1);">
+                            {{ grand_totals.paid_payme|floatformat:0 }}
                         </td>
-                        <td style="padding: 14px; text-align: right; font-weight: 900; color: #f59e0b; border-right: 1px solid rgba(255,255,255,0.1);">
-                            {{ grand_totals.paid_cash|floatformat:0 }} UZS
+                        <td style="padding: 9px 8px; text-align: right; font-weight: 900; color: #f59e0b; border-right: 1px solid rgba(255,255,255,0.1);">
+                            {{ grand_totals.paid_cash|floatformat:0 }}
                         </td>
-                        <td style="padding: 14px; text-align: right; font-weight: 900; color: #ec4899; border-right: 1px solid rgba(255,255,255,0.1);">
-                            {{ grand_totals.paid_marta|floatformat:0 }} UZS
+                        <td style="padding: 9px 8px; text-align: right; font-weight: 900; color: #ec4899; border-right: 1px solid rgba(255,255,255,0.1);">
+                            {{ grand_totals.paid_marta|floatformat:0 }}
                         </td>
-                        <td style="padding: 14px; text-align: left; font-weight: 700; color: var(--text-dim); font-size: 12px;">
+                        <td style="padding: 9px 10px; text-align: left; font-weight: 700; color: var(--text-dim); font-size: 11px;">
                             -
                         </td>
                     </tr>
@@ -311,110 +311,205 @@
                 </p>
             </div>
 
-            <div style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
-                <div style="background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 12px; padding: 6px 14px; font-size: 12px; color: #34d399;">
-                    Yig'ilgan: <b>{{ active_group_stats.total_paid|floatformat:0 }} UZS</b>
+            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                <div style="background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #34d399;">
+                    Jami To'langan: <b>{{ active_group_stats.total_paid|floatformat:0 }}</b>
                 </div>
-                <div style="background: rgba(251, 113, 133, 0.1); border: 1px solid rgba(251, 113, 133, 0.3); border-radius: 12px; padding: 6px 14px; font-size: 12px; color: #fb7185;">
-                    Qarzdorlik: <b>{{ active_group_stats.total_debt|floatformat:0 }} UZS</b>
+                <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #fbbf24;">
+                    💵 Naqd: <b>{{ active_group_stats.paid_cash|floatformat:0 }}</b>
+                </div>
+                <div style="background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #38bdf8;">
+                    💳 Karta: <b>{{ active_group_stats.paid_card|floatformat:0 }}</b>
+                </div>
+                <div style="background: rgba(129, 140, 248, 0.12); border: 1px solid rgba(129, 140, 248, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #818cf8;">
+                    📟 Terminal: <b>{{ active_group_stats.paid_terminal|floatformat:0 }}</b>
+                </div>
+                <div style="background: rgba(192, 132, 252, 0.12); border: 1px solid rgba(192, 132, 252, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #c084fc;">
+                    ⚡ Payme: <b>{{ active_group_stats.paid_payme|floatformat:0 }}</b>
+                </div>
+                <div style="background: rgba(251, 113, 133, 0.12); border: 1px solid rgba(251, 113, 133, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #fb7185;">
+                    Qarzdorlik: <b>{{ active_group_stats.total_debt|floatformat:0 }}</b>
                 </div>
             </div>
         </div>
 
-        <div class="glass-table-wrapper">
-            <table class="glass-table">
+        <div class="glass-table-wrapper" style="overflow-x: auto;">
+            <table class="glass-table compact-finance-table" style="width: 100%; border-collapse: collapse; min-width: 860px; font-size: 12px;">
                 <thead>
-                    <tr>
-                        <th>Bola F.I.Sh</th>
-                        <th>Ota-onasi / Telefon</th>
-                        <th>Tarifi</th>
-                        <th>Sababli (Kun)</th>
-                        <th>Qayta Hisoblash</th>
-                        <th>To'langan Summa</th>
-                        <th>Qarzdorlik (Qoldiq)</th>
-                        <th>Holati</th>
-                        <th style="text-align: right;">Amallar</th>
+                    <tr style="border-bottom: 2px solid rgba(56, 189, 248, 0.35); background: rgba(255, 255, 255, 0.04); font-size: 11px;">
+                        <th style="padding: 7px 8px; text-align: left; min-width: 130px;">Bola F.I.Sh</th>
+                        <th style="padding: 7px 8px; text-align: left; min-width: 110px;">Ota-onasi / Tel</th>
+                        <th style="padding: 7px 8px; text-align: right; min-width: 85px;">Tarifi</th>
+                        <th style="padding: 7px 6px; text-align: center; width: 50px;">Sababli</th>
+                        <th style="padding: 7px 6px; text-align: right; width: 68px;">Qayta hisob</th>
+                        <th style="padding: 7px 8px; text-align: right; min-width: 85px; color: #34d399; font-weight: 800;">Jami to'lov</th>
+                        <!-- To'lov turlari ustunlari: Naqd, Karta, Terminal, Payme -->
+                        <th style="padding: 7px 6px; text-align: right; width: 72px; color: #fbbf24; font-weight: 800; background: rgba(245, 158, 11, 0.08); border-left: 1px solid rgba(255,255,255,0.06); border-right: 1px solid rgba(255,255,255,0.06);">Naqd</th>
+                        <th style="padding: 7px 6px; text-align: right; width: 72px; color: #38bdf8; font-weight: 800; background: rgba(56, 189, 248, 0.08); border-right: 1px solid rgba(255,255,255,0.06);">Karta</th>
+                        <th style="padding: 7px 6px; text-align: right; width: 72px; color: #818cf8; font-weight: 800; background: rgba(129, 140, 248, 0.08); border-right: 1px solid rgba(255,255,255,0.06);">Terminal</th>
+                        <th style="padding: 7px 6px; text-align: right; width: 72px; color: #c084fc; font-weight: 800; background: rgba(192, 132, 252, 0.08); border-right: 1px solid rgba(255,255,255,0.06);">Payme</th>
+                        <th style="padding: 7px 8px; text-align: right; min-width: 80px; color: #fb7185; font-weight: 800;">Qarzdorlik</th>
+                        <th style="padding: 7px 6px; text-align: center; width: 64px;">Holati</th>
+                        <th style="padding: 7px 8px; text-align: right; width: 145px;">Amallar</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for inv in group_invoices %}
-                    <tr>
-                        <td>
-                            <strong style="color: white; font-size: 14px;">{{ inv.child.full_name }}</strong>
-                            <div style="font-size: 11px; color: var(--text-dim);">Yosh: {{ inv.child.age }} yosh</div>
+                    <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(56, 189, 248, 0.04)'" onmouseout="this.style.background='transparent'">
+                        <!-- Bola F.I.Sh -->
+                        <td style="padding: 7px 8px; line-height: 1.3;">
+                            <strong style="color: white; font-size: 13px; display: block;">{{ inv.child.full_name }}</strong>
+                            <span style="font-size: 10.5px; color: var(--text-dim);">Yosh: {{ inv.child.age }}</span>
                         </td>
-                        <td>
-                            <div style="font-weight: 600; color: #cbd5e1;">{{ inv.child.parent_full_name }}</div>
-                            <div style="font-size: 12px; color: #38bdf8;">{{ inv.child.parent_phone }}</div>
+                        <!-- Ota-onasi / Tel -->
+                        <td style="padding: 7px 8px; line-height: 1.3;">
+                            <div style="font-weight: 600; color: #cbd5e1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;">{{ inv.child.parent_full_name }}</div>
+                            <div style="font-size: 11px; color: #38bdf8;">{{ inv.child.parent_phone }}</div>
                         </td>
-                        <!-- Tarifi (Bolaning belgilangan oylik tarifi) -->
-                        <td>
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <strong style="color: white; font-size: 14px;">{{ inv.base_fee|floatformat:0 }} UZS</strong>
-                                <button type="button" onclick="openTariffModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.base_fee }})" class="btn-icon" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; padding: 4px 6px; color: #38bdf8; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;" title="Tarifni tahrirlash">
-                                    <i data-lucide="edit-3" style="width: 13px; height: 13px;"></i>
+                        <!-- Tarifi -->
+                        <td style="padding: 7px 8px; text-align: right; white-space: nowrap;">
+                            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px;">
+                                <strong style="color: white; font-size: 12px;">{{ inv.base_fee|floatformat:0 }}</strong>
+                                <button type="button" onclick="openTariffModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.base_fee }})" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 4px; padding: 2px 4px; color: #38bdf8; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1;" title="Tarifni tahrirlash">
+                                    <i data-lucide="edit-3" style="width: 11px; height: 11px;"></i>
                                 </button>
                             </div>
                             {% if inv.recalculation_amount > 0 %}
-                            <div style="font-size: 11px; color: #34d399; margin-top: 2px;">
-                                Chegirma bilan: <b>{{ inv.total_amount|floatformat:0 }} UZS</b>
+                            <div style="font-size: 10px; color: #34d399; margin-top: 1px;">
+                                Hisob: <b>{{ inv.total_amount|floatformat:0 }}</b>
                             </div>
                             {% endif %}
                         </td>
-                        <td style="text-align: center;">
-                            <strong>{{ inv.excused_days_count }} kun</strong>
+                        <!-- Sababli kun -->
+                        <td style="padding: 7px 6px; text-align: center; white-space: nowrap; font-size: 11.5px;">
+                            <strong>{{ inv.excused_days_count }} k</strong>
                         </td>
-                        <td>
+                        <!-- Qayta hisob -->
+                        <td style="padding: 7px 6px; text-align: right; white-space: nowrap; font-size: 11.5px;">
                             {% if inv.recalculation_amount > 0 %}
-                            <span style="color: #34d399; font-weight: 700;">-{{ inv.recalculation_amount|floatformat:0 }} UZS</span>
+                            <span style="color: #34d399; font-weight: 700;">-{{ inv.recalculation_amount|floatformat:0 }}</span>
                             {% else %}
-                            <span style="color: var(--text-dim);">0 UZS</span>
+                            <span style="color: var(--text-dim);">0</span>
                             {% endif %}
                         </td>
-                        <td>
-                            <strong style="color: #34d399; font-size: 14px;">{{ inv.paid_amount|floatformat:0 }} UZS</strong>
+                        <!-- Jami To'langan Summa -->
+                        <td style="padding: 7px 8px; text-align: right; white-space: nowrap;">
+                            <strong style="color: #34d399; font-size: 12.5px;">{{ inv.paid_amount|floatformat:0 }}</strong>
                         </td>
-                        <td>
+                        <!-- 1. Naqd To'lov -->
+                        <td style="padding: 7px 6px; text-align: right; white-space: nowrap; background: rgba(245, 158, 11, 0.04); border-left: 1px solid rgba(255,255,255,0.06); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {% if inv.cash_amount > 0 %}
+                            <strong style="color: #fbbf24; font-size: 12px;">{{ inv.cash_amount|floatformat:0 }}</strong>
+                            {% else %}
+                            <span style="color: var(--text-dim); font-size: 11px;">—</span>
+                            {% endif %}
+                        </td>
+                        <!-- 2. Karta To'lov -->
+                        <td style="padding: 7px 6px; text-align: right; white-space: nowrap; background: rgba(56, 189, 248, 0.04); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {% if inv.card_amount > 0 %}
+                            <strong style="color: #38bdf8; font-size: 12px;">{{ inv.card_amount|floatformat:0 }}</strong>
+                            {% else %}
+                            <span style="color: var(--text-dim); font-size: 11px;">—</span>
+                            {% endif %}
+                        </td>
+                        <!-- 3. Terminal To'lov -->
+                        <td style="padding: 7px 6px; text-align: right; white-space: nowrap; background: rgba(129, 140, 248, 0.04); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {% if inv.terminal_amount > 0 %}
+                            <strong style="color: #818cf8; font-size: 12px;">{{ inv.terminal_amount|floatformat:0 }}</strong>
+                            {% else %}
+                            <span style="color: var(--text-dim); font-size: 11px;">—</span>
+                            {% endif %}
+                        </td>
+                        <!-- 4. Payme To'lov -->
+                        <td style="padding: 7px 6px; text-align: right; white-space: nowrap; background: rgba(192, 132, 252, 0.04); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {% if inv.payme_amount > 0 %}
+                            <strong style="color: #c084fc; font-size: 12px;">{{ inv.payme_amount|floatformat:0 }}</strong>
+                            {% else %}
+                            <span style="color: var(--text-dim); font-size: 11px;">—</span>
+                            {% endif %}
+                        </td>
+                        <!-- Qarzdorlik (Qoldiq) -->
+                        <td style="padding: 7px 8px; text-align: right; white-space: nowrap;">
                             {% if inv.remaining_debt > 0 %}
-                            <strong style="color: #fb7185; font-size: 14px;">{{ inv.remaining_debt|floatformat:0 }} UZS</strong>
+                            <strong style="color: #fb7185; font-size: 12.5px;">{{ inv.remaining_debt|floatformat:0 }}</strong>
                             {% else %}
-                            <span style="color: #34d399; font-weight: 700;">Qarz yo'q (0 UZS)</span>
+                            <span style="color: #34d399; font-weight: 700; font-size: 11px;">0 (Qarz yo'q)</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <!-- Holati -->
+                        <td style="padding: 7px 6px; text-align: center; white-space: nowrap;">
                             {% if inv.status == 'PAID' %}
-                            <span class="badge badge-paid">To'langan</span>
+                            <span class="badge badge-paid" style="font-size: 10px; padding: 2px 5px;">To'langan</span>
                             {% elif inv.status == 'PARTIAL' %}
-                            <span class="badge badge-partial">Qisman</span>
+                            <span class="badge badge-partial" style="font-size: 10px; padding: 2px 5px;">Qisman</span>
                             {% else %}
-                            <span class="badge badge-unpaid">Qarzdor</span>
+                            <span class="badge badge-unpaid" style="font-size: 10px; padding: 2px 5px;">Qarzdor</span>
                             {% endif %}
                         </td>
-                        <td style="text-align: right;">
-                            <div style="display: flex; gap: 6px; justify-content: flex-end; align-items: center; flex-wrap: wrap;">
-                                <button type="button" onclick="openPaymentModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.remaining_debt }})" class="btn-glass btn-secondary" style="padding: 5px 9px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; color: #34d399; border-color: rgba(52, 211, 153, 0.3);" title="To'lov qabul qilish">
-                                    <i data-lucide="plus-circle" style="width: 13px; height: 13px;"></i>
+                        <!-- Amallar -->
+                        <td style="padding: 7px 8px; text-align: right; white-space: nowrap;">
+                            <div style="display: flex; gap: 4px; justify-content: flex-end; align-items: center;">
+                                <button type="button" onclick="openPaymentModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.remaining_debt }})" class="btn-glass" style="padding: 3px 6px; font-size: 11px; display: inline-flex; align-items: center; gap: 3px; color: #34d399; border-color: rgba(52, 211, 153, 0.35); background: rgba(52, 211, 153, 0.08); border-radius: 6px;" title="To'lov qabul qilish">
+                                    <i data-lucide="plus-circle" style="width: 12px; height: 12px;"></i>
                                     <span>To'lov</span>
                                 </button>
-                                <button type="button" onclick="openTariffModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.base_fee }})" class="btn-glass btn-secondary" style="padding: 5px 9px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);" title="Tarifni tahrirlash">
-                                    <i data-lucide="edit-3" style="width: 13px; height: 13px;"></i>
+                                <button type="button" onclick="openTariffModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.base_fee }})" class="btn-glass" style="padding: 3px 6px; font-size: 11px; display: inline-flex; align-items: center; gap: 3px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.08); border-radius: 6px;" title="Tarifni tahrirlash">
+                                    <i data-lucide="edit-3" style="width: 12px; height: 12px;"></i>
                                     <span>Tarif</span>
                                 </button>
-                                <button type="button" onclick="openPaymentHistoryModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}')" class="btn-glass btn-secondary" style="padding: 5px 9px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; color: #c084fc; border-color: rgba(192, 132, 252, 0.3);" title="To'lovlar tarixi va tahrirlash">
-                                    <i data-lucide="history" style="width: 13px; height: 13px;"></i>
-                                    <span>Tarix ({{ inv.payments.count }})</span>
+                                <button type="button" onclick="openPaymentHistoryModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}')" class="btn-glass" style="padding: 3px 6px; font-size: 11px; display: inline-flex; align-items: center; gap: 3px; color: #c084fc; border-color: rgba(192, 132, 252, 0.35); background: rgba(192, 132, 252, 0.08); border-radius: 6px;" title="To'lovlar tarixi">
+                                    <i data-lucide="history" style="width: 12px; height: 12px;"></i>
+                                    <span>({{ inv.payments.count }})</span>
                                 </button>
                             </div>
                         </td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="9" style="text-align: center; color: var(--text-dim); padding: 36px;">
-                            Ushbu guruhda {{ month }}/{{ year }} oyi uchun invoyslar topilmadi. Moliya bo'limida avtomatik hisoblashni ishga tushiring.
+                        <td colspan="13" style="text-align: center; color: var(--text-dim); padding: 24px;">
+                            Ushbu guruhda faol bolalar mavjud emas yoki {{ month }}/{{ year }} oyi uchun invoyslar topilmadi.
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
+                <!-- Jami Guruh Bo'yicha Qator (Grand Total) -->
+                {% if group_invoices %}
+                <tfoot>
+                    <tr style="background: rgba(56, 189, 248, 0.12); border-top: 2px solid #38bdf8; font-size: 12px;">
+                        <td colspan="2" style="padding: 8px 8px; font-weight: 800; color: #38bdf8;">
+                            JAMI (Guruh bo'yicha):
+                        </td>
+                        <td style="padding: 8px 8px; text-align: right; font-weight: 800; color: white;">
+                            {{ active_group_stats.total_expected|floatformat:0 }}
+                        </td>
+                        <td colspan="2" style="padding: 8px 6px; text-align: center; color: var(--text-dim); font-size: 11px;">
+                            —
+                        </td>
+                        <td style="padding: 8px 8px; text-align: right; font-weight: 800; color: #34d399; font-size: 13px;">
+                            {{ active_group_stats.total_paid|floatformat:0 }}
+                        </td>
+                        <!-- Guruh Jami To'lov Turlari -->
+                        <td style="padding: 8px 6px; text-align: right; font-weight: 800; color: #fbbf24; background: rgba(245, 158, 11, 0.08); border-left: 1px solid rgba(255,255,255,0.06); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ active_group_stats.paid_cash|floatformat:0 }}
+                        </td>
+                        <td style="padding: 8px 6px; text-align: right; font-weight: 800; color: #38bdf8; background: rgba(56, 189, 248, 0.08); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ active_group_stats.paid_card|floatformat:0 }}
+                        </td>
+                        <td style="padding: 8px 6px; text-align: right; font-weight: 800; color: #818cf8; background: rgba(129, 140, 248, 0.08); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ active_group_stats.paid_terminal|floatformat:0 }}
+                        </td>
+                        <td style="padding: 8px 6px; text-align: right; font-weight: 800; color: #c084fc; background: rgba(192, 132, 252, 0.08); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ active_group_stats.paid_payme|floatformat:0 }}
+                        </td>
+                        <td style="padding: 8px 8px; text-align: right; font-weight: 800; color: #fb7185; font-size: 13px;">
+                            {{ active_group_stats.total_debt|floatformat:0 }}
+                        </td>
+                        <td colspan="2" style="padding: 8px 6px; text-align: center; color: var(--text-dim); font-size: 11px;">
+                            —
+                        </td>
+                    </tr>
+                </tfoot>
+                {% endif %}
             </table>
         </div>
     </div>

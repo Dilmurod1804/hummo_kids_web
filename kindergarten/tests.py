@@ -1,7 +1,8 @@
-from django.test import TestCase
+from django.test import TestCase, Client
+from django.urls import reverse
 from django.utils import timezone
 from datetime import timedelta
-from .models import User, Group, Child, AdmissionLead, StaffRating, StaffDocument
+from .models import User, Group, Child, AdmissionLead, StaffRating, StaffDocument, Expense
 
 class HumoKidsCRMTests(TestCase):
     def setUp(self):
@@ -18,6 +19,13 @@ class HumoKidsCRMTests(TestCase):
             role='TEACHER',
             first_name='Malika',
             last_name='Saidova'
+        )
+        self.director = User.objects.create_user(
+            username='big_director',
+            password='password123',
+            role='DIRECTOR',
+            first_name='Dilshod',
+            last_name='Karimov'
         )
         self.group = Group.objects.create(
             name='Yulduzcha',
@@ -94,3 +102,114 @@ class HumoKidsCRMTests(TestCase):
 
         self.assertEqual(self.teacher.ratings_count, 2)
         self.assertEqual(self.teacher.average_rating, 4.5)
+
+    def test_manager_cannot_access_expenses_and_finance(self):
+        """Menejer moliya va kirim-chiqim bo'limlariga KIRA OLMASLIGI tekshiruvi"""
+        client = Client()
+        client.login(username='crm_manager', password='password123')
+
+        # 1. Chiqimlar sahifasiga kirishga urinish
+        resp_exp = client.get(reverse('expenses_list'))
+        # Menejerga ruxsat yo'q, redirect bo'lishi kerak
+        self.assertNotEqual(resp_exp.status_code, 200)
+        self.assertEqual(resp_exp.status_code, 302)
+
+        # 2. Umumiy moliya sahifasiga kirishga urinish
+        resp_fin = client.get(reverse('finance_dashboard'))
+        self.assertNotEqual(resp_fin.status_code, 200)
+        self.assertEqual(resp_fin.status_code, 302)
+
+        # 3. Guruhlar to'lovi sahifasiga kirishga urinish
+        resp_grp = client.get(reverse('groups_finance'))
+        self.assertNotEqual(resp_grp.status_code, 200)
+        self.assertEqual(resp_grp.status_code, 302)
+
+    def test_director_can_access_expenses_and_finance(self):
+        """Direktor moliya va kirim-chiqim bo'limlariga muvaffaqiyatli kira olishi tekshiruvi"""
+        client = Client()
+        client.login(username='big_director', password='password123')
+
+        resp_exp = client.get(reverse('expenses_list'))
+        self.assertEqual(resp_exp.status_code, 200)
+
+        resp_fin = client.get(reverse('finance_dashboard'))
+        self.assertEqual(resp_fin.status_code, 200)
+
+    def test_groups_finance_strict_filtering_and_payment_methods(self):
+        """Guruh o'quvchilarining qat'iy filtrlanishi va to'lov turlari (Naqd, Karta, Terminal, Payme) hisoblanishi tekshiruvi"""
+        from .models import MonthlyInvoice, Payment
+        from decimal import Decimal
+
+        group2 = Group.objects.create(
+            name='Qaldirg\'och',
+            capacity=20,
+            monthly_fee=2000000.00
+        )
+
+        child1 = Child.objects.create(
+            first_name='Ali',
+            last_name='Valiyev',
+            birth_date=timezone.now().date(),
+            group=self.group,
+            parent_full_name='Vali A.',
+            parent_phone='+998901111111',
+            is_active=True
+        )
+
+        child2 = Child.objects.create(
+            first_name='Hasan',
+            last_name='Husanov',
+            birth_date=timezone.now().date(),
+            group=group2,
+            parent_full_name='Husan H.',
+            parent_phone='+998902222222',
+            is_active=True
+        )
+
+        client = Client()
+        client.login(username='big_director', password='password123')
+
+        today = timezone.localtime(timezone.now()).date()
+        # 1-guruh sahifasiga kirish
+        resp1 = client.get(f"{reverse('groups_finance')}?group={self.group.id}&month={today.month}&year={today.year}")
+        self.assertEqual(resp1.status_code, 200)
+
+        # 1-guruhda faqat child1 bo'lishi kerak, child2 bo'lmasligi kerak!
+        self.assertContains(resp1, 'Ali Valiyev')
+        self.assertNotContains(resp1, 'Hasan Husanov')
+
+        # 2-guruh sahifasiga kirish
+        resp2 = client.get(f"{reverse('groups_finance')}?group={group2.id}&month={today.month}&year={today.year}")
+        self.assertEqual(resp2.status_code, 200)
+        self.assertContains(resp2, 'Hasan Husanov')
+        self.assertNotContains(resp2, 'Ali Valiyev')
+
+        # To'lov kiritish: child1 uchun CASH (Naqd) va CARD (Karta)
+        inv1 = MonthlyInvoice.objects.filter(child=child1, month=today.month, year=today.year).first()
+        self.assertIsNotNone(inv1)
+
+        Payment.objects.create(
+            invoice=inv1,
+            amount=Decimal('500000.00'),
+            payment_method='CASH',
+            reason='Naqd to\'lov'
+        )
+        Payment.objects.create(
+            invoice=inv1,
+            amount=Decimal('700000.00'),
+            payment_method='CARD',
+            reason='Karta to\'lov'
+        )
+
+        # Qayta tekshirish
+        resp_after_pay = client.get(f"{reverse('groups_finance')}?group={self.group.id}&month={today.month}&year={today.year}")
+        self.assertEqual(resp_after_pay.status_code, 200)
+
+        # Invoysda to'lovlar turlari to'g'ri hisoblangani
+        inv_ctx = resp_after_pay.context['group_invoices'][0]
+        self.assertEqual(inv_ctx.cash_amount, Decimal('500000.00'))
+        self.assertEqual(inv_ctx.card_amount, Decimal('700000.00'))
+        self.assertEqual(inv_ctx.terminal_amount, Decimal('0.00'))
+        self.assertEqual(inv_ctx.payme_amount, Decimal('0.00'))
+        self.assertEqual(inv_ctx.paid_amount, Decimal('1200000.00'))
+
