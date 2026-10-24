@@ -61,7 +61,7 @@ def generate_children_excel():
         cell = ws.cell(row=3, column=col_num)
         apply_header_style(cell, header, "4338CA")
 
-    children = Child.objects.select_related('group').order_by('group__name', 'first_name')
+    children = Child.objects.filter(is_archived=False).select_related('group').order_by('group__name', 'first_name')
     row_idx = 4
     for idx, child in enumerate(children, 1):
         ws.row_dimensions[row_idx].height = 22
@@ -110,7 +110,7 @@ def generate_attendance_excel(group_id=None, date_filter=None):
         cell = ws.cell(row=3, column=col_num)
         apply_header_style(cell, header, "1E3A8A")
 
-    qs = ChildAttendance.objects.select_related('child', 'child__group', 'marked_by').order_by('-date', 'child__group__name')
+    qs = ChildAttendance.objects.filter(child__is_archived=False).select_related('child', 'child__group', 'marked_by').order_by('-date', 'child__group__name')
     if date_filter:
         qs = qs.filter(date=date_filter)
     if group_id:
@@ -281,7 +281,7 @@ def generate_finance_excel(month=None, year=None):
         cell = ws.cell(row=3, column=col_num)
         apply_header_style(cell, header, "6B21A8")
 
-    invoices = MonthlyInvoice.objects.select_related('child', 'child__group').prefetch_related('payments').order_by('-year', '-month', 'child__first_name')
+    invoices = MonthlyInvoice.objects.filter(child__is_archived=False).select_related('child', 'child__group').prefetch_related('payments').order_by('-year', '-month', 'child__first_name')
     if month:
         invoices = invoices.filter(month=month)
     if year:

@@ -104,6 +104,12 @@
                     </a>
                 </li>
                 <li>
+                    <a href="{% url 'children_archive' %}" class="nav-link {% if request.resolver_match.url_name == 'children_archive' %}active{% endif %}">
+                        <i data-lucide="archive" style="width: 18px; height: 18px; color: #f59e0b;"></i>
+                        <span>Bolalar Arxivi</span>
+                    </a>
+                </li>
+                <li>
                     <a href="{% url 'children_attendance_matrix' %}" class="nav-link {% if 'attendance/children-matrix' in request.path or 'attendance/daily' in request.path %}active{% endif %}">
                         <i data-lucide="calendar-check-2" style="width: 18px; height: 18px; color: #a5b4fc;"></i>
                         <span>Bolalar Davomati (Tabel)</span>

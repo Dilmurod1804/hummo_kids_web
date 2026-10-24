@@ -215,12 +215,12 @@ def admin_dashboard(request):
     current_month = today.month
     current_year = today.year
 
-    total_children = Child.objects.filter(is_active=True).count()
+    total_children = Child.objects.filter(is_active=True, is_archived=False).count()
     total_groups = Group.objects.count()
     total_staff = User.objects.filter(is_active=True).exclude(role='DIRECTOR').count()
 
     # Today's child attendance stats
-    today_attendances = ChildAttendance.objects.filter(date=today)
+    today_attendances = ChildAttendance.objects.filter(date=today, child__is_archived=False)
     present_count = today_attendances.filter(status='PRESENT').count()
     excused_count = today_attendances.filter(status='EXCUSED').count()
     unexcused_count = today_attendances.filter(status='UNEXCUSED').count()
@@ -260,7 +260,7 @@ def admin_dashboard(request):
     staff_on_duty_count = staff_passed_count
 
     # Finance metrics for current month
-    monthly_invoices = MonthlyInvoice.objects.filter(month=current_month, year=current_year)
+    monthly_invoices = MonthlyInvoice.objects.filter(month=current_month, year=current_year, child__is_archived=False)
     total_expected_revenue = monthly_invoices.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
     total_collected_revenue = monthly_invoices.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
     total_recalculated_discounts = monthly_invoices.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
@@ -268,14 +268,14 @@ def admin_dashboard(request):
 
     # Groups breakdown
     groups = Group.objects.annotate(
-        active_children=Count('children', filter=Q(children__is_active=True))
+        active_children=Count('children', filter=Q(children__is_active=True, children__is_archived=False))
     )
 
     # Recent staff attendance logs
     recent_staff_logs = StaffAttendance.objects.select_related('teacher').order_by('-created_at')[:6]
 
     # Medical notes / alerts
-    children_with_allergies = Child.objects.filter(is_active=True).exclude(medical_notes__isnull=True).exclude(medical_notes__exact='')[:5]
+    children_with_allergies = Child.objects.filter(is_active=True, is_archived=False).exclude(medical_notes__isnull=True).exclude(medical_notes__exact='')[:5]
 
     # Bugungi Qabullar Monitoringi (CRM / Admission Leads)
     today_visits = AdmissionLead.objects.filter(visit_date__date=today).select_related('manager').order_by('visit_date')
@@ -349,11 +349,11 @@ def teacher_dashboard(request):
     my_today_log = StaffAttendance.objects.filter(teacher=user, date=today).first()
 
     # Children in teacher's group
-    assigned_children = Child.objects.filter(group__in=assigned_groups, is_active=True).order_by('first_name')
+    assigned_children = Child.objects.filter(group__in=assigned_groups, is_active=True, is_archived=False).order_by('first_name')
     total_group_children = assigned_children.count()
 
     # Today's attendance for group
-    today_records = ChildAttendance.objects.filter(child__in=assigned_children, date=today)
+    today_records = ChildAttendance.objects.filter(child__in=assigned_children, date=today, child__is_archived=False)
     marked_count = today_records.count()
     present_count = today_records.filter(status='PRESENT').count()
 
@@ -376,7 +376,7 @@ def teacher_dashboard(request):
 @director_or_manager_required
 def groups_list(request):
     groups = Group.objects.annotate(
-        active_children=Count('children', filter=Q(children__is_active=True))
+        active_children=Count('children', filter=Q(children__is_active=True, children__is_archived=False))
     ).order_by('name')
     form = GroupForm()
     return render(request, 'groups/groups_list.html', {
@@ -393,7 +393,7 @@ def group_create(request):
             g = form.save()
             log_audit('SYSTEM', f"Yangi guruh yaratildi: {g.name}", f"Guruh: {g.name}, Yosh toifasi: {g.get_age_category_display()}", user=request.user, request=request)
             return redirect('groups_list')
-        groups = Group.objects.annotate(active_children=Count('children', filter=Q(children__is_active=True))).order_by('name')
+        groups = Group.objects.annotate(active_children=Count('children', filter=Q(children__is_active=True, children__is_archived=False))).order_by('name')
         return render(request, 'groups/groups_list.html', {'groups': groups, 'form': form, 'show_modal': True})
     return redirect('groups_list')
 
@@ -446,7 +446,8 @@ def children_list(request):
     group_filter = request.GET.get('group', '')
     status_filter = request.GET.get('status', 'active')
 
-    children = Child.objects.select_related('group').all()
+    # Faqat arxivlanmagan (is_archived=False) o'quvchilar
+    children = Child.objects.filter(is_archived=False).select_related('group')
 
     # Tarbiyachiga FAQAT o'ziga biriktirilgan 1 ta guruh bolalarini ko'rsatish
     if not request.user.can_manage_all and request.user.has_assigned_group:
@@ -487,6 +488,7 @@ def children_list(request):
                 Q(parent_phone__icontains=w)
             )
     all_groups = Group.objects.all().order_by('name')
+    archived_count = Child.objects.filter(is_archived=True).count()
 
     return render(request, 'children/children_list.html', {
         'children': children,
@@ -498,6 +500,7 @@ def children_list(request):
         'query': query,
         'group_filter': group_filter,
         'status_filter': status_filter,
+        'archived_count': archived_count,
     })
 
 # --- Staff Management ---
@@ -863,13 +866,15 @@ def child_create(request):
             return redirect('children_list')
         
         # If invalid, return to list with form errors
-        children = Child.objects.select_related('group').all()
+        children = Child.objects.filter(is_archived=False).select_related('group').all()
         groups = Group.objects.all()
+        archived_count = Child.objects.filter(is_archived=True).count()
         return render(request, 'children/children_list.html', {
             'children': children,
             'groups': groups,
             'form': form,
-            'show_modal': True
+            'show_modal': True,
+            'archived_count': archived_count,
         })
     return redirect('children_list')
 
@@ -891,8 +896,137 @@ def child_update(request, pk):
 def child_delete(request, pk):
     child = get_object_or_404(Child, pk=pk)
     if request.method == 'POST':
+        was_archived = child.is_archived
+        child_name = child.full_name
         child.delete()
+        log_audit(
+            'SYSTEM',
+            f"O'quvchi o'chirildi: {child_name}",
+            f"O'quvchi bazadan butunlay o'chirildi.",
+            user=request.user,
+            request=request
+        )
+        messages.success(request, f"'{child_name}' ma'lumotlari bazadan butunlay o'chirildi.")
+        if was_archived:
+            return redirect('children_archive')
     return redirect('children_list')
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def child_archive(request, pk):
+    child = get_object_or_404(Child, pk=pk)
+    if request.method == 'POST':
+        reason = request.POST.get('reason', '').strip() or "Direktor / Menejer tomonidan arxivlandi"
+        child.archive(reason=reason)
+        log_audit(
+            'SYSTEM',
+            f"O'quvchi arxivlandi: {child.full_name}",
+            f"Sabab: {reason}. O'quvchi barcha faol bo'limlardan yashirildi va Arxiv bo'limiga ko'chirildi.",
+            user=request.user,
+            request=request
+        )
+        messages.success(request, f"'{child.full_name}' muvaffaqiyatli arxivlandi va barcha faol bo'limlardan (guruhlar, to'lovlar, qarzdorlar) yashirildi.")
+    return redirect('children_archive')
+
+@login_required
+@user_passes_test(is_director_or_manager)
+def child_restore(request, pk):
+    child = get_object_or_404(Child, pk=pk)
+    if request.method == 'POST':
+        child.restore()
+        log_audit(
+            'SYSTEM',
+            f"O'quvchi arxivdan qaytarildi: {child.full_name}",
+            f"O'quvchi arxivdan faol holatga qaytarildi.",
+            user=request.user,
+            request=request
+        )
+        messages.success(request, f"'{child.full_name}' arxivdan muvaffaqiyatli qaytarildi va faol holatga o'tkazildi.")
+    return redirect('children_archive')
+
+@login_required
+@director_or_manager_required
+def children_archive(request):
+    """
+    Arxivlangan o'quvchilar bo'limi:
+    Faqat arxivdagi o'quvchilar ko'rinadi. Faol bo'limlardan yashirilgan o'quvchilar shu yerda boshqariladi.
+    """
+    query = request.GET.get('q', '').strip()
+    group_filter = request.GET.get('group', '')
+
+    archived_children = Child.objects.filter(is_archived=True).select_related('group').order_by('-archived_at', '-created_at')
+
+    if query:
+        words = query.split()
+        for w in words:
+            archived_children = archived_children.filter(
+                Q(first_name__icontains=w) |
+                Q(last_name__icontains=w) |
+                Q(parent_full_name__icontains=w) |
+                Q(parent_phone__icontains=w) |
+                Q(archived_reason__icontains=w)
+            )
+
+    if group_filter:
+        archived_children = archived_children.filter(group_id=group_filter)
+
+    all_groups = Group.objects.all().order_by('name')
+    archived_count = archived_children.count()
+
+    return render(request, 'children/children_archive.html', {
+        'archived_children': archived_children,
+        'archived_count': archived_count,
+        'all_groups': all_groups,
+        'query': query,
+        'group_filter': group_filter,
+    })
+
+@csrf_exempt
+@login_required
+@director_or_manager_required
+def archive_cleanup_api(request):
+    """
+    Arxivdagi eski o'quvchilarni avtomatik yoki qo'lda tozalash API'si.
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body) if request.body else {}
+        except Exception:
+            data = {}
+
+        days = int(data.get('days', 30))
+        cleanup_all = bool(data.get('all', False))
+
+        archived_qs = Child.objects.filter(is_archived=True)
+        if not cleanup_all:
+            cutoff = timezone.now() - timedelta(days=days)
+            archived_qs = archived_qs.filter(
+                Q(archived_at__lte=cutoff) |
+                (Q(archived_at__isnull=True) & Q(created_at__lte=cutoff))
+            )
+
+        count = archived_qs.count()
+        deleted_names = list(archived_qs.values_list('first_name', 'last_name')[:10])
+        deleted_summary = ", ".join(f"{fn} {ln}" for fn, ln in deleted_names)
+        if count > 10:
+            deleted_summary += f" va yana {count - 10} ta bola"
+
+        archived_qs.delete()
+
+        log_audit(
+            'SYSTEM',
+            f"Arxiv tozalandi ({count} ta o'quvchi)",
+            f"{count} ta arxivlangan o'quvchi bazadan tozalandi: {deleted_summary}",
+            user=request.user,
+            request=request
+        )
+
+        return JsonResponse({
+            'success': True,
+            'count': count,
+            'message': f"{count} ta arxivdagi o'quvchi bazadan butunlay tozalandi."
+        })
+    return JsonResponse({'success': False, 'message': 'Invalid request method'}, status=405)
 
 
 # --- Daily Child Attendance ---
@@ -919,10 +1053,10 @@ def attendance_daily(request):
 
     children = []
     if selected_group:
-        children = list(Child.objects.filter(group=selected_group, is_active=True).order_by('first_name', 'last_name'))
+        children = list(Child.objects.filter(group=selected_group, is_active=True, is_archived=False).order_by('first_name', 'last_name'))
         # Fetch existing attendance records for the date
         existing_attendances = {
-            att.child_id: att for att in ChildAttendance.objects.filter(child_id__in=[c.id for c in children], date=selected_date)
+            att.child_id: att for att in ChildAttendance.objects.filter(child_id__in=[c.id for c in children], child__is_archived=False, date=selected_date)
         }
         for child in children:
             child.current_attendance = existing_attendances.get(child.id)
@@ -1044,7 +1178,7 @@ def children_attendance_matrix(request):
     total_unexcused_all = 0
 
     if selected_group:
-        children_qs = Child.objects.filter(group=selected_group, is_active=True).order_by('first_name', 'last_name')
+        children_qs = Child.objects.filter(group=selected_group, is_active=True, is_archived=False).order_by('first_name', 'last_name')
         if search_q:
             for w in search_q.split():
                 children_qs = children_qs.filter(
@@ -1056,6 +1190,7 @@ def children_attendance_matrix(request):
         # Oylik davomat ma'lumotlarini olish
         month_attendances = ChildAttendance.objects.filter(
             child__in=children,
+            child__is_archived=False,
             date__year=year,
             date__month=month
         )
@@ -2357,11 +2492,11 @@ def compute_groups_finance_summary(month, year):
     }
 
     for g in all_groups:
-        active_children = Child.objects.filter(group=g, is_active=True).order_by('first_name', 'last_name')
+        active_children = Child.objects.filter(group=g, is_active=True, is_archived=False).order_by('first_name', 'last_name')
         active_children_ids = list(active_children.values_list('id', flat=True))
         children_cnt = len(active_children_ids)
 
-        invs = MonthlyInvoice.objects.filter(child_id__in=active_children_ids, month=month, year=year)
+        invs = MonthlyInvoice.objects.filter(child_id__in=active_children_ids, child__is_archived=False, month=month, year=year)
         total_exp = invs.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
         total_disc = invs.aggregate(s=Sum('discount'))['s'] or Decimal('0.00')
         total_pd = invs.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
@@ -2370,7 +2505,7 @@ def compute_groups_finance_summary(month, year):
         paid_pct = round((float(total_pd) / float(total_exp) * 100), 1) if total_exp > 0 else 0
 
         # To'lov turlari bo'yicha guruh to'lovlari (shu guruhning faol bolalari bo'yicha)
-        g_payments = Payment.objects.filter(invoice__child_id__in=active_children_ids, invoice__month=month, invoice__year=year)
+        g_payments = Payment.objects.filter(invoice__child_id__in=active_children_ids, invoice__child__is_archived=False, invoice__month=month, invoice__year=year)
         paid_card = g_payments.filter(payment_method__in=['CARD', 'BANK_TRANSFER']).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
         paid_terminal = g_payments.filter(payment_method='TERMINAL').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
         paid_payme = g_payments.filter(payment_method__in=['CLICK_PAYME', 'PAYME']).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
@@ -2459,7 +2594,7 @@ def finance_dashboard(request):
     kg_settings = KindergartenSettings.get_settings()
     default_trial_daily = round(kg_settings.default_monthly_fee / Decimal('22.0'), -3)
 
-    invoices = MonthlyInvoice.objects.select_related('child', 'child__group').prefetch_related('payments').filter(month=month, year=year)
+    invoices = MonthlyInvoice.objects.filter(child__is_archived=False, month=month, year=year).select_related('child', 'child__group').prefetch_related('payments')
 
     if status_filter == 'unpaid':
         invoices = invoices.exclude(status='PAID')
@@ -2680,7 +2815,7 @@ def recalculate_invoices_api(request):
                 prev_year = year
 
             settings = KindergartenSettings.get_settings()
-            children = Child.objects.filter(is_active=True)
+            children = Child.objects.filter(is_active=True, is_archived=False)
             recalculated_count = 0
 
             for child in children:
@@ -3661,15 +3796,15 @@ def groups_finance_view(request):
         kg_settings = KindergartenSettings.get_settings()
 
         # 1. Guruh o'quvchilarini qat'iy va xatosiz filtrlash:
-        # Faqat va faqat tanlangan guruhga tegishli faol bolalar olinadi (Child.objects.filter(group=active_group, is_active=True))
-        group_children = Child.objects.filter(group=active_group, is_active=True).select_related('group').order_by('first_name', 'last_name')
+        # Faqat va faqat tanlangan guruhga tegishli faol bolalar olinadi (Child.objects.filter(group=active_group, is_active=True, is_archived=False))
+        group_children = Child.objects.filter(group=active_group, is_active=True, is_archived=False).select_related('group').order_by('first_name', 'last_name')
         child_ids = [c.id for c in group_children]
 
         # Shu guruh bolalariga tegishli mavjud oylik invoyslar
         existing_invoices = {
             inv.child_id: inv
             for inv in MonthlyInvoice.objects.filter(
-                child_id__in=child_ids, month=month, year=year
+                child_id__in=child_ids, child__is_archived=False, month=month, year=year
             ).select_related('child', 'child__group').prefetch_related('payments')
         }
 

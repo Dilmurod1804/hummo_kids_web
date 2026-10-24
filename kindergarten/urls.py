@@ -19,12 +19,16 @@ urlpatterns = [
     path('groups/<int:pk>/replace-teacher/', views.group_replace_teacher, name='group_replace_teacher'),
     path('groups/<int:pk>/delete/', views.group_delete, name='group_delete'),
 
-    # Children
+    # Children & Archive
     path('children/', views.children_list, name='children_list'),
+    path('children/archive/', views.children_archive, name='children_archive'),
+    path('children/archive/cleanup-api/', views.archive_cleanup_api, name='archive_cleanup_api'),
     path('children/<int:pk>/', views.child_detail, name='child_detail'),
     path('children/create/', views.child_create, name='child_create'),
     path('children/<int:pk>/edit/', views.child_update, name='child_update'),
     path('children/<int:pk>/edit-child/', views.child_update, name='child_edit'),
+    path('children/<int:pk>/archive/', views.child_archive, name='child_archive'),
+    path('children/<int:pk>/restore/', views.child_restore, name='child_restore'),
     path('children/<int:pk>/delete/', views.child_delete, name='child_delete'),
 
     # Staff Management & Profile

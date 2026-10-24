@@ -15,11 +15,31 @@
     </div>
 
     {% if user.can_manage_all %}
-    <div style="display: flex; gap: 10px;">
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        {% if child.is_archived %}
+        <form method="POST" action="{% url 'child_restore' child.id %}" onsubmit="return confirm('Ushbu bolani arxivdan faol holatga qaytarmoqchimisiz?');" style="display: inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn-glass" style="background: rgba(52, 211, 153, 0.2); border-color: rgba(52, 211, 153, 0.5); color: #34d399; font-weight: 700;">
+                <i data-lucide="rotate-ccw" style="width: 16px; height: 16px;"></i>
+                <span>Arxivdan Qaytarish</span>
+            </button>
+        </form>
+        <form method="POST" action="{% url 'child_delete' child.id %}" onsubmit="return confirm('DIQQAT! Ushbu bolani bazadan BUTUNLAY o‘chirmoqchimisiz? Ma\'lumotlarni qaytarib bo\'lmaydi!');" style="display: inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn-glass btn-rose">
+                <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                <span>Bazadan Butunlay O'chirish</span>
+            </button>
+        </form>
+        {% else %}
         <a href="{% url 'child_update' child.id %}" class="btn-glass btn-secondary">
             <i data-lucide="edit" style="width: 16px; height: 16px;"></i>
             <span>Tahrirlash</span>
         </a>
+        <button type="button" onclick="document.getElementById('modalArchiveChild').style.display='flex'" class="btn-glass" style="background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); color: #fbbf24; font-weight: 700;">
+            <i data-lucide="archive" style="width: 16px; height: 16px;"></i>
+            <span>Arxivga O'tkazish</span>
+        </button>
         <form method="POST" action="{% url 'child_delete' child.id %}" onsubmit="return confirm('Haqiqatdan ham ushbu bolani o‘chirmoqchimisiz?');" style="display: inline;">
             {% csrf_token %}
             <button type="submit" class="btn-glass btn-rose">
@@ -27,8 +47,58 @@
                 <span>O'chirish</span>
             </button>
         </form>
+        {% endif %}
     </div>
     {% endif %}
+</div>
+
+{% if child.is_archived %}
+<div class="glass-card" style="margin-bottom: 24px; padding: 16px 20px; border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.08); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+    <div style="display: flex; align-items: center; gap: 14px;">
+        <div style="width: 40px; height: 40px; border-radius: 12px; background: rgba(245, 158, 11, 0.2); display: flex; align-items: center; justify-content: center; color: #fbbf24;">
+            <i data-lucide="archive" style="width: 22px; height: 22px;"></i>
+        </div>
+        <div>
+            <h4 style="font-size: 15px; font-weight: 700; color: #fbbf24; margin-bottom: 2px;">Ushbu o'quvchi ARXIVLANGAN</h4>
+            <p style="font-size: 13px; color: var(--text-muted);">
+                O'quvchi barcha faol bo'limlardan (Guruhlar, Davomat, Oylik To'lovlar, Qarzdorlar) mutlaqo yashirilgan.
+                {% if child.archived_at %}· Arxivlangan sana: <strong>{{ child.archived_at|date:"d.m.Y H:i" }}</strong>{% endif %}
+                {% if child.archived_reason %}· Sabab: <em>{{ child.archived_reason }}</em>{% endif %}
+            </p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Archive Reason Modal -->
+<div id="modalArchiveChild" class="glass-modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); z-index: 9999; align-items: center; justify-content: center; padding: 20px;">
+    <div class="glass-modal" style="background: #181924; border: 1px solid rgba(255,255,255,0.12); border-radius: 20px; padding: 24px; max-width: 480px; width: 100%; box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="font-size: 18px; font-weight: 700; color: white; display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="archive" style="width: 20px; height: 20px; color: #fbbf24;"></i>
+                <span>O'quvchini Arxivga O'tkazish</span>
+            </h3>
+            <button type="button" onclick="document.getElementById('modalArchiveChild').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
+            O'quvchi arxivlangandan so'ng, u <strong>guruhlar, to'lovlar, davomat va qarzdorlar (debtors)</strong> ro'yxatlaridan butunlay yashiriladi va faqat <strong>"Bolalar Arxivi"</strong> bo'limida saqlanadi.
+        </p>
+        <form method="POST" action="{% url 'child_archive' child.id %}">
+            {% csrf_token %}
+            <div style="margin-bottom: 18px;">
+                <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 6px;">Arxivlash Sababi (ixtiyoriy):</label>
+                <input type="text" name="reason" placeholder="Masalan: Maktabga ketdi, Boshqa shaharga ko'chdi..." class="glass-input" style="width: 100%; padding: 10px 14px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white;">
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" onclick="document.getElementById('modalArchiveChild').style.display='none'" class="btn-glass btn-secondary" style="padding: 8px 16px;">Bekor qilish</button>
+                <button type="submit" class="btn-glass" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; font-weight: 700; padding: 8px 18px; border: none;">
+                    Arxivga O'tkazish
+                </button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <!-- Profile Info Card -->

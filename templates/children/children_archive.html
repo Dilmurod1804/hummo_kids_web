@@ -1,0 +1,286 @@
+{% extends 'base.html' %}
+
+{% block title %}Bolalar Arxivi va Avtomatik Tozalash — Humo Kids{% endblock %}
+
+{% block content %}
+<!-- Top Header -->
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+    <div>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+            <a href="{% url 'children_list' %}" class="btn-glass btn-secondary" style="padding: 6px 12px; font-size: 12px;">
+                &larr; Bolalar Ro'yxatiga qaytish
+            </a>
+            <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); font-weight: 700;">
+                <i data-lucide="archive" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle;"></i> Arxiv Bo'limi
+            </span>
+        </div>
+        <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">Arxivdagi Bolalar Boshqaruvi</h2>
+        <p style="font-size: 13px; color: var(--text-muted);">
+            Faoliyatini to'xtatgan yoki arxivga o'tkazilgan o'quvchilar. Ushbu bolalar barcha guruhlar, to'lovlar va qarzdorlar sahifalaridan to'liq yashirilgan.
+        </p>
+    </div>
+
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button type="button" onclick="openCleanupModal()" class="btn-glass" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white; font-weight: 700; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);">
+            <i data-lucide="trash" style="width: 16px; height: 16px;"></i>
+            <span>Arxivni Tozalash (Cleanup)</span>
+        </button>
+    </div>
+</div>
+
+<!-- Info Cards Grid -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin-bottom: 24px;">
+    <div class="glass-card" style="padding: 18px; border-left: 4px solid #f59e0b;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Arxivdagi Jami Bolalar</div>
+                <div style="font-size: 28px; font-weight: 800; color: #fbbf24; margin-top: 4px;">{{ archived_count }} ta</div>
+            </div>
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(245, 158, 11, 0.15); display: flex; align-items: center; justify-content: center; color: #fbbf24;">
+                <i data-lucide="archive" style="width: 22px; height: 22px;"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="glass-card" style="padding: 18px; border-left: 4px solid #38bdf8;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Avtomatik Tozalash</div>
+                <div style="font-size: 16px; font-weight: 700; color: #38bdf8; margin-top: 6px;">Har oyda (30 kunlik)</div>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">Cron: cleanup_archived_students</div>
+            </div>
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(56, 189, 248, 0.15); display: flex; align-items: center; justify-content: center; color: #38bdf8;">
+                <i data-lucide="refresh-cw" style="width: 22px; height: 22px;"></i>
+            </div>
+        </div>
+    </div>
+
+    <div class="glass-card" style="padding: 18px; border-left: 4px solid #34d399;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Faol Bo'limlar Holati</div>
+                <div style="font-size: 16px; font-weight: 700; color: #34d399; margin-top: 6px;">100% Yashirilgan</div>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">Guruh, davomat, qarzdorlik toza</div>
+            </div>
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(52, 211, 153, 0.15); display: flex; align-items: center; justify-content: center; color: #34d399;">
+                <i data-lucide="shield-check" style="width: 22px; height: 22px;"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters Bar -->
+<div class="glass-card" style="padding: 16px; margin-bottom: 24px;">
+    <form method="GET" action="{% url 'children_archive' %}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+        <div style="flex-grow: 1; min-width: 240px;">
+            <input type="text" name="q" value="{{ query }}" placeholder="Ism, familiya, telefon yoki arxivlash sababi..." class="glass-input" style="padding: 8px 14px; width: 100%;">
+        </div>
+
+        <div style="min-width: 200px;">
+            <select name="group" class="glass-select" style="padding: 8px 14px; width: 100%;">
+                <option value="">Barcha Guruhlar</option>
+                {% for g in all_groups %}
+                <option value="{{ g.id }}" {% if group_filter == g.id|stringformat:"s" %}selected{% endif %}>{{ g.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <button type="submit" class="btn-glass btn-secondary" style="padding: 8px 18px;">
+            <i data-lucide="filter" style="width: 14px; height: 14px;"></i>
+            <span>Qidirish & Filtrlash</span>
+        </button>
+
+        {% if query or group_filter %}
+        <a href="{% url 'children_archive' %}" class="btn-glass" style="padding: 8px 14px; color: var(--text-dim);">
+            Filtrni tozalash
+        </a>
+        {% endif %}
+    </form>
+</div>
+
+<!-- Archived Children Grid -->
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 20px;">
+    {% for child in archived_children %}
+    <div class="glass-card" style="padding: 20px; display: flex; flex-direction: column; border-left: 4px solid #f59e0b; background: rgba(24, 25, 36, 0.7);">
+        <!-- Card Header -->
+        <div style="display: flex; gap: 14px; align-items: center; margin-bottom: 14px;">
+            <div style="width: 52px; height: 52px; border-radius: 16px; background: linear-gradient(135deg, #f59e0b, #b45309); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 800; color: white; box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);">
+                {{ child.first_name|slice:":1" }}{{ child.last_name|slice:":1" }}
+            </div>
+            <div>
+                <a href="{% url 'child_detail' child.id %}" style="font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 700; color: white; text-decoration: none;">
+                    {{ child.full_name }}
+                </a>
+                <div style="font-size: 12px; color: #fbbf24; font-weight: 600;">
+                    {% if child.group %}{{ child.group.name }} (sobiq){% else %}<span style="color: var(--text-dim);">Guruhsiz</span>{% endif %} · {{ child.age }} yosh
+                </div>
+            </div>
+        </div>
+
+        <!-- Details -->
+        <div style="font-size: 13px; color: var(--text-muted); display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; flex-grow: 1;">
+            <div>👤 <strong>Ota-onasi:</strong> {{ child.parent_full_name }}</div>
+            <div>📞 <strong>Telefon:</strong> <a href="tel:{{ child.parent_phone }}" style="color: #60a5fa; text-decoration: none;">{{ child.parent_phone }}</a></div>
+            <div>📅 <strong>Arxivlangan:</strong> <span style="color: #e2e8f0;">{{ child.archived_at|date:"d.m.Y H:i"|default:child.created_at|date:"d.m.Y" }}</span></div>
+            {% if child.archived_reason %}
+            <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 6px 10px; color: #fde68a; font-size: 12px; margin-top: 4px;">
+                💬 <strong>Sabab:</strong> {{ child.archived_reason }}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Actions -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); gap: 8px; flex-wrap: wrap;">
+            <a href="{% url 'child_detail' child.id %}" class="btn-glass btn-secondary" style="padding: 6px 12px; font-size: 12px;">
+                Profil &rarr;
+            </a>
+
+            <div style="display: flex; gap: 6px;">
+                <!-- Restore Button -->
+                <form method="POST" action="{% url 'child_restore' child.id %}" onsubmit="return confirm('\'{{ child.full_name|escapejs }}\'ni arxivdan chiqarib, faol holatga qaytarmoqchimisiz?');" style="display: inline; margin: 0;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-glass" style="padding: 6px 10px; font-size: 12px; background: rgba(52, 211, 153, 0.15); border-color: rgba(52, 211, 153, 0.4); color: #34d399;" title="Arxivdan qaytarish">
+                        <i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i>
+                        <span>Qaytarish</span>
+                    </button>
+                </form>
+
+                <!-- Permanent Delete Button -->
+                <form method="POST" action="{% url 'child_delete' child.id %}" onsubmit="return confirm('DIQQAT! \'{{ child.full_name|escapejs }}\' bazadan BUTUNLAY o\'chiriladi. Ushbu amalni ortga qaytarib bo\'lmaydi!\n\nDavom etasizmi?');" style="display: inline; margin: 0;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-glass btn-rose" style="padding: 6px 10px; font-size: 12px;" title="Bazadan butunlay o'chirish">
+                        <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% empty %}
+    <div class="glass-card" style="grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-dim);">
+        <div style="width: 64px; height: 64px; border-radius: 20px; background: rgba(245, 158, 11, 0.1); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px auto; color: #fbbf24;">
+            <i data-lucide="archive" style="width: 32px; height: 32px;"></i>
+        </div>
+        <h3 style="font-size: 18px; font-weight: 700; color: white; margin-bottom: 6px;">Arxiv bo'sh</h3>
+        <p style="font-size: 14px; max-width: 420px; margin: 0 auto 16px auto;">
+            Hozirda hech qanday arxivlangan o'quvchi mavjud emas. Kerak bo'lganda o'quvchi profilidan "Arxivga o'tkazish" tugmasini bosishingiz mumkin.
+        </p>
+        <a href="{% url 'children_list' %}" class="btn-glass btn-secondary" style="padding: 8px 18px; display: inline-flex;">
+            Bolalar Ro'yxatiga o'tish
+        </a>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Modal: Arxivni Tozalash (Cleanup) -->
+<div id="modalCleanup" class="glass-modal-backdrop" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); z-index: 9999; align-items: center; justify-content: center; padding: 20px;">
+    <div class="glass-modal" style="background: #181924; border: 1px solid rgba(255,255,255,0.12); border-radius: 20px; padding: 26px; max-width: 520px; width: 100%; box-shadow: 0 25px 60px rgba(0,0,0,0.6);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="font-size: 20px; font-weight: 700; color: white; display: flex; align-items: center; gap: 10px;">
+                <i data-lucide="trash-2" style="width: 22px; height: 22px; color: #ef4444;"></i>
+                <span>Arxivni Avtomatik Tozalash (Cleanup)</span>
+            </h3>
+            <button type="button" onclick="closeCleanupModal()" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.6;">
+            Arxivdagi eski o'quvchilar bazadan to'liq o'chiriladi. Quyidagi variantlardan birini tanlang:
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 22px;">
+            <label style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); cursor: pointer;">
+                <input type="radio" name="cleanupDays" value="30" checked style="accent-color: #ef4444; width: 18px; height: 18px;">
+                <div>
+                    <strong style="color: white; font-size: 14px;">30 kundan oshgan o'quvchilar (Tavsiya etiladi)</strong>
+                    <div style="font-size: 12px; color: var(--text-dim);">Arxivda 1 oydan ko'p saqlangan o'quvchilar tozalanadi</div>
+                </div>
+            </label>
+
+            <label style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); cursor: pointer;">
+                <input type="radio" name="cleanupDays" value="60" style="accent-color: #ef4444; width: 18px; height: 18px;">
+                <div>
+                    <strong style="color: white; font-size: 14px;">60 kundan oshgan o'quvchilar</strong>
+                    <div style="font-size: 12px; color: var(--text-dim);">Arxivda 2 oydan ko'p saqlangan o'quvchilar tozalanadi</div>
+                </div>
+            </label>
+
+            <label style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); cursor: pointer;">
+                <input type="radio" name="cleanupDays" value="ALL" style="accent-color: #ef4444; width: 18px; height: 18px;">
+                <div>
+                    <strong style="color: #fca5a5; font-size: 14px;">Barcha arxivdagi o'quvchilar (Hammasi)</strong>
+                    <div style="font-size: 12px; color: #fecdd3;">Arxivdagi barcha o'quvchilar muddatidan qat'i nazar o'chiriladi</div>
+                </div>
+            </label>
+        </div>
+
+        <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 10px; padding: 12px; font-size: 12px; color: #bae6fd; margin-bottom: 20px;">
+            💡 <strong>Avtomatik reja (Monthly Cron):</strong> Tizim har oyda avtomatik ravishda serverda <code>python manage.py cleanup_archived_students --days 30</code> buyrug'ini ishga tushirishi mumkin.
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" onclick="closeCleanupModal()" class="btn-glass btn-secondary" style="padding: 9px 18px;">
+                Bekor qilish
+            </button>
+            <button type="button" onclick="executeCleanup()" id="btnSubmitCleanup" class="btn-glass" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: white; font-weight: 700; padding: 9px 20px; border: none;">
+                Hozir Tozalash
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+function openCleanupModal() {
+    document.getElementById('modalCleanup').style.display = 'flex';
+}
+
+function closeCleanupModal() {
+    document.getElementById('modalCleanup').style.display = 'none';
+}
+
+async function executeCleanup() {
+    const selected = document.querySelector('input[name="cleanupDays"]:checked').value;
+    const btn = document.getElementById('btnSubmitCleanup');
+    
+    let payload = { days: 30, all: false };
+    if (selected === 'ALL') {
+        if (!confirm('Haqiqatdan ham ARXIVDAGI BARCHA o\'quvchilarni o\'chirmoqchimisiz? Ushbu amal qaytarilmaydi!')) {
+            return;
+        }
+        payload.all = true;
+    } else {
+        payload.days = parseInt(selected);
+        if (!confirm(`${payload.days} kundan oshgan arxivdagi o'quvchilarni o'chirishni tasdiqlaysizmi?`)) {
+            return;
+        }
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = 'Tozalanmoqda...';
+
+    try {
+        const response = await fetch("{% url 'archive_cleanup_api' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        if (result.success) {
+            alert(result.message);
+            window.location.reload();
+        } else {
+            alert('Xatolik yuz berdi: ' + (result.message || 'Noma\'lum xatolik'));
+            btn.disabled = false;
+            btn.innerHTML = 'Hozir Tozalash';
+        }
+    } catch (err) {
+        alert('Serverga ulanishda xatolik: ' + err.message);
+        btn.disabled = false;
+        btn.innerHTML = 'Hozir Tozalash';
+    }
+}
+</script>
+{% endblock %}

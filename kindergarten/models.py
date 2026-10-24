@@ -252,7 +252,7 @@ class Group(models.Model):
 
     @property
     def children_count(self):
-        return self.children.filter(is_active=True).count()
+        return self.children.filter(is_active=True, is_archived=False).count()
 
     @property
     def available_seats(self):
@@ -293,8 +293,26 @@ class Child(models.Model):
     medical_notes = models.TextField(blank=True, null=True, help_text="Allergies, chronic conditions, special diets, medications")
     photo = models.ImageField(upload_to='children_photos/', blank=True, null=True)
     is_active = models.BooleanField(default=True)
+    is_archived = models.BooleanField(default=False, db_index=True, verbose_name="Arxivlanganmi")
+    archived_at = models.DateTimeField(null=True, blank=True, verbose_name="Arxivlangan sana")
+    archived_reason = models.CharField(max_length=255, blank=True, null=True, verbose_name="Arxivlash sababi")
     enrollment_date = models.DateField(default=timezone.now)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def archive(self, reason=None):
+        self.is_archived = True
+        self.archived_at = timezone.now()
+        self.is_active = False
+        if reason:
+            self.archived_reason = reason
+        self.save(update_fields=['is_archived', 'archived_at', 'is_active', 'archived_reason'])
+
+    def restore(self):
+        self.is_archived = False
+        self.archived_at = None
+        self.archived_reason = None
+        self.is_active = True
+        self.save(update_fields=['is_archived', 'archived_at', 'is_active', 'archived_reason'])
 
     @property
     def full_name(self):

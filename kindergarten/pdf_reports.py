@@ -99,7 +99,7 @@ def generate_finance_pdf(month=None, year=None):
     story.append(Spacer(1, 14))
 
     # Query Invoices
-    invoices = MonthlyInvoice.objects.select_related('child', 'child__group').prefetch_related('payments').order_by('-year', '-month', 'child__first_name')
+    invoices = MonthlyInvoice.objects.filter(child__is_archived=False).select_related('child', 'child__group').prefetch_related('payments').order_by('-year', '-month', 'child__first_name')
     if month:
         invoices = invoices.filter(month=month)
     if year:
