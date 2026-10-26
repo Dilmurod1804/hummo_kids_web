@@ -208,7 +208,8 @@ class KindergartenSettings(models.Model):
     address = models.CharField(max_length=255, default=getattr(settings, 'KINDERGARTEN_ADDRESS', "Tashkent city, Chilanzar district, 5th block"))
     latitude = models.FloatField(default=getattr(settings, 'KINDERGARTEN_LAT', 41.311081), help_text="Kindergarten GPS Latitude from .env")
     longitude = models.FloatField(default=getattr(settings, 'KINDERGARTEN_LON', 69.240562), help_text="Kindergarten GPS Longitude from .env")
-    geofence_radius_meters = models.FloatField(default=getattr(settings, 'GEOFENCE_RADIUS_METERS', 50.0), help_text="Allowed radius in meters from .env")
+    geofence_radius = models.IntegerField(default=80, help_text="Geofence ruxsat etilgan masofa (metrda)")
+    geofence_radius_meters = models.FloatField(default=80.0, help_text="Allowed radius in meters")
     work_start_time = models.TimeField(default="08:00", help_text="Ish boshlanish vaqti (masalan: 08:00)")
     work_end_time = models.TimeField(default="18:00", help_text="Ish tugash vaqti (masalan: 18:00)")
     daily_meal_rate = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal(str(getattr(settings, 'DAILY_MEAL_RATE', 25000.00))), help_text="Meal cost deducted per excused absent day")
@@ -223,11 +224,18 @@ class KindergartenSettings(models.Model):
         verbose_name = "Kindergarten Settings"
         verbose_name_plural = "Kindergarten Settings"
 
+    def save(self, *args, **kwargs):
+        if self.geofence_radius is not None:
+            self.geofence_radius_meters = float(self.geofence_radius)
+        elif self.geofence_radius_meters is not None:
+            self.geofence_radius = int(self.geofence_radius_meters)
+        super().save(*args, **kwargs)
+
     @classmethod
     def get_settings(cls):
         obj = cls.objects.first()
         if not obj:
-            obj = cls.objects.create(id=1)
+            obj = cls.objects.create(id=1, geofence_radius=80, geofence_radius_meters=80.0)
         return obj
 
     def __str__(self):

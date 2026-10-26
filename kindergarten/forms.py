@@ -125,10 +125,24 @@ class SettingsForm(forms.ModelForm):
         }),
         label="Uzunlik (Longitude)"
     )
+    geofence_radius = forms.IntegerField(
+        required=True,
+        widget=forms.NumberInput(attrs={
+            'class': 'glass-input',
+            'placeholder': '80',
+            'min': '10',
+            'max': '5000'
+        }),
+        label="Geofence Masofasi (Metrda)"
+    )
+    geofence_radius_meters = forms.FloatField(
+        required=False,
+        widget=forms.HiddenInput()
+    )
 
     class Meta:
         model = KindergartenSettings
-        fields = ['name', 'address', 'latitude', 'longitude', 'geofence_radius_meters',
+        fields = ['name', 'address', 'latitude', 'longitude', 'geofence_radius', 'geofence_radius_meters',
                   'work_start_time', 'work_end_time',
                   'daily_meal_rate', 'default_monthly_fee', 'currency_symbol',
                   'contact_phone', 'contact_email', 'manager_username', 'manager_password']
@@ -137,7 +151,8 @@ class SettingsForm(forms.ModelForm):
             'address': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'To\'liq manzil'}),
             'latitude': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any', 'placeholder': '41.311081'}),
             'longitude': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any', 'placeholder': '69.240562'}),
-            'geofence_radius_meters': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any', 'placeholder': '50'}),
+            'geofence_radius': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '80', 'min': '10'}),
+            'geofence_radius_meters': forms.HiddenInput(),
             'work_start_time': forms.TimeInput(attrs={'class': 'glass-input', 'type': 'time'}),
             'work_end_time': forms.TimeInput(attrs={'class': 'glass-input', 'type': 'time'}),
             'daily_meal_rate': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any'}),
@@ -164,6 +179,16 @@ class SettingsForm(forms.ModelForm):
         except (ValueError, TypeError):
             raise forms.ValidationError("To'g'ri koordinata kiriting (masalan: 69.240562)")
 
+    def clean_geofence_radius(self):
+        val = self.cleaned_data.get('geofence_radius')
+        try:
+            radius = int(val)
+            if radius < 5:
+                raise forms.ValidationError("Geofence radiusi kamida 5 metr bo'lishi kerak.")
+            return radius
+        except (ValueError, TypeError):
+            return 80
+
     def clean(self):
         cleaned_data = super().clean()
         new_uname = cleaned_data.get('new_manager_username', '').strip()
@@ -185,8 +210,10 @@ class SettingsForm(forms.ModelForm):
                 self.add_error('confirm_manager_password', 'Parollar mos kelmadi. Iltimos qaytadan kiriting.')
             elif len(new_pw) < 6:
                 self.add_error('new_manager_password', 'Parol kamida 6 belgidan iborat bo\'lishi kerak.')
-            else:
-                cleaned_data['manager_password'] = new_pw
+        # Sync geofence_radius_meters with geofence_radius
+        if cleaned_data.get('geofence_radius') is not None:
+            cleaned_data['geofence_radius_meters'] = float(cleaned_data['geofence_radius'])
+
         return cleaned_data
 
 

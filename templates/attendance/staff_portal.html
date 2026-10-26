@@ -38,7 +38,7 @@
     <div class="glass-card" id="attendanceScannerContainer" 
          data-k-lat="{{ settings.latitude }}" 
          data-k-lng="{{ settings.longitude }}" 
-         data-k-radius="{{ settings.geofence_radius_meters }}"
+         data-k-radius="{{ settings.geofence_radius|default:80 }}"
          data-has-checked-in="{% if has_checked_in %}true{% else %}false{% endif %}"
          data-has-checked-out="{% if has_checked_out %}true{% else %}false{% endif %}"
          data-has-face-enrolled="{% if has_face_enrolled %}true{% else %}false{% endif %}"
@@ -118,7 +118,7 @@
                     <span>GPS Geofencing Holati</span>
                 </div>
                 <div style="font-size: 12px; color: var(--text-muted);">
-                    Maksimal Radius: <strong style="color: white;">{{ settings.geofence_radius_meters }}m</strong>
+                    Maksimal Radius: <strong style="color: white;">{{ settings.geofence_radius|default:80 }}m</strong>
                 </div>
             </div>
 

@@ -394,7 +394,7 @@
                     <!-- Geofence Info Badge -->
                     <div class="header-geofence-pill" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 6px 12px; font-size: 12px; display: flex; align-items: center; gap: 6px; color: #34d399;">
                         <span class="gps-pulse-dot in-range" style="width: 8px; height: 8px;"></span>
-                        <span>Geofence: 50m</span>
+                        <span>Geofence: {{ settings_obj.geofence_radius|default:settings.geofence_radius|default:80 }}m</span>
                     </div>
 
                     <!-- Mobile Quick Logout Button -->

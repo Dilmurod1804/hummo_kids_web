@@ -1560,11 +1560,17 @@ def staff_check_in_api(request):
                 'message':          face_message,
             }, status=400)
 
-        # ── 4. GPS / Geofence qat'iy tekshiruvi (Strict 50m Haversine) ────────
-        settings_obj = KindergartenSettings.get_settings()
-        k_lat = float(getattr(settings, 'KINDERGARTEN_LAT', None) or getattr(settings_obj, 'latitude', 41.311081) or 41.311081)
-        k_lon = float(getattr(settings, 'KINDERGARTEN_LON', None) or getattr(settings_obj, 'longitude', 69.240562) or 69.240562)
-        geofence_radius = float(getattr(settings, 'GEOFENCE_RADIUS_METERS', 50.0) or getattr(settings_obj, 'geofence_radius_meters', 50.0) or 50.0)
+        # ── 4. GPS / Geofence tekshiruvi (KindergartenSettings.objects.first().geofence_radius) ───
+        settings_obj = KindergartenSettings.objects.first() or KindergartenSettings.get_settings()
+        if settings_obj and getattr(settings_obj, 'geofence_radius', None) is not None:
+            geofence_radius = float(settings_obj.geofence_radius)
+        elif settings_obj and getattr(settings_obj, 'geofence_radius_meters', None) is not None:
+            geofence_radius = float(settings_obj.geofence_radius_meters)
+        else:
+            geofence_radius = float(getattr(settings, 'GEOFENCE_RADIUS_METERS', 80.0) or 80.0)
+
+        k_lat = float(getattr(settings_obj, 'latitude', None) or getattr(settings, 'KINDERGARTEN_LAT', 41.311081) or 41.311081)
+        k_lon = float(getattr(settings_obj, 'longitude', None) or getattr(settings, 'KINDERGARTEN_LON', 69.240562) or 69.240562)
 
         # Haversine formula yordamida ikkita nuqta orasidagi masofa metrda aniq hisoblanadi
         distance = haversine_distance(user_lat, user_lon, k_lat, k_lon)
@@ -1572,7 +1578,7 @@ def staff_check_in_api(request):
         fname_ok = f"face_{staff_user.id}_{today.strftime('%Y%m%d')}_{now.strftime('%H%M%S')}.jpg"
         image_file = ContentFile(incoming_bytes, name=fname_ok)
 
-        # Agar masofa 50 metrdan katta bo'lsa (distance > 50), davomat yozuvi saqlanmasin
+        # Agar masofa ruxsat etilgan masofadan katta bo'lsa (distance > geofence_radius), davomat yozuvi saqlanmasin
         if distance > geofence_radius:
             logger.warning(
                 "Geofence rad etildi: Xodim %s (ID: %s) bog'chadan %.1fm uzoqda (ruxsat: %.0fm). Koordinatalar: user=(%s, %s), target=(%s, %s)",
@@ -1580,8 +1586,8 @@ def staff_check_in_api(request):
             )
             return JsonResponse({
                 "success": False,
-                "error": "Siz bog'chadan juda uzoqdasiz (50m dan yaqin bo'lishingiz kerak).",
-                "message": "Siz bog'chadan juda uzoqdasiz (50m dan yaqin bo'lishingiz kerak).",
+                "error": f"Siz bog'chadan juda uzoqdasiz ({int(geofence_radius)}m dan yaqin bo'lishingiz kerak).",
+                "message": f"Siz bog'chadan juda uzoqdasiz ({int(geofence_radius)}m dan yaqin bo'lishingiz kerak).",
                 "distance": round(distance, 1),
                 "allowed_radius": geofence_radius,
                 "status": "error"
@@ -1880,11 +1886,17 @@ def face_identify_api(request):
                 'message':            face_msg or "Yuz mos kelmadi. Xodim tasdiqlanmadi.",
             }, status=404)
 
-        # ── GPS / Geofence qat'iy tekshiruvi (Strict 50m Haversine) ──────────
-        settings_obj = KindergartenSettings.get_settings()
-        k_lat = float(getattr(settings, 'KINDERGARTEN_LAT', None) or getattr(settings_obj, 'latitude', 41.311081) or 41.311081)
-        k_lon = float(getattr(settings, 'KINDERGARTEN_LON', None) or getattr(settings_obj, 'longitude', 69.240562) or 69.240562)
-        geofence_radius = float(getattr(settings, 'GEOFENCE_RADIUS_METERS', 50.0) or getattr(settings_obj, 'geofence_radius_meters', 50.0) or 50.0)
+        # ── GPS / Geofence qat'iy tekshiruvi (KindergartenSettings.objects.first().geofence_radius) ───
+        settings_obj = KindergartenSettings.objects.first() or KindergartenSettings.get_settings()
+        if settings_obj and getattr(settings_obj, 'geofence_radius', None) is not None:
+            geofence_radius = float(settings_obj.geofence_radius)
+        elif settings_obj and getattr(settings_obj, 'geofence_radius_meters', None) is not None:
+            geofence_radius = float(settings_obj.geofence_radius_meters)
+        else:
+            geofence_radius = float(getattr(settings, 'GEOFENCE_RADIUS_METERS', 80.0) or 80.0)
+
+        k_lat = float(getattr(settings_obj, 'latitude', None) or getattr(settings, 'KINDERGARTEN_LAT', 41.311081) or 41.311081)
+        k_lon = float(getattr(settings_obj, 'longitude', None) or getattr(settings, 'KINDERGARTEN_LON', 69.240562) or 69.240562)
 
         # Haversine formula yordamida ikkita nuqta orasidagi masofa metrda aniq hisoblanadi
         distance = haversine_distance(user_lat, user_lon, k_lat, k_lon)
@@ -1899,8 +1911,8 @@ def face_identify_api(request):
             )
             return JsonResponse({
                 "success": False,
-                "error": "Siz bog'chadan juda uzoqdasiz (50m dan yaqin bo'lishingiz kerak).",
-                "message": "Siz bog'chadan juda uzoqdasiz (50m dan yaqin bo'lishingiz kerak).",
+                "error": f"Siz bog'chadan juda uzoqdasiz ({int(geofence_radius)}m dan yaqin bo'lishingiz kerak).",
+                "message": f"Siz bog'chadan juda uzoqdasiz ({int(geofence_radius)}m dan yaqin bo'lishingiz kerak).",
                 "distance": round(distance, 1),
                 "allowed_radius": geofence_radius,
                 "status": "error"
