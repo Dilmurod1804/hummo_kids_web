@@ -208,6 +208,77 @@
             </div>
         </div>
 
+        <!-- SECTION 5: Interfeys va Shaxsiy Ranglar Palitrasi (Custom Theme Colors) -->
+        <div class="glass-card" style="padding: 28px 32px; margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                <div>
+                    <h3 style="font-family: 'Outfit', sans-serif; font-size: 17px; font-weight: 700; color: var(--accent-color, #a855f7); margin: 0; display: flex; align-items: center; gap: 9px;">
+                        <i data-lucide="palette" style="width: 20px; height: 20px;"></i>
+                        Tizim Interfeysi va Shaxsiy Ranglar Kombinatsiyasi
+                    </h3>
+                    <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">
+                        Asosiy rang, fon, menyu va kartalar ranglarini o'zingizga moslab sozlang (jonli ko'rinish va avtomatik saqlash).
+                    </p>
+                </div>
+                <button type="button" class="btn-glass" onclick="window.openCustomColorModal()" style="font-size: 12px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px; color: var(--accent-color); border-color: var(--accent-color); cursor: pointer;">
+                    <i data-lucide="sliders" style="width: 14px; height: 14px;"></i>
+                    <span>Studiyani Ochish &rarr;</span>
+                </button>
+            </div>
+
+            <div class="color-pickers-grid" style="margin-bottom: 16px;">
+                <div class="color-picker-item">
+                    <div class="color-picker-info">
+                        <div class="color-picker-label">Asosiy Rang (Primary)</div>
+                        <div class="color-picker-desc">Tugmalar, neon nur va faol menyular</div>
+                    </div>
+                    <div class="color-input-wrapper">
+                        <input type="color" class="native-color-picker" id="settingsPrimaryColor" oninput="document.getElementById('inputPrimaryColor').value=this.value; document.getElementById('inputPrimaryColor').dispatchEvent(new Event('input'))" value="#a855f7">
+                    </div>
+                </div>
+
+                <div class="color-picker-item">
+                    <div class="color-picker-info">
+                        <div class="color-picker-label">Asosiy Fon (Background)</div>
+                        <div class="color-picker-desc">Saytning butun orqa foni</div>
+                    </div>
+                    <div class="color-input-wrapper">
+                        <input type="color" class="native-color-picker" id="settingsBgColor" oninput="document.getElementById('inputBgColor').value=this.value; document.getElementById('inputBgColor').dispatchEvent(new Event('input'))" value="#090d16">
+                    </div>
+                </div>
+
+                <div class="color-picker-item">
+                    <div class="color-picker-info">
+                        <div class="color-picker-label">Karta / Blok Foni</div>
+                        <div class="color-picker-desc">Glassmorphic oyna bloklari</div>
+                    </div>
+                    <div class="color-input-wrapper">
+                        <input type="color" class="native-color-picker" id="settingsCardColor" oninput="document.getElementById('inputCardColor').value=this.value; document.getElementById('inputCardColor').dispatchEvent(new Event('input'))" value="#121626">
+                    </div>
+                </div>
+
+                <div class="color-picker-item">
+                    <div class="color-picker-info">
+                        <div class="color-picker-label">Yon Panel & Header</div>
+                        <div class="color-picker-desc">Menyular va yuqori panel foni</div>
+                    </div>
+                    <div class="color-input-wrapper">
+                        <input type="color" class="native-color-picker" id="settingsSidebarColor" oninput="document.getElementById('inputSidebarColor').value=this.value; document.getElementById('inputSidebarColor').dispatchEvent(new Event('input'))" value="#0d101e">
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button type="button" class="btn-glass" onclick="document.getElementById('resetCustomColorsBtn').click()" style="font-size: 12px; padding: 7px 14px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+                    <i data-lucide="rotate-ccw" style="width: 13px; height: 13px;"></i>
+                    <span>Standartga Qaytarish</span>
+                </button>
+                <button type="button" class="btn-glass btn-primary" onclick="document.getElementById('saveCustomColorsBtn').click()" style="font-size: 12px; padding: 7px 16px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+                    <i data-lucide="check" style="width: 14px; height: 14px;"></i>
+                    <span>Ranglarni Saqlash</span>
+                </button>
+            </div>
+        </div>
 
         <!-- Submit -->
         <div style="display: flex; justify-content: flex-end; gap: 12px; margin-top: 4px; margin-bottom: 40px;">

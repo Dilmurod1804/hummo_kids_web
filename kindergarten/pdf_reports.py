@@ -144,7 +144,10 @@ def generate_finance_pdf(month=None, year=None):
         total_paid += inv.paid_amount
         total_debt += inv.remaining_debt
 
-        status_text = "To'langan" if inv.status == 'PAID' else (f"Qisman ({inv.remaining_debt:,.0f})" if inv.status == 'PARTIAL' else f"Qarzdor ({inv.remaining_debt:,.0f})")
+        if inv.child.is_mahalla:
+            status_text = "Mahalla (Ozod)"
+        else:
+            status_text = "To'langan" if inv.status == 'PAID' else (f"Qisman ({inv.remaining_debt:,.0f})" if inv.status == 'PARTIAL' else f"Qarzdor ({inv.remaining_debt:,.0f})")
 
         row = [
             Paragraph(str(idx), cell_center),

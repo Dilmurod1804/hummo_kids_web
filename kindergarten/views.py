@@ -259,11 +259,12 @@ def admin_dashboard(request):
     staff_total_count = len(all_active_staff)
     staff_on_duty_count = staff_passed_count
 
-    # Finance metrics for current month
+    # Finance metrics for current month (Mahalla o'quvchilari qarzdorlikka kiritilmaydi)
     monthly_invoices = MonthlyInvoice.objects.filter(month=current_month, year=current_year, child__is_archived=False)
-    total_expected_revenue = monthly_invoices.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
+    paying_monthly = monthly_invoices.exclude(child__is_mahalla=True)
+    total_expected_revenue = paying_monthly.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
     total_collected_revenue = monthly_invoices.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
-    total_recalculated_discounts = monthly_invoices.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
+    total_recalculated_discounts = paying_monthly.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
     total_debt = max(Decimal('0.00'), total_expected_revenue - total_collected_revenue)
 
     # Groups breakdown
@@ -856,13 +857,26 @@ def child_create(request):
             settings = KindergartenSettings.get_settings()
             invoice = MonthlyInvoice.objects.filter(child=child, month=today.month, year=today.year).first()
             if not invoice:
-                MonthlyInvoice.objects.create(
-                    child=child,
-                    month=today.month,
-                    year=today.year,
-                    base_fee=child.group.monthly_fee if child.group else settings.default_monthly_fee,
-                    meal_rate=settings.daily_meal_rate,
-                )
+                if child.is_mahalla:
+                    MonthlyInvoice.objects.create(
+                        child=child,
+                        month=today.month,
+                        year=today.year,
+                        base_fee=Decimal('0.00'),
+                        discount=Decimal('0.00'),
+                        meal_rate=settings.daily_meal_rate,
+                        total_amount=Decimal('0.00'),
+                        paid_amount=Decimal('0.00'),
+                        status='PAID',
+                    )
+                else:
+                    MonthlyInvoice.objects.create(
+                        child=child,
+                        month=today.month,
+                        year=today.year,
+                        base_fee=child.group.monthly_fee if child.group else settings.default_monthly_fee,
+                        meal_rate=settings.daily_meal_rate,
+                    )
             return redirect('children_list')
         
         # If invalid, return to list with form errors
@@ -885,7 +899,14 @@ def child_update(request, pk):
     if request.method == 'POST':
         form = ChildForm(request.POST, request.FILES, instance=child)
         if form.is_valid():
-            form.save()
+            child = form.save()
+            if child.is_mahalla:
+                # Agar o'quvchi mahalladan deb belgilangan bo'lsa, qarz va to'lovlari to'langan holatga o'tkaziladi
+                MonthlyInvoice.objects.filter(child=child).update(
+                    base_fee=Decimal('0.00'),
+                    total_amount=Decimal('0.00'),
+                    status='PAID'
+                )
             return redirect('child_detail', pk=child.pk)
     else:
         form = ChildForm(instance=child)
@@ -2497,10 +2518,11 @@ def compute_groups_finance_summary(month, year):
         children_cnt = len(active_children_ids)
 
         invs = MonthlyInvoice.objects.filter(child_id__in=active_children_ids, child__is_archived=False, month=month, year=year)
-        total_exp = invs.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
-        total_disc = invs.aggregate(s=Sum('discount'))['s'] or Decimal('0.00')
+        paying_invs = invs.exclude(child__is_mahalla=True)
+        total_exp = paying_invs.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
+        total_disc = paying_invs.aggregate(s=Sum('discount'))['s'] or Decimal('0.00')
         total_pd = invs.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
-        total_recalc = invs.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
+        total_recalc = paying_invs.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
         total_dbt = max(Decimal('0.00'), total_exp - total_pd)
         paid_pct = round((float(total_pd) / float(total_exp) * 100), 1) if total_exp > 0 else 0
 
@@ -2596,17 +2618,36 @@ def finance_dashboard(request):
 
     invoices = MonthlyInvoice.objects.filter(child__is_archived=False, month=month, year=year).select_related('child', 'child__group').prefetch_related('payments')
 
+    # Umumiy qarzdorlar soni (Mahalladan kelganlar MUTLAQO sanalmaydi):
+    debtors_count = MonthlyInvoice.objects.filter(
+        child__is_archived=False,
+        month=month,
+        year=year
+    ).exclude(status='PAID').exclude(child__is_mahalla=True).count()
+
+    # Mahalla o'quvchilari soni:
+    mahalla_count = MonthlyInvoice.objects.filter(
+        child__is_archived=False,
+        month=month,
+        year=year,
+        child__is_mahalla=True
+    ).count()
+
     if status_filter == 'unpaid':
-        invoices = invoices.exclude(status='PAID')
+        # Qarzdorlar ro'yxatidan mahalla o'quvchilari to'liq chiqarib tashlanadi
+        invoices = invoices.exclude(status='PAID').exclude(child__is_mahalla=True)
+    elif status_filter == 'mahalla':
+        invoices = invoices.filter(child__is_mahalla=True)
 
     if payment_type_filter == 'cash':
         invoices = invoices.filter(payments__payment_method='CASH').distinct()
     elif payment_type_filter == 'card':
         invoices = invoices.filter(payments__payment_method__in=['CARD', 'BANK_TRANSFER', 'CLICK_PAYME']).distinct()
 
-    total_expected = invoices.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
+    paying_invoices = invoices.exclude(child__is_mahalla=True)
+    total_expected = paying_invoices.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
     total_paid = invoices.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
-    total_recalc = invoices.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
+    total_recalc = paying_invoices.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
     total_debt = max(Decimal('0.00'), total_expected - total_paid)
 
     # Invoyslar bo'yicha naqd va karta to'lovlarini hisoblash
@@ -2710,6 +2751,8 @@ def finance_dashboard(request):
         'total_paid': total_paid,
         'total_recalc': total_recalc,
         'total_debt': total_debt,
+        'debtors_count': debtors_count,
+        'mahalla_count': mahalla_count,
         # Kunlik
         'daily_total': daily_total,
         'daily_cash': daily_cash,
@@ -2819,6 +2862,27 @@ def recalculate_invoices_api(request):
             recalculated_count = 0
 
             for child in children:
+                if child.is_mahalla:
+                    invoice = MonthlyInvoice.objects.filter(child=child, month=month, year=year).first()
+                    if not invoice:
+                        MonthlyInvoice.objects.create(
+                            child=child,
+                            month=month,
+                            year=year,
+                            base_fee=Decimal('0.00'),
+                            discount=Decimal('0.00'),
+                            meal_rate=settings.daily_meal_rate,
+                            total_amount=Decimal('0.00'),
+                            paid_amount=Decimal('0.00'),
+                            status='PAID',
+                        )
+                    else:
+                        invoice.base_fee = Decimal('0.00')
+                        invoice.total_amount = Decimal('0.00')
+                        invoice.status = 'PAID'
+                        invoice.save()
+                    continue
+
                 # Count excused absences in the previous month
                 excused_days = ChildAttendance.objects.filter(
                     child=child,
@@ -3820,17 +3884,30 @@ def groups_finance_view(request):
             inv = existing_invoices.get(child.id)
             if not inv:
                 # Agar bola uchun joriy oyda invoice mavjud bo'lmasa, uni yaratamiz
-                inv = MonthlyInvoice.objects.create(
-                    child=child,
-                    month=month,
-                    year=year,
-                    base_fee=active_group.monthly_fee or kg_settings.default_monthly_fee,
-                    discount=Decimal('0.00'),
-                    meal_rate=kg_settings.daily_meal_rate,
-                    total_amount=active_group.monthly_fee or kg_settings.default_monthly_fee,
-                    paid_amount=Decimal('0.00'),
-                    status='UNPAID',
-                )
+                if child.is_mahalla:
+                    inv = MonthlyInvoice.objects.create(
+                        child=child,
+                        month=month,
+                        year=year,
+                        base_fee=Decimal('0.00'),
+                        discount=Decimal('0.00'),
+                        meal_rate=kg_settings.daily_meal_rate,
+                        total_amount=Decimal('0.00'),
+                        paid_amount=Decimal('0.00'),
+                        status='PAID',
+                    )
+                else:
+                    inv = MonthlyInvoice.objects.create(
+                        child=child,
+                        month=month,
+                        year=year,
+                        base_fee=active_group.monthly_fee or kg_settings.default_monthly_fee,
+                        discount=Decimal('0.00'),
+                        meal_rate=kg_settings.daily_meal_rate,
+                        total_amount=active_group.monthly_fee or kg_settings.default_monthly_fee,
+                        paid_amount=Decimal('0.00'),
+                        status='UNPAID',
+                    )
 
             # 2. To'lov turlarini hisoblash: Naqd, Karta, Terminal, Payme
             c_cash = Decimal('0.00')
@@ -3853,8 +3930,9 @@ def groups_finance_view(request):
             inv.terminal_amount = c_term
             inv.payme_amount = c_payme
 
-            total_exp += inv.total_amount
-            total_disc += inv.discount
+            if not child.is_mahalla:
+                total_exp += inv.total_amount
+                total_disc += inv.discount
             total_pd += inv.paid_amount
             g_cash += c_cash
             g_card += c_card

@@ -294,6 +294,7 @@ class Child(models.Model):
     photo = models.ImageField(upload_to='children_photos/', blank=True, null=True)
     is_active = models.BooleanField(default=True)
     is_archived = models.BooleanField(default=False, db_index=True, verbose_name="Arxivlanganmi")
+    is_mahalla = models.BooleanField(default=False, db_index=True, verbose_name="Mahalladan (To'lovdan ozod)")
     archived_at = models.DateTimeField(null=True, blank=True, verbose_name="Arxivlangan sana")
     archived_reason = models.CharField(max_length=255, blank=True, null=True, verbose_name="Arxivlash sababi")
     enrollment_date = models.DateField(default=timezone.now)
@@ -411,10 +412,16 @@ class MonthlyInvoice(models.Model):
 
     @property
     def remaining_debt(self):
+        if self.child and getattr(self.child, 'is_mahalla', False):
+            return Decimal('0.00')
         debt = self.total_amount - self.paid_amount
         return max(Decimal('0.00'), debt)
 
     def calculate_totals(self):
+        if self.child and getattr(self.child, 'is_mahalla', False):
+            self.total_amount = Decimal('0.00')
+            self.status = 'PAID'
+            return
         self.recalculation_amount = Decimal(self.excused_days_count) * self.meal_rate
         self.total_amount = max(Decimal('0.00'), self.base_fee - self.discount - self.recalculation_amount)
         if self.total_amount == Decimal('0.00'):

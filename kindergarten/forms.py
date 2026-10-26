@@ -23,7 +23,7 @@ class ChildForm(forms.ModelForm):
         fields = [
             'first_name', 'last_name', 'birth_date', 'gender', 'group',
             'parent_full_name', 'parent_phone', 'parent_email', 'address',
-            'emergency_contact', 'medical_notes', 'photo', 'is_active', 'enrollment_date'
+            'emergency_contact', 'medical_notes', 'photo', 'is_active', 'is_mahalla', 'enrollment_date'
         ]
         widgets = {
             'first_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Ismi'}),
@@ -38,6 +38,7 @@ class ChildForm(forms.ModelForm):
             'emergency_contact': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Qo‘shimcha aloqa / Qarindosh'}),
             'medical_notes': forms.Textarea(attrs={'class': 'glass-input', 'rows': 3, 'placeholder': 'Allergiyalar, parhez yoki tibbiy eslatmalar...'}),
             'photo': forms.FileInput(attrs={'class': 'glass-input-file'}),
+            'is_mahalla': forms.CheckboxInput(attrs={'class': 'glass-checkbox', 'id': 'child_is_mahalla'}),
             'enrollment_date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
         }
 

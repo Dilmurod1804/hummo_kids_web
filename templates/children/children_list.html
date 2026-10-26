@@ -93,6 +93,9 @@
                     <a href="{% url 'child_detail' child.id %}" style="font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 700; color: white; text-decoration: none;">
                         {{ child.full_name }}
                     </a>
+                    {% if child.is_mahalla %}
+                    <span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.4); font-size: 10px; padding: 1px 6px; margin-left: 4px; vertical-align: middle;">🏛️ Mahalla</span>
+                    {% endif %}
                     <div style="font-size: 12px; color: #a855f7; font-weight: 600;">
                         {% if child.group %}{{ child.group.name }}{% else %}<span style="color: #fbbf24;">Guruhsiz</span>{% endif %} · {{ child.age }} yosh
                     </div>
@@ -316,6 +319,11 @@
             <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
                 {{ form.is_active }}
                 <label class="form-label" style="margin-bottom: 0;">Faol tarbiyalanuvchi (Tizimda ko'rinishi)</label>
+            </div>
+
+            <div class="form-group" style="display: flex; align-items: center; gap: 10px; background: rgba(14, 165, 233, 0.08); padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(14, 165, 233, 0.25);">
+                {{ form.is_mahalla }}
+                <label class="form-label" style="margin-bottom: 0; color: #38bdf8; font-weight: 700;">🏛️ Mahalla o'quvchisi (To'lovdan ozod / Qarzdorlarga kirmaydi)</label>
             </div>
 
             <div class="form-group">

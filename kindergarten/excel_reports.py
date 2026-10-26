@@ -328,7 +328,11 @@ def generate_finance_excel(month=None, year=None):
 
         debt_cell = ws.cell(row=row_idx, column=12)
         debt_cell.alignment = Alignment(horizontal="center")
-        if inv.status == 'PAID':
+        if inv.child.is_mahalla:
+            debt_cell.value = "Mahalla (To'lovdan ozod)"
+            debt_cell.fill = PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid")
+            debt_cell.font = Font(name="Segoe UI", color="0369A1", bold=True)
+        elif inv.status == 'PAID':
             debt_cell.value = "To'liq To'langan"
             debt_cell.fill = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid")
             debt_cell.font = Font(name="Segoe UI", color="166534", bold=True)

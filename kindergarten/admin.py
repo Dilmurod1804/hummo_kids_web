@@ -37,8 +37,8 @@ class GroupAdmin(admin.ModelAdmin):
 
 @admin.register(Child)
 class ChildAdmin(admin.ModelAdmin):
-    list_display = ('full_name', 'group', 'parent_full_name', 'parent_phone', 'is_active', 'is_archived', 'archived_at')
-    list_filter = ('is_archived', 'group', 'is_active')
+    list_display = ('full_name', 'group', 'parent_full_name', 'parent_phone', 'is_active', 'is_mahalla', 'is_archived', 'archived_at')
+    list_filter = ('is_mahalla', 'is_archived', 'group', 'is_active')
     search_fields = ('first_name', 'last_name', 'parent_full_name', 'parent_phone')
 
 @admin.register(ChildAttendance)

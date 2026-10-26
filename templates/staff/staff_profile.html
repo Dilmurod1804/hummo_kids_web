@@ -17,6 +17,10 @@
         </div>
 
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn-glass btn-secondary" onclick="window.openCustomColorModal()" style="color: var(--accent-color); border-color: var(--accent-color); cursor: pointer;">
+                <i data-lucide="palette" style="width: 16px; height: 16px;"></i>
+                <span>Dizayn Ranglarim</span>
+            </button>
             <a href="{% url 'staff_documents' user_profile.id %}" class="btn-glass btn-secondary">
                 <i data-lucide="file-text" style="width: 16px; height: 16px; color: #38bdf8;"></i>
                 <span>Mening Hujjatlarim</span>

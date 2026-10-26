@@ -16,8 +16,48 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+    <!-- Theme & Custom Colors Fast-Loader (Sahifa ochilganda rang miltillashining oldini oladi) -->
+    <script>
+        (function() {
+            try {
+                var savedTheme = localStorage.getItem('humokids_theme') || 'violet';
+                document.documentElement.setAttribute('data-theme', savedTheme);
+
+                var customColors = localStorage.getItem('humokids_custom_colors');
+                if (customColors) {
+                    var c = JSON.parse(customColors);
+                    var r = document.documentElement.style;
+                    if (c.primary) {
+                        r.setProperty('--accent-color', c.primary);
+                        r.setProperty('--blob-1', c.primary);
+                    }
+                    if (c.secondary) {
+                        r.setProperty('--blob-2', c.secondary);
+                    }
+                    if (c.primary && c.secondary) {
+                        r.setProperty('--primary-gradient', 'linear-gradient(135deg, ' + c.primary + ' 0%, ' + c.secondary + ' 100%)');
+                    }
+                    if (c.bg) {
+                        r.setProperty('--body-bg', c.bg);
+                        r.setProperty('--bg-dark', c.bg);
+                    }
+                    if (c.card) {
+                        r.setProperty('--glass-card', c.card);
+                    }
+                    if (c.sidebar) {
+                        r.setProperty('--sidebar-bg', c.sidebar);
+                        r.setProperty('--header-bg', c.sidebar);
+                    }
+                    if (c.text) {
+                        r.setProperty('--text-main', c.text);
+                    }
+                }
+            } catch (e) {}
+        })();
+    </script>
+
     <!-- Glassmorphism Stylesheet -->
-    <link rel="stylesheet" href="/static/css/glassmorphism.css?v=2.3">
+    <link rel="stylesheet" href="/static/css/glassmorphism.css?v=2.4">
     
     <!-- CSRF Meta Tag (JavaScript fetch uchun) -->
     <meta name="csrf-token" content="{% csrf_token %}">
@@ -295,6 +335,62 @@
                         <a href="{% url 'switch_role' 'teacher2' %}" class="role-pill-btn {% if user.username == 'teacher2' %}active{% endif %}">Tarbiyachi 2</a>
                     </div>
 
+                    <!-- Theme Switcher (Ranglar Palitrasi) -->
+                    <div class="theme-switcher-wrapper" id="themeSwitcherWrapper">
+                        <button type="button" class="theme-switcher-btn" id="themeSwitcherBtn" title="Dizayn rangi va mavzuni tanlash" aria-haspopup="true" aria-expanded="false">
+                            <i data-lucide="palette" style="width: 15px; height: 15px;"></i>
+                            <span class="theme-current-dot" id="themeCurrentDot"></span>
+                            <span class="theme-btn-label">Mavzu</span>
+                            <i data-lucide="chevron-down" style="width: 12px; height: 12px; opacity: 0.7;"></i>
+                        </button>
+                        <div class="theme-dropdown-menu" id="themeDropdownMenu">
+                            <div class="theme-menu-header">
+                                <span>Ranglar Palitrasi</span>
+                                <i data-lucide="sparkles" style="width: 12px; height: 12px; color: var(--accent-color);"></i>
+                            </div>
+                            <div class="theme-options-grid">
+                                <button type="button" class="theme-option-btn" data-theme-value="violet">
+                                    <span class="theme-color-preview" style="background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899);"></span>
+                                    <span class="theme-name">Violet (Humo)</span>
+                                    <i data-lucide="check" class="theme-check-icon"></i>
+                                </button>
+                                <button type="button" class="theme-option-btn" data-theme-value="emerald">
+                                    <span class="theme-color-preview" style="background: linear-gradient(135deg, #059669, #10b981, #06b6d4);"></span>
+                                    <span class="theme-name">Emerald (Zumrad)</span>
+                                    <i data-lucide="check" class="theme-check-icon"></i>
+                                </button>
+                                <button type="button" class="theme-option-btn" data-theme-value="blue">
+                                    <span class="theme-color-preview" style="background: linear-gradient(135deg, #2563eb, #0284c7, #38bdf8);"></span>
+                                    <span class="theme-name">Ocean Blue</span>
+                                    <i data-lucide="check" class="theme-check-icon"></i>
+                                </button>
+                                <button type="button" class="theme-option-btn" data-theme-value="sunset">
+                                    <span class="theme-color-preview" style="background: linear-gradient(135deg, #e11d48, #f97316, #f59e0b);"></span>
+                                    <span class="theme-name">Sunset (Rose)</span>
+                                    <i data-lucide="check" class="theme-check-icon"></i>
+                                </button>
+                                <button type="button" class="theme-option-btn" data-theme-value="dark">
+                                    <span class="theme-color-preview" style="background: linear-gradient(135deg, #1e293b, #475569, #94a3b8);"></span>
+                                    <span class="theme-name">Dark Noir</span>
+                                    <i data-lucide="check" class="theme-check-icon"></i>
+                                </button>
+                                <button type="button" class="theme-option-btn" data-theme-value="light">
+                                    <span class="theme-color-preview" style="background: linear-gradient(135deg, #ffffff, #e2e8f0, #cbd5e1); border: 1px solid rgba(0,0,0,0.15);"></span>
+                                    <span class="theme-name">Luxe Light</span>
+                                    <i data-lucide="check" class="theme-check-icon"></i>
+                                </button>
+                            </div>
+                            <!-- Custom Color Combinations Studio Trigger -->
+                            <div style="border-top: 1px solid var(--border-color); margin-top: 8px; padding-top: 6px;">
+                                <button type="button" class="theme-option-btn" id="openCustomColorStudioBtn" style="color: var(--accent-color); font-weight: 700;">
+                                    <i data-lucide="sliders" style="width: 15px; height: 15px;"></i>
+                                    <span>Shaxsiy Ranglar Studiyasi</span>
+                                    <i data-lucide="chevron-right" style="width: 13px; height: 13px; margin-left: auto;"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Geofence Info Badge -->
                     <div class="header-geofence-pill" style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 6px 12px; font-size: 12px; display: flex; align-items: center; gap: 6px; color: #34d399;">
                         <span class="gps-pulse-dot in-range" style="width: 8px; height: 8px;"></span>
@@ -318,14 +414,560 @@
     </div>
 
     <!-- Global Toast Container -->
-    <div id="toast-container" style="position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 10px;"></div>
+    <div id="toast-container" style="position: fixed; bottom: 24px; right: 24px; z-index: 99999; display: flex; flex-direction: column; gap: 10px;"></div>
 
     <!-- Hidden CSRF form: cookie ni har doim o'rnatib turadi -->
     <form id="csrf-sync-form" style="display:none;">{% csrf_token %}</form>
 
+    <!-- Custom Color Combinations Studio Modal -->
+    <div class="color-modal-backdrop" id="colorModalBackdrop" role="dialog" aria-modal="true" aria-labelledby="colorModalTitle">
+        <div class="color-modal-box">
+            <div class="color-modal-header">
+                <div class="color-modal-title" id="colorModalTitle">
+                    <i data-lucide="palette" style="color: var(--accent-color); width: 22px; height: 22px;"></i>
+                    <span>Shaxsiy Ranglar Studiyasi</span>
+                </div>
+                <button type="button" class="color-modal-close-btn" id="colorModalCloseBtn" title="Yopish">
+                    <i data-lucide="x" style="width: 16px; height: 16px;"></i>
+                </button>
+            </div>
+
+            <!-- Presets Section -->
+            <div class="presets-section">
+                <div class="presets-title">
+                    <i data-lucide="sparkles" style="width: 14px; height: 14px; color: #fbbf24;"></i>
+                    <span>Tayyor Eksklyuziv Palitralar:</span>
+                </div>
+                <div class="presets-list">
+                    <button type="button" class="preset-chip-btn" data-preset="cyberpunk">
+                        <span class="preset-dot" style="background: linear-gradient(135deg, #06b6d4, #a855f7);"></span>
+                        <span>Cyberpunk</span>
+                    </button>
+                    <button type="button" class="preset-chip-btn" data-preset="emerald_nature">
+                        <span class="preset-dot" style="background: linear-gradient(135deg, #10b981, #059669);"></span>
+                        <span>Zumrad Tabiat</span>
+                    </button>
+                    <button type="button" class="preset-chip-btn" data-preset="ocean_deep">
+                        <span class="preset-dot" style="background: linear-gradient(135deg, #38bdf8, #2563eb);"></span>
+                        <span>Chuqur Okean</span>
+                    </button>
+                    <button type="button" class="preset-chip-btn" data-preset="sunset_amber">
+                        <span class="preset-dot" style="background: linear-gradient(135deg, #f43f5e, #f59e0b);"></span>
+                        <span>Sunset Amber</span>
+                    </button>
+                    <button type="button" class="preset-chip-btn" data-preset="golden_luxury">
+                        <span class="preset-dot" style="background: linear-gradient(135deg, #f59e0b, #d97706);"></span>
+                        <span>Gold Luxury</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Color Pickers Grid -->
+            <div class="color-pickers-grid">
+                <!-- 1. Primary / Accent Color -->
+                <div class="color-picker-item">
+                    <div class="color-picker-info">
+                        <div class="color-picker-label">
+                            <i data-lucide="sparkle" style="width: 14px; height: 14px; color: var(--accent-color);"></i>
+                            <span>Asosiy Rang (Primary)</span>
+                        </div>
+                        <div class="color-picker-desc">Tugmalar, faol menyu, neon nurlar</div>
+                    </div>
+                    <div class="color-input-wrapper">
+                        <span class="color-hex-text" id="hexPrimaryText">#A855F7</span>
+                        <input type="color" class="native-color-picker" id="inputPrimaryColor" value="#a855f7" title="Asosiy rang">
+                    </div>
+                </div>
+
+                <!-- 2. Secondary / Gradient Color -->
+                <div class="color-picker-item">
+                    <div class="color-picker-info">
+                        <div class="color-picker-label">
+                            <i data-lucide="blend" style="width: 14px; height: 14px; color: #ec4899;"></i>
+                            <span>Ikkilamchi Rang</span>
+                        </div>
+                        <div class="color-picker-desc">Gradientlar va ikkilamchi nurlar</div>
+                    </div>
+                    <div class="color-input-wrapper">
+                        <span class="color-hex-text" id="hexSecondaryText">#EC4899</span>
+                        <input type="color" class="native-color-picker" id="inputSecondaryColor" value="#ec4899" title="Ikkilamchi rang">
+                    </div>
+                </div>
+
+                <!-- 3. Background Color -->
+                <div class="color-picker-item">
+                    <div class="color-picker-info">
+                        <div class="color-picker-label">
+                            <i data-lucide="monitor" style="width: 14px; height: 14px; color: #38bdf8;"></i>
+                            <span>Asosiy Fon (Background)</span>
+                        </div>
+                        <div class="color-picker-desc">Sahifaning butun orqa foni</div>
+                    </div>
+                    <div class="color-input-wrapper">
+                        <span class="color-hex-text" id="hexBgText">#090D16</span>
+                        <input type="color" class="native-color-picker" id="inputBgColor" value="#090d16" title="Fon rangi">
+                    </div>
+                </div>
+
+                <!-- 4. Card / Block Color -->
+                <div class="color-picker-item">
+                    <div class="color-picker-info">
+                        <div class="color-picker-label">
+                            <i data-lucide="square" style="width: 14px; height: 14px; color: #a78bfa;"></i>
+                            <span>Karta / Blok Foni</span>
+                        </div>
+                        <div class="color-picker-desc">Oynaviy shaffof kartochkalar</div>
+                    </div>
+                    <div class="color-input-wrapper">
+                        <span class="color-hex-text" id="hexCardText">#121626</span>
+                        <input type="color" class="native-color-picker" id="inputCardColor" value="#121626" title="Karta foni">
+                    </div>
+                </div>
+
+                <!-- 5. Sidebar & Header Color -->
+                <div class="color-picker-item">
+                    <div class="color-picker-info">
+                        <div class="color-picker-label">
+                            <i data-lucide="panel-left" style="width: 14px; height: 14px; color: #34d399;"></i>
+                            <span>Panellar (Sidebar & Top)</span>
+                        </div>
+                        <div class="color-picker-desc">Yon menyu va yuqori panel foni</div>
+                    </div>
+                    <div class="color-input-wrapper">
+                        <span class="color-hex-text" id="hexSidebarText">#0D101E</span>
+                        <input type="color" class="native-color-picker" id="inputSidebarColor" value="#0d101e" title="Sidebar rangi">
+                    </div>
+                </div>
+
+                <!-- 6. Text Color -->
+                <div class="color-picker-item">
+                    <div class="color-picker-info">
+                        <div class="color-picker-label">
+                            <i data-lucide="type" style="width: 14px; height: 14px; color: #f8fafc;"></i>
+                            <span>Matn Rangi (Text)</span>
+                        </div>
+                        <div class="color-picker-desc">Asosiy matnlar va yozuvlar</div>
+                    </div>
+                    <div class="color-input-wrapper">
+                        <span class="color-hex-text" id="hexTextText">#F8FAFC</span>
+                        <input type="color" class="native-color-picker" id="inputTextColor" value="#f8fafc" title="Matn rangi">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer Actions -->
+            <div class="color-modal-footer">
+                <button type="button" class="btn-custom-color-action btn-custom-color-reset" id="resetCustomColorsBtn">
+                    <i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i>
+                    <span>Standartga Qaytarish</span>
+                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" class="btn-custom-color-action btn-custom-color-reset" id="closeColorModalFooterBtn">
+                        <span>Bekor qilish</span>
+                    </button>
+                    <button type="button" class="btn-custom-color-action btn-custom-color-save" id="saveCustomColorsBtn">
+                        <i data-lucide="check" style="width: 14px; height: 14px;"></i>
+                        <span>Saqlash & Qo'llash</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Initialize Lucide Icons
         lucide.createIcons();
+
+        // ==========================================================
+        // THEME & CUSTOM COLOR COMBINATIONS ENGINE
+        // ==========================================================
+        (function() {
+            const THEME_KEY = 'humokids_theme';
+            const CUSTOM_COLORS_KEY = 'humokids_custom_colors';
+
+            const themeWrapper = document.getElementById('themeSwitcherWrapper');
+            const themeBtn = document.getElementById('themeSwitcherBtn');
+            const themeMenu = document.getElementById('themeDropdownMenu');
+            const themeCurrentDot = document.getElementById('themeCurrentDot');
+            const themeOptionBtns = document.querySelectorAll('.theme-option-btn[data-theme-value]');
+            const openStudioBtn = document.getElementById('openCustomColorStudioBtn');
+
+            // Modal elements
+            const modalBackdrop = document.getElementById('colorModalBackdrop');
+            const modalCloseBtn = document.getElementById('colorModalCloseBtn');
+            const modalCancelBtn = document.getElementById('closeColorModalFooterBtn');
+            const modalSaveBtn = document.getElementById('saveCustomColorsBtn');
+            const modalResetBtn = document.getElementById('resetCustomColorsBtn');
+            const presetBtns = document.querySelectorAll('.preset-chip-btn');
+
+            // Color inputs & text badges
+            const pickers = {
+                primary: document.getElementById('inputPrimaryColor'),
+                secondary: document.getElementById('inputSecondaryColor'),
+                bg: document.getElementById('inputBgColor'),
+                card: document.getElementById('inputCardColor'),
+                sidebar: document.getElementById('inputSidebarColor'),
+                text: document.getElementById('inputTextColor')
+            };
+
+            const hexBadges = {
+                primary: document.getElementById('hexPrimaryText'),
+                secondary: document.getElementById('hexSecondaryText'),
+                bg: document.getElementById('hexBgText'),
+                card: document.getElementById('hexCardText'),
+                sidebar: document.getElementById('hexSidebarText'),
+                text: document.getElementById('hexTextText')
+            };
+
+            const themeDotColors = {
+                'violet': '#a855f7',
+                'emerald': '#10b981',
+                'blue': '#38bdf8',
+                'sunset': '#f43f5e',
+                'dark': '#94a3b8',
+                'light': '#7c3aed'
+            };
+
+            // Preset combinations
+            const PRESETS = {
+                cyberpunk: {
+                    primary: '#06b6d4',
+                    secondary: '#a855f7',
+                    bg: '#0a0a1f',
+                    card: '#131432',
+                    sidebar: '#0d0d24',
+                    text: '#f8fafc'
+                },
+                emerald_nature: {
+                    primary: '#10b981',
+                    secondary: '#06b6d4',
+                    bg: '#051f18',
+                    card: '#082c23',
+                    sidebar: '#06211a',
+                    text: '#f8fafc'
+                },
+                ocean_deep: {
+                    primary: '#38bdf8',
+                    secondary: '#2563eb',
+                    bg: '#07152f',
+                    card: '#0d2247',
+                    sidebar: '#091936',
+                    text: '#f8fafc'
+                },
+                sunset_amber: {
+                    primary: '#f43f5e',
+                    secondary: '#f59e0b',
+                    bg: '#240a15',
+                    card: '#32111f',
+                    sidebar: '#220914',
+                    text: '#f8fafc'
+                },
+                golden_luxury: {
+                    primary: '#f59e0b',
+                    secondary: '#d97706',
+                    bg: '#14120f',
+                    card: '#241e17',
+                    sidebar: '#1a1610',
+                    text: '#fffbeb'
+                }
+            };
+
+            // Helper: Convert HEX to RGBA
+            function hexToRgba(hex, alpha = 1) {
+                if (!hex) return `rgba(255, 255, 255, ${alpha})`;
+                hex = hex.replace('#', '');
+                if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+                const num = parseInt(hex, 16);
+                const r = (num >> 16) & 255;
+                const g = (num >> 8) & 255;
+                const b = num & 255;
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            }
+
+            // Helper: Show floating toast notification
+            function showToast(message, type = 'success') {
+                const container = document.getElementById('toast-container');
+                if (!container) return;
+                const toast = document.createElement('div');
+                toast.style.cssText = `
+                    background: rgba(18, 22, 38, 0.95);
+                    backdrop-filter: blur(16px);
+                    border: 1px solid var(--accent-color, #a855f7);
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 12px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    box-shadow: 0 10px 25px rgba(0,0,0,0.4), 0 0 15px var(--accent-glow, rgba(168,85,247,0.3));
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    transform: translateY(20px);
+                    opacity: 0;
+                    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                `;
+                toast.innerHTML = `<span style="color: var(--accent-color, #34d399);">●</span> <span>${message}</span>`;
+                container.appendChild(toast);
+
+                setTimeout(() => {
+                    toast.style.opacity = '1';
+                    toast.style.transform = 'translateY(0)';
+                }, 10);
+
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateY(20px)';
+                    setTimeout(() => toast.remove(), 300);
+                }, 3000);
+            }
+
+            // 1. Apply Preset Theme
+            function applyTheme(themeName) {
+                if (!themeDotColors[themeName]) themeName = 'violet';
+                document.documentElement.setAttribute('data-theme', themeName);
+                try {
+                    localStorage.setItem(THEME_KEY, themeName);
+                } catch(e) {}
+
+                if (themeCurrentDot) {
+                    themeCurrentDot.style.background = themeDotColors[themeName] || '#a855f7';
+                    themeCurrentDot.style.boxShadow = `0 0 10px ${themeDotColors[themeName] || '#a855f7'}`;
+                }
+
+                themeOptionBtns.forEach(b => {
+                    if (b.getAttribute('data-theme-value') === themeName) {
+                        b.classList.add('active');
+                    } else {
+                        b.classList.remove('active');
+                    }
+                });
+            }
+
+            // 2. Live Preview / Apply Custom Colors
+            function liveApplyCustomColors(c) {
+                const root = document.documentElement.style;
+                if (!c) return;
+
+                if (c.primary) {
+                    root.setProperty('--accent-color', c.primary);
+                    root.setProperty('--accent-glow', hexToRgba(c.primary, 0.45));
+                    root.setProperty('--blob-1', c.primary);
+                    if (themeCurrentDot) {
+                        themeCurrentDot.style.background = c.primary;
+                        themeCurrentDot.style.boxShadow = `0 0 10px ${c.primary}`;
+                    }
+                }
+                if (c.secondary) {
+                    root.setProperty('--blob-2', c.secondary);
+                }
+                if (c.primary && c.secondary) {
+                    root.setProperty('--primary-gradient', `linear-gradient(135deg, ${c.primary} 0%, ${c.secondary} 100%)`);
+                }
+                if (c.bg) {
+                    root.setProperty('--body-bg', `radial-gradient(circle at 10% 20%, ${c.bg} 0%, #03050a 100%)`);
+                    root.setProperty('--bg-dark', c.bg);
+                }
+                if (c.card) {
+                    root.setProperty('--glass-card', hexToRgba(c.card, 0.72));
+                    root.setProperty('--glass-card-border', hexToRgba(c.primary || '#ffffff', 0.15));
+                }
+                if (c.sidebar) {
+                    root.setProperty('--sidebar-bg', hexToRgba(c.sidebar, 0.88));
+                    root.setProperty('--header-bg', hexToRgba(c.sidebar, 0.65));
+                }
+                if (c.text) {
+                    root.setProperty('--text-main', c.text);
+                }
+            }
+
+            // Get current values from UI pickers
+            function getCurrentPickerValues() {
+                return {
+                    primary: pickers.primary.value,
+                    secondary: pickers.secondary.value,
+                    bg: pickers.bg.value,
+                    card: pickers.card.value,
+                    sidebar: pickers.sidebar.value,
+                    text: pickers.text.value
+                };
+            }
+
+            // Sync Pickers UI from object
+            function syncPickersUI(c) {
+                if (!c) return;
+                Object.keys(c).forEach(key => {
+                    if (pickers[key] && c[key]) {
+                        pickers[key].value = c[key];
+                    }
+                    if (hexBadges[key] && c[key]) {
+                        hexBadges[key].textContent = c[key].toUpperCase();
+                    }
+                });
+            }
+
+            // Open & Close Modal
+            window.openCustomColorModal = function() {
+                if (!modalBackdrop) return;
+                if (themeMenu) themeMenu.classList.remove('show');
+
+                // Read saved custom colors or current theme colors
+                const saved = localStorage.getItem(CUSTOM_COLORS_KEY);
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        syncPickersUI(parsed);
+                    } catch(e) {}
+                }
+                modalBackdrop.classList.add('show');
+            };
+
+            function closeCustomColorModal() {
+                if (modalBackdrop) modalBackdrop.classList.remove('show');
+            }
+
+            // Event Listeners for Pickers (Real-time live preview)
+            Object.keys(pickers).forEach(key => {
+                const input = pickers[key];
+                if (!input) return;
+
+                input.addEventListener('input', function() {
+                    if (hexBadges[key]) {
+                        hexBadges[key].textContent = this.value.toUpperCase();
+                    }
+                    liveApplyCustomColors(getCurrentPickerValues());
+                });
+            });
+
+            // Preset Buttons
+            presetBtns.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const presetKey = this.getAttribute('data-preset');
+                    const preset = PRESETS[presetKey];
+                    if (preset) {
+                        syncPickersUI(preset);
+                        liveApplyCustomColors(preset);
+                    }
+                });
+            });
+
+            // Save Custom Colors
+            if (modalSaveBtn) {
+                modalSaveBtn.addEventListener('click', function() {
+                    const colors = getCurrentPickerValues();
+                    try {
+                        localStorage.setItem(CUSTOM_COLORS_KEY, JSON.stringify(colors));
+                    } catch(e) {}
+                    liveApplyCustomColors(colors);
+                    closeCustomColorModal();
+                    showToast("Shaxsiy ranglar kombinatsiyasi saqlandi! ✨");
+                });
+            }
+
+            // Reset Custom Colors
+            if (modalResetBtn) {
+                modalResetBtn.addEventListener('click', function() {
+                    try {
+                        localStorage.removeItem(CUSTOM_COLORS_KEY);
+                    } catch(e) {}
+
+                    // Clear inline style overrides
+                    document.documentElement.removeAttribute('style');
+
+                    // Re-apply standard theme
+                    const activeTheme = localStorage.getItem(THEME_KEY) || 'violet';
+                    applyTheme(activeTheme);
+
+                    // Reset default UI pickers
+                    syncPickersUI({
+                        primary: '#a855f7',
+                        secondary: '#ec4899',
+                        bg: '#090d16',
+                        card: '#121626',
+                        sidebar: '#0d101e',
+                        text: '#f8fafc'
+                    });
+
+                    closeCustomColorModal();
+                    showToast("Ranglar standart holatiga qaytarildi! ↺");
+                });
+            }
+
+            // Modal Trigger from Theme Menu
+            if (openStudioBtn) {
+                openStudioBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    window.openCustomColorModal();
+                });
+            }
+
+            // Close modal handlers
+            if (modalCloseBtn) modalCloseBtn.addEventListener('click', closeCustomColorModal);
+            if (modalCancelBtn) modalCancelBtn.addEventListener('click', closeCustomColorModal);
+
+            if (modalBackdrop) {
+                modalBackdrop.addEventListener('click', function(e) {
+                    if (e.target === modalBackdrop) closeCustomColorModal();
+                });
+            }
+
+            // Keyboard ESC to close
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    if (modalBackdrop && modalBackdrop.classList.contains('show')) {
+                        closeCustomColorModal();
+                    } else if (themeMenu && themeMenu.classList.contains('show')) {
+                        themeMenu.classList.remove('show');
+                        if (themeBtn) themeBtn.setAttribute('aria-expanded', 'false');
+                    }
+                }
+            });
+
+            // Theme Switcher dropdown toggle
+            if (themeBtn && themeMenu && themeWrapper) {
+                themeBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const isOpen = themeMenu.classList.contains('show');
+                    themeMenu.classList.toggle('show');
+                    themeBtn.setAttribute('aria-expanded', !isOpen);
+                });
+
+                document.addEventListener('click', function(e) {
+                    if (!themeWrapper.contains(e.target)) {
+                        themeMenu.classList.remove('show');
+                        themeBtn.setAttribute('aria-expanded', 'false');
+                    }
+                });
+
+                themeOptionBtns.forEach(button => {
+                    button.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        const selectedTheme = this.getAttribute('data-theme-value');
+                        // Agar custom color bo'lsa uni tozalash
+                        try {
+                            localStorage.removeItem(CUSTOM_COLORS_KEY);
+                            document.documentElement.removeAttribute('style');
+                        } catch(err) {}
+                        applyTheme(selectedTheme);
+                        themeMenu.classList.remove('show');
+                        themeBtn.setAttribute('aria-expanded', 'false');
+                        showToast(`Mavzu almashtirildi: ${selectedTheme.toUpperCase()}`);
+                    });
+                });
+            }
+
+            // Init on page load
+            const initialTheme = localStorage.getItem(THEME_KEY) || 'violet';
+            applyTheme(initialTheme);
+
+            const savedCustom = localStorage.getItem(CUSTOM_COLORS_KEY);
+            if (savedCustom) {
+                try {
+                    const parsed = JSON.parse(savedCustom);
+                    liveApplyCustomColors(parsed);
+                    syncPickersUI(parsed);
+                } catch(e) {}
+            }
+        })();
     </script>
     {% block extra_scripts %}{% endblock %}
 </body>
