@@ -86,25 +86,19 @@ function updateGpsUI(coords) {
     const dot = document.getElementById('gpsRadarDot');
 
     const dist = calculateHaversine(coords.lat, coords.lng, kLat, kLng);
-    const acc = coords.accuracy || 10;
-    const effectiveDist = Math.max(0, dist - Math.min(acc, 1500));
-    const yardTolerance = Math.max(radius * 2, 100);
-
-    const withinRange = (dist <= radius) || (dist <= yardTolerance) || (effectiveDist <= radius);
+    const withinRange = (dist <= radius);
     isGpsWithinRange = withinRange;
 
     if (gpsInfoElem) {
-        const accLabel = acc > 100 ? ` (Wi-Fi/IP aniqlik: ±${Math.round(acc)}m)` : ` (Aniqlik: ±${Math.round(acc)}m)`;
-        gpsInfoElem.innerText = `Sizning koordinatangiz: ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}${accLabel}`;
+        const acc = coords.accuracy || 10;
+        gpsInfoElem.innerText = `Sizning koordinatangiz: ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)} (Aniqlik: ±${Math.round(acc)}m)`;
     }
 
     if (distanceElem) {
-        if (dist <= radius) {
-            distanceElem.innerText = `${dist.toFixed(1)} metr (Ruxsat: ${radius}m — Hududda)`;
-        } else if (withinRange) {
-            distanceElem.innerText = `${dist.toFixed(1)}m (GPS noaniqligi hisobga olindi: ${effectiveDist.toFixed(1)}m <= ${radius}m)`;
+        if (withinRange) {
+            distanceElem.innerText = `${dist.toFixed(1)} metr (Ruxsat: ${radius}m — Hududda ✓)`;
         } else {
-            distanceElem.innerText = `${dist.toFixed(1)} metr (Ruxsat: ${radius}m, Aniqlik: ±${Math.round(acc)}m)`;
+            distanceElem.innerText = `${dist.toFixed(1)} metr (Ruxsat: ${radius}m — Uzoqda ✗)`;
         }
     }
 
@@ -357,8 +351,16 @@ async function executeFaceScan(actionType = 'check_in', isAuto = false) {
             }, 2200);
 
         } else {
-            if (isAuto) {
-                // Avtomatik rejimda xatolik bo'lsa (masalan, yuz hali kadrga tushmagan), bildirishnoma bilan bezovta qilmasdan qayta urinish
+            const errMsg = result.error || result.message || "Xatolik yuz berdi.";
+            if (result.distance !== undefined && result.distance > (result.allowed_radius || 50)) {
+                if (statusElem) {
+                    statusElem.innerHTML = `<span style='color: #fb7185; font-weight: bold;'>📍 ${errMsg}</span>`;
+                }
+                showToast(errMsg, 'error');
+                if (submitBtn) submitBtn.disabled = false;
+                if (isAuto) scheduleNextAutoScan(3000);
+            } else if (isAuto) {
+                // Avtomatik rejimda yuz hali kadrga tushmagan bo'lsa qayta urinish
                 if (statusElem) {
                     statusElem.innerHTML = `
                         <div style="color: #fbbf24; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px;">
@@ -366,13 +368,12 @@ async function executeFaceScan(actionType = 'check_in', isAuto = false) {
                         </div>
                     `;
                 }
-                // Keyingi urinish 1.8 soniyadan keyin
                 scheduleNextAutoScan(1800);
             } else {
                 if (statusElem) {
-                    statusElem.innerHTML = `<span style='color: #fb7185; font-weight: bold;'>❌ ${result.message}</span>`;
+                    statusElem.innerHTML = `<span style='color: #fb7185; font-weight: bold;'>❌ ${errMsg}</span>`;
                 }
-                showToast(result.message, 'error');
+                showToast(errMsg, 'error');
                 if (submitBtn) submitBtn.disabled = false;
             }
         }

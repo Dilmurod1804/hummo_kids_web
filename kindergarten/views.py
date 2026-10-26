@@ -15,6 +15,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.core.files.base import ContentFile
 from django.db.models import Count, Sum, Q, Avg
 from django.utils import timezone
+from django.conf import settings
 
 from functools import wraps
 from .models import (
@@ -1559,73 +1560,31 @@ def staff_check_in_api(request):
                 'message':          face_message,
             }, status=400)
 
-        # ── 4. GPS / Geofence tekshiruvi ──────────────────────────────────────
+        # ── 4. GPS / Geofence qat'iy tekshiruvi (Strict 50m Haversine) ────────
         settings_obj = KindergartenSettings.get_settings()
-        k_lat        = settings_obj.latitude
-        k_lon        = settings_obj.longitude
-        radius_limit = settings_obj.geofence_radius_meters
+        k_lat = float(getattr(settings, 'KINDERGARTEN_LAT', None) or getattr(settings_obj, 'latitude', 41.311081) or 41.311081)
+        k_lon = float(getattr(settings, 'KINDERGARTEN_LON', None) or getattr(settings_obj, 'longitude', 69.240562) or 69.240562)
+        geofence_radius = float(getattr(settings, 'GEOFENCE_RADIUS_METERS', 50.0) or getattr(settings_obj, 'geofence_radius_meters', 50.0) or 50.0)
 
-        is_within_radius, distance, effective_dist, geo_reason = evaluate_geofence(
-            user_lat=user_lat,
-            user_lon=user_lon,
-            target_lat=k_lat,
-            target_lon=k_lon,
-            radius_limit=radius_limit,
-            accuracy=user_accuracy
-        )
+        # Haversine formula yordamida ikkita nuqta orasidagi masofa metrda aniq hisoblanadi
+        distance = haversine_distance(user_lat, user_lon, k_lat, k_lon)
 
         fname_ok = f"face_{staff_user.id}_{today.strftime('%Y%m%d')}_{now.strftime('%H%M%S')}.jpg"
         image_file = ContentFile(incoming_bytes, name=fname_ok)
 
-        if not is_within_radius:
-            # Yuz AI orqali tasdiqlandi, lekin GPS hududdan tashqarida
-            try:
-                geo_log = StaffAttendance.objects.filter(
-                    teacher=staff_user, date=today
-                ).order_by('-is_within_geofence', 'id').first()
-
-                geo_note = (
-                    f"Face ID 1:1 tasdiqlandi ({similarity_pct:.1f}%), lekin GPS rad etildi: {geo_reason}"
-                )
-
-                if geo_log and not geo_log.is_within_geofence:
-                    geo_log.latitude        = user_lat
-                    geo_log.longitude       = user_lon
-                    geo_log.distance_meters = distance
-                    geo_log.face_snapshot   = image_file
-                    geo_log.status          = 'REJECTED_GEOFENCE'
-                    geo_log.notes           = geo_note
-                    geo_log.save()
-                elif not geo_log:
-                    StaffAttendance.objects.create(
-                        teacher            = staff_user,
-                        date               = today,
-                        latitude           = user_lat,
-                        longitude          = user_lon,
-                        distance_meters    = distance,
-                        is_within_geofence = False,
-                        face_snapshot      = image_file,
-                        status             = 'REJECTED_GEOFENCE',
-                        notes              = geo_note,
-                    )
-            except Exception as _g_err:
-                logger.warning("Geofence rad yozuvida xato: %s", _g_err)
-
+        # Agar masofa 50 metrdan katta bo'lsa (distance > 50), davomat yozuvi saqlanmasin
+        if distance > geofence_radius:
+            logger.warning(
+                "Geofence rad etildi: Xodim %s (ID: %s) bog'chadan %.1fm uzoqda (ruxsat: %.0fm). Koordinatalar: user=(%s, %s), target=(%s, %s)",
+                staff_user.username, staff_user.id, distance, geofence_radius, user_lat, user_lon, k_lat, k_lon
+            )
             return JsonResponse({
-                'status':             'error',
-                'success':            False,
-                'face_verified':      True,
-                'within_geofence':    False,
-                'distance':           round(distance, 1),
-                'effective_distance': round(effective_dist, 1),
-                'radius_limit':       radius_limit,
-                'accuracy':           round(user_accuracy, 1),
-                'face_distance':      round(face_distance, 4),
-                'similarity_score':   similarity_pct,
-                'message': (
-                    f"Yuz tasdiqlandi, lekin siz bog'cha hududidan {distance:.1f} metr uzoqdasiz. "
-                    f"Ruxsat etilgan radius: {radius_limit:.0f} metr (GPS aniqligi: ±{user_accuracy:.0f}m)."
-                ),
+                "success": False,
+                "error": "Siz bog'chadan juda uzoqdasiz (50m dan yaqin bo'lishingiz kerak).",
+                "message": "Siz bog'chadan juda uzoqdasiz (50m dan yaqin bo'lishingiz kerak).",
+                "distance": round(distance, 1),
+                "allowed_radius": geofence_radius,
+                "status": "error"
             }, status=400)
 
         # ── 5. StaffAttendance yozuvi — Faqat Yuz va GPS to'g'ri bo'lganda ─────
@@ -1921,54 +1880,30 @@ def face_identify_api(request):
                 'message':            face_msg or "Yuz mos kelmadi. Xodim tasdiqlanmadi.",
             }, status=404)
 
-        # ── GPS / Geofence tekshiruvi ──────────────────────────────────────────
+        # ── GPS / Geofence qat'iy tekshiruvi (Strict 50m Haversine) ──────────
         settings_obj = KindergartenSettings.get_settings()
-        k_lat        = settings_obj.latitude
-        k_lon        = settings_obj.longitude
-        radius_limit = settings_obj.geofence_radius_meters
+        k_lat = float(getattr(settings, 'KINDERGARTEN_LAT', None) or getattr(settings_obj, 'latitude', 41.311081) or 41.311081)
+        k_lon = float(getattr(settings, 'KINDERGARTEN_LON', None) or getattr(settings_obj, 'longitude', 69.240562) or 69.240562)
+        geofence_radius = float(getattr(settings, 'GEOFENCE_RADIUS_METERS', 50.0) or getattr(settings_obj, 'geofence_radius_meters', 50.0) or 50.0)
 
-        is_within_radius, distance, effective_dist, geo_reason = evaluate_geofence(
-            user_lat=user_lat,
-            user_lon=user_lon,
-            target_lat=k_lat,
-            target_lon=k_lon,
-            radius_limit=radius_limit,
-            accuracy=user_accuracy
-        )
+        # Haversine formula yordamida ikkita nuqta orasidagi masofa metrda aniq hisoblanadi
+        distance = haversine_distance(user_lat, user_lon, k_lat, k_lon)
 
         fname = f"kiosk_{matched_user.id}_{today.strftime('%Y%m%d')}_{now.strftime('%H%M%S')}.jpg"
         image_file = ContentFile(incoming_bytes, name=fname)
 
-        if not is_within_radius:
-            try:
-                StaffAttendance.objects.create(
-                    teacher            = matched_user,
-                    date               = today,
-                    latitude           = user_lat,
-                    longitude          = user_lon,
-                    distance_meters    = distance,
-                    is_within_geofence = False,
-                    face_snapshot      = image_file,
-                    status             = 'REJECTED_GEOFENCE',
-                    notes              = f"Kiosk Face ID tasdiqlandi, lekin GPS rad etildi: {geo_reason}.",
-                )
-            except Exception:
-                pass
-
+        if distance > geofence_radius:
+            logger.warning(
+                "Kiosk geofence rad etildi: Xodim %s bog'chadan %.1fm uzoqda (ruxsat: %.0fm)",
+                matched_user.username, distance, geofence_radius
+            )
             return JsonResponse({
-                'status':             'error',
-                'success':            False,
-                'face_verified':      True,
-                'within_geofence':    False,
-                'staff_id':           matched_user.id,
-                'employee_name':      matched_user.get_full_name() or matched_user.username,
-                'distance':           round(distance, 1),
-                'effective_distance': round(effective_dist, 1),
-                'radius_limit':       radius_limit,
-                'accuracy':           round(user_accuracy, 1),
-                'face_distance':      round(face_dist, 4),
-                'similarity_score':   face_sim,
-                'message':            f"Yuz tasdiqlandi, lekin qurilma bog'cha hududidan {distance:.1f}m uzoqda (Ruxsat: {radius_limit:.0f}m).",
+                "success": False,
+                "error": "Siz bog'chadan juda uzoqdasiz (50m dan yaqin bo'lishingiz kerak).",
+                "message": "Siz bog'chadan juda uzoqdasiz (50m dan yaqin bo'lishingiz kerak).",
+                "distance": round(distance, 1),
+                "allowed_radius": geofence_radius,
+                "status": "error"
             }, status=400)
 
         # ── Davomat yozuvi yaratish/yangilash ──────────────────────────────────
