@@ -145,7 +145,12 @@ class SettingsForm(forms.ModelForm):
         fields = ['name', 'address', 'latitude', 'longitude', 'geofence_radius', 'geofence_radius_meters',
                   'work_start_time', 'work_end_time',
                   'daily_meal_rate', 'default_monthly_fee', 'currency_symbol',
-                  'contact_phone', 'contact_email', 'manager_username', 'manager_password']
+                  'contact_phone', 'contact_email', 'manager_username', 'manager_password',
+                  'penalty_calc_mode', 'late_penalty_per_minute', 'late_grace_period_minutes',
+                  'late_penalty_tier1_rate', 'late_penalty_tier2_rate',
+                  'early_leave_penalty_per_minute', 'early_leave_grace_period_minutes',
+                  'early_leave_tier1_rate', 'early_leave_tier2_rate',
+                  'max_penalty_percent_limit']
         widgets = {
             'name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Bog\'cha nomi'}),
             'address': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'To\'liq manzil'}),
@@ -163,6 +168,17 @@ class SettingsForm(forms.ModelForm):
             # manager credentials are stored in DB but only changed via new_ fields
             'manager_username': forms.HiddenInput(),
             'manager_password': forms.HiddenInput(),
+            # Jarimalar va Cheklovlar sozlamalari
+            'penalty_calc_mode': forms.Select(attrs={'class': 'glass-select'}),
+            'late_penalty_per_minute': forms.NumberInput(attrs={'class': 'glass-input', 'step': '100', 'min': '0', 'placeholder': 'Masalan: 1000'}),
+            'late_grace_period_minutes': forms.NumberInput(attrs={'class': 'glass-input', 'min': '0', 'max': '120', 'placeholder': '15'}),
+            'late_penalty_tier1_rate': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.1', 'min': '0', 'max': '100', 'placeholder': '10.0'}),
+            'late_penalty_tier2_rate': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.1', 'min': '0', 'max': '100', 'placeholder': '20.0'}),
+            'early_leave_penalty_per_minute': forms.NumberInput(attrs={'class': 'glass-input', 'step': '100', 'min': '0', 'placeholder': 'Masalan: 1000'}),
+            'early_leave_grace_period_minutes': forms.NumberInput(attrs={'class': 'glass-input', 'min': '0', 'max': '120', 'placeholder': '15'}),
+            'early_leave_tier1_rate': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.1', 'min': '0', 'max': '100', 'placeholder': '10.0'}),
+            'early_leave_tier2_rate': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.1', 'min': '0', 'max': '100', 'placeholder': '20.0'}),
+            'max_penalty_percent_limit': forms.NumberInput(attrs={'class': 'glass-input', 'step': '1.0', 'min': '5', 'max': '100', 'placeholder': '50.0'}),
         }
 
     def clean_latitude(self):

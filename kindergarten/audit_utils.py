@@ -1,7 +1,7 @@
 from datetime import datetime, date, time
 from decimal import Decimal
 from django.utils import timezone
-from .models import AuditLog, StaffBonusPenalty, StaffMonthlySalary
+from .models import AuditLog, StaffBonusPenalty, StaffMonthlySalary, KindergartenSettings
 
 def get_client_ip(request):
     if not request:
@@ -30,22 +30,15 @@ def log_audit(category, action, description, user=None, request=None):
         print(f"Error logging audit: {e}")
         return None
 
-def calculate_late_penalty(check_in_time, work_start_time=None, salary=None, staff_user=None, check_date=None):
+def calculate_late_penalty(check_in_time, work_start_time=None, salary=None, staff_user=None, check_date=None, settings_obj=None):
     """
-    Kechikish Shtraflari hisob-kitobi (Yangi 2-darajali tizim):
-      - Har bir xodim shaxsiy 'work_start_time' ga ega (default: 08:00)
-      - Agar bugun xodimning ish kuni bo'lmasa, shtraf 0 qaytariladi.
-      - Agar kelgan vaqt ish boshlanish vaqtidan kech bo'lsa:
-          * Kechikkan daqiqalar (late_minutes) hisoblanadi.
-          * Agar late_minutes <= late_grace_period_minutes (default: 15 min):
-              1-darajali shtraf: kunlik maoshdan penalty_rate_tier1 % (default: 10%)
-          * Agar late_minutes > late_grace_period_minutes:
-              2-darajali shtraf: kunlik maoshdan penalty_rate_tier2 % (default: 20%)
-      - Kunlik maosh = Oylik maosh / 22 (standart oylik ish kunlari soni)
-      - Shtraf summasi = (Kunlik maosh * penalty_pct) / 100
-
-    Qaytaradi:
-      (late_minutes, penalty_pct, penalty_amount, tier_applied)
+    Kechikish Shtraflari hisob-kitobi (Dinamik sozlamalar asosida):
+      - Sozlamalar: KindergartenSettings dan olinadi (Director Panel orqali boshqariladi)
+      - Hisoblash uslubi (penalty_calc_mode):
+          1. 'PERCENTAGE': Kunlik maoshdan 1-darajali yoki 2-darajali foiz
+          2. 'FIXED_PER_MINUTE': Har bir kechikkan minut uchun direktor belgilagan summa (UZS)
+          3. 'HYBRID': 1-darajali/2-darajali foiz + har bir minut uchun qo'shimcha summa
+      - Kunlik maosh = Oylik maosh / 22
     """
     if hasattr(work_start_time, 'salary') and staff_user is None:
         staff_user = work_start_time
@@ -55,18 +48,30 @@ def calculate_late_penalty(check_in_time, work_start_time=None, salary=None, sta
         if not staff_user.is_working_day(check_date or date.today()):
             return 0, Decimal('0.00'), Decimal('0.00'), 0
 
+    if settings_obj is None:
+        try:
+            settings_obj = KindergartenSettings.get_settings()
+        except Exception:
+            settings_obj = None
+
+    calc_mode = getattr(settings_obj, 'penalty_calc_mode', 'PERCENTAGE') if settings_obj else 'PERCENTAGE'
+
+    if settings_obj:
+        grace_period = getattr(settings_obj, 'late_grace_period_minutes', 15) or 15
+        tier1_rate = getattr(settings_obj, 'late_penalty_tier1_rate', Decimal('10.00')) or Decimal('10.00')
+        tier2_rate = getattr(settings_obj, 'late_penalty_tier2_rate', Decimal('20.00')) or Decimal('20.00')
+        per_minute_rate = getattr(settings_obj, 'late_penalty_per_minute', Decimal('0.00')) or Decimal('0.00')
+    else:
+        grace_period = 15
+        tier1_rate = Decimal('10.00')
+        tier2_rate = Decimal('20.00')
+        per_minute_rate = Decimal('0.00')
+
     if staff_user:
         if not work_start_time:
             work_start_time = getattr(staff_user, 'work_start_time', None)
         if salary is None:
             salary = getattr(staff_user, 'salary', Decimal('0.00'))
-        grace_period = getattr(staff_user, 'late_grace_period_minutes', 15) or 15
-        tier1_rate = getattr(staff_user, 'penalty_rate_tier1', Decimal('10.00')) or Decimal('10.00')
-        tier2_rate = getattr(staff_user, 'penalty_rate_tier2', Decimal('20.00')) or Decimal('20.00')
-    else:
-        grace_period = 15
-        tier1_rate = Decimal('10.00')
-        tier2_rate = Decimal('20.00')
 
     # Vaqtni standart time formatiga keltirish
     if isinstance(work_start_time, str):
@@ -74,9 +79,9 @@ def calculate_late_penalty(check_in_time, work_start_time=None, salary=None, sta
             parts = [int(p) for p in work_start_time.split(':')]
             work_start_time = time(parts[0], parts[1])
         except Exception:
-            work_start_time = time(8, 0)
+            work_start_time = getattr(settings_obj, 'work_start_time', None) or time(8, 0)
     elif not work_start_time:
-        work_start_time = time(8, 0)
+        work_start_time = getattr(settings_obj, 'work_start_time', None) or time(8, 0)
 
     if isinstance(check_in_time, datetime):
         check_in_time = check_in_time.time()
@@ -96,35 +101,43 @@ def calculate_late_penalty(check_in_time, work_start_time=None, salary=None, sta
     if late_minutes <= 0:
         return 0, Decimal('0.00'), Decimal('0.00'), 0
 
-    if late_minutes <= grace_period:
-        penalty_pct = Decimal(str(tier1_rate))
-        tier_applied = 1
-    else:
-        penalty_pct = Decimal(str(tier2_rate))
-        tier_applied = 2
-
+    tier_applied = 1 if late_minutes <= grace_period else 2
     salary_dec = Decimal(str(salary or 0))
-    # Kunlik maosh (1 oyda o'rtacha 22 ish kuni)
     daily_salary = (salary_dec / Decimal('22.00')) if salary_dec > 0 else Decimal('0.00')
-    penalty_amount = (daily_salary * penalty_pct / Decimal('100.00')).quantize(Decimal('1.00'))
+
+    if calc_mode == 'FIXED_PER_MINUTE':
+        # Minutlik stavka
+        penalty_amount = (Decimal(str(late_minutes)) * per_minute_rate).quantize(Decimal('1.00'))
+        penalty_pct = ((penalty_amount / daily_salary) * Decimal('100.00')).quantize(Decimal('0.01')) if daily_salary > 0 else Decimal('0.00')
+    elif calc_mode == 'HYBRID':
+        # Gibrid: foiz + minutiga summa
+        pct_tier = tier1_rate if late_minutes <= grace_period else tier2_rate
+        pct_amount = daily_salary * pct_tier / Decimal('100.00')
+        min_amount = Decimal(str(late_minutes)) * per_minute_rate
+        penalty_amount = (pct_amount + min_amount).quantize(Decimal('1.00'))
+        penalty_pct = ((penalty_amount / daily_salary) * Decimal('100.00')).quantize(Decimal('0.01')) if daily_salary > 0 else pct_tier
+    else:
+        # Standart Foizli stavka
+        penalty_pct = Decimal(str(tier1_rate if late_minutes <= grace_period else tier2_rate))
+        penalty_amount = (daily_salary * penalty_pct / Decimal('100.00')).quantize(Decimal('1.00'))
+
+    # Kunlik shtraf kunlik maoshdan oshib ketmasligi kafolatlanadi
+    if daily_salary > 0 and penalty_amount > daily_salary:
+        penalty_amount = daily_salary
+        penalty_pct = Decimal('100.00')
 
     return late_minutes, penalty_pct, penalty_amount, tier_applied
 
 
-def calculate_early_leave_penalty(check_out_time, work_end_time=None, salary=None, staff_user=None, check_date=None):
+def calculate_early_leave_penalty(check_out_time, work_end_time=None, salary=None, staff_user=None, check_date=None, settings_obj=None):
     """
-    Barvaqt ketish (Erta chiqib ketish) shtraflarini hisoblash:
-      - Xodimning shaxsiy 'work_end_time' (default: 18:00) bilan taqqoslanadi.
-      - Agar bugun xodimning ish kuni bo'lmasa, shtraf 0 qaytariladi.
-      - Agar xodim ish tugashidan oldin chiqsa:
-          * Erta ketgan daqiqalar (early_minutes) hisoblanadi.
-          * Agar early_minutes <= late_grace_period_minutes bo'lsa: 1-darajali foiz (penalty_rate_tier1)
-          * Agar early_minutes > late_grace_period_minutes bo'lsa: 2-darajali foiz (penalty_rate_tier2)
+    Barvaqt ketish (Erta chiqib ketish) shtraflarini hisoblash (Dinamik sozlamalar asosida):
+      - Sozlamalar: KindergartenSettings dan olinadi (Director Panel orqali boshqariladi)
+      - Hisoblash uslubi (penalty_calc_mode):
+          1. 'PERCENTAGE': Kunlik maoshdan 1-darajali yoki 2-darajali foiz
+          2. 'FIXED_PER_MINUTE': Har bir erta ketgan minut uchun direktor belgilagan summa (UZS)
+          3. 'HYBRID': 1-darajali/2-darajali foiz + har bir minut uchun qo'shimcha summa
       - Kunlik maosh = Oylik maosh / 22
-      - Shtraf summasi = (Kunlik maosh * penalty_pct) / 100
-
-    Qaytaradi:
-      (early_minutes, penalty_pct, penalty_amount, tier_applied)
     """
     if hasattr(work_end_time, 'salary') and staff_user is None:
         staff_user = work_end_time
@@ -134,18 +147,30 @@ def calculate_early_leave_penalty(check_out_time, work_end_time=None, salary=Non
         if not staff_user.is_working_day(check_date or date.today()):
             return 0, Decimal('0.00'), Decimal('0.00'), 0
 
+    if settings_obj is None:
+        try:
+            settings_obj = KindergartenSettings.get_settings()
+        except Exception:
+            settings_obj = None
+
+    calc_mode = getattr(settings_obj, 'penalty_calc_mode', 'PERCENTAGE') if settings_obj else 'PERCENTAGE'
+
+    if settings_obj:
+        grace_period = getattr(settings_obj, 'early_leave_grace_period_minutes', 15) or 15
+        tier1_rate = getattr(settings_obj, 'early_leave_tier1_rate', Decimal('10.00')) or Decimal('10.00')
+        tier2_rate = getattr(settings_obj, 'early_leave_tier2_rate', Decimal('20.00')) or Decimal('20.00')
+        per_minute_rate = getattr(settings_obj, 'early_leave_penalty_per_minute', Decimal('0.00')) or Decimal('0.00')
+    else:
+        grace_period = 15
+        tier1_rate = Decimal('10.00')
+        tier2_rate = Decimal('20.00')
+        per_minute_rate = Decimal('0.00')
+
     if staff_user:
         if not work_end_time:
             work_end_time = getattr(staff_user, 'work_end_time', None)
         if salary is None:
             salary = getattr(staff_user, 'salary', Decimal('0.00'))
-        grace_period = getattr(staff_user, 'late_grace_period_minutes', 15) or 15
-        tier1_rate = getattr(staff_user, 'penalty_rate_tier1', Decimal('10.00')) or Decimal('10.00')
-        tier2_rate = getattr(staff_user, 'penalty_rate_tier2', Decimal('20.00')) or Decimal('20.00')
-    else:
-        grace_period = 15
-        tier1_rate = Decimal('10.00')
-        tier2_rate = Decimal('20.00')
 
     # Vaqtni standart time formatiga keltirish
     if isinstance(work_end_time, str):
@@ -153,9 +178,9 @@ def calculate_early_leave_penalty(check_out_time, work_end_time=None, salary=Non
             parts = [int(p) for p in work_end_time.split(':')]
             work_end_time = time(parts[0], parts[1])
         except Exception:
-            work_end_time = time(18, 0)
+            work_end_time = getattr(settings_obj, 'work_end_time', None) or time(18, 0)
     elif not work_end_time:
-        work_end_time = time(18, 0)
+        work_end_time = getattr(settings_obj, 'work_end_time', None) or time(18, 0)
 
     if isinstance(check_out_time, datetime):
         check_out_time = check_out_time.time()
@@ -176,32 +201,65 @@ def calculate_early_leave_penalty(check_out_time, work_end_time=None, salary=Non
     if early_minutes <= 0:
         return 0, Decimal('0.00'), Decimal('0.00'), 0
 
-    if early_minutes <= grace_period:
-        penalty_pct = Decimal(str(tier1_rate))
-        tier_applied = 1
-    else:
-        penalty_pct = Decimal(str(tier2_rate))
-        tier_applied = 2
-
+    tier_applied = 1 if early_minutes <= grace_period else 2
     salary_dec = Decimal(str(salary or 0))
     daily_salary = (salary_dec / Decimal('22.00')) if salary_dec > 0 else Decimal('0.00')
-    penalty_amount = (daily_salary * penalty_pct / Decimal('100.00')).quantize(Decimal('1.00'))
+
+    if calc_mode == 'FIXED_PER_MINUTE':
+        # Minutlik stavka
+        penalty_amount = (Decimal(str(early_minutes)) * per_minute_rate).quantize(Decimal('1.00'))
+        penalty_pct = ((penalty_amount / daily_salary) * Decimal('100.00')).quantize(Decimal('0.01')) if daily_salary > 0 else Decimal('0.00')
+    elif calc_mode == 'HYBRID':
+        # Gibrid: foiz + minutiga summa
+        pct_tier = tier1_rate if early_minutes <= grace_period else tier2_rate
+        pct_amount = daily_salary * pct_tier / Decimal('100.00')
+        min_amount = Decimal(str(early_minutes)) * per_minute_rate
+        penalty_amount = (pct_amount + min_amount).quantize(Decimal('1.00'))
+        penalty_pct = ((penalty_amount / daily_salary) * Decimal('100.00')).quantize(Decimal('0.01')) if daily_salary > 0 else pct_tier
+    else:
+        # Standart Foizli stavka
+        penalty_pct = Decimal(str(tier1_rate if early_minutes <= grace_period else tier2_rate))
+        penalty_amount = (daily_salary * penalty_pct / Decimal('100.00')).quantize(Decimal('1.00'))
+
+    # Kunlik shtraf kunlik maoshdan oshib ketmasligi kafolatlanadi
+    if daily_salary > 0 and penalty_amount > daily_salary:
+        penalty_amount = daily_salary
+        penalty_pct = Decimal('100.00')
 
     return early_minutes, penalty_pct, penalty_amount, tier_applied
 
 
-def sync_staff_monthly_salary(staff, month, year):
+def sync_staff_monthly_salary(staff, month, year, settings_obj=None):
     """
     Xodimning tanlangan oy uchun oylik maosh hisob-kitobini sinxronlashtirish:
-    Yakuniy Oylik = Asosiy Maosh - (Barcha Shtraflar) + (Bonuslar)
+    Yakuniy Oylik = Asosiy Maosh - (Barcha Shtraflar [Limit doirasida]) + (Bonuslar)
     """
+    if settings_obj is None:
+        try:
+            settings_obj = KindergartenSettings.get_settings()
+        except Exception:
+            settings_obj = None
+
+    max_limit_pct = getattr(settings_obj, 'max_penalty_percent_limit', Decimal('50.00')) or Decimal('50.00')
+
     penalties = StaffBonusPenalty.objects.filter(
         staff=staff,
         date__year=year,
         date__month=month,
         record_type__in=['PENALTY_LATE', 'PENALTY_EARLY_LEAVE', 'OTHER_DEDUCTION']
     )
-    total_penalties = sum((p.amount for p in penalties), Decimal('0.00'))
+    raw_penalties = sum((p.amount for p in penalties), Decimal('0.00'))
+
+    # Oylik maoshga nisbatan maksimal ushlab qolish limiti
+    staff_salary = getattr(staff, 'salary', Decimal('0.00')) or Decimal('0.00')
+    max_allowed_penalty = (staff_salary * max_limit_pct / Decimal('100.00')).quantize(Decimal('1.00'))
+
+    if staff_salary > 0 and raw_penalties > max_allowed_penalty:
+        total_penalties = max_allowed_penalty
+        is_capped = True
+    else:
+        total_penalties = raw_penalties
+        is_capped = False
 
     bonuses = StaffBonusPenalty.objects.filter(
         staff=staff,
@@ -216,15 +274,19 @@ def sync_staff_monthly_salary(staff, month, year):
         month=month,
         year=year,
         defaults={
-            'base_salary': staff.salary,
+            'base_salary': staff_salary,
             'total_penalties': total_penalties,
+            'raw_penalties': raw_penalties,
+            'is_penalty_capped': is_capped,
             'total_bonuses': total_bonuses,
         }
     )
 
     if not created:
-        payroll.base_salary = staff.salary
+        payroll.base_salary = staff_salary
         payroll.total_penalties = total_penalties
+        payroll.raw_penalties = raw_penalties
+        payroll.is_penalty_capped = is_capped
         payroll.total_bonuses = total_bonuses
         payroll.save() # calculate_net() ichida chaqiriladi
 

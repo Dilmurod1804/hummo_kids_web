@@ -132,6 +132,12 @@
                     </a>
                 </li>
                 <li>
+                    <a href="{% url 'early_staff_list' %}" class="nav-link {% if request.resolver_match.url_name == 'early_staff_list' %}active{% endif %}">
+                        <i data-lucide="log-out" style="width: 18px; height: 18px; color: #fb923c;"></i>
+                        <span>Erta Ketganlar Ro'yxati</span>
+                    </a>
+                </li>
+                <li>
                     <a href="{% url 'staff_payroll' %}" class="nav-link {% if request.resolver_match.url_name == 'staff_payroll' %}active{% endif %}">
                         <i data-lucide="badge-dollar-sign" style="width: 18px; height: 18px; color: #34d399;"></i>
                         <span>Oylik Maoshlar (Döküm)</span>

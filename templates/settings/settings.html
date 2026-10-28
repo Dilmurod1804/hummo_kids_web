@@ -150,7 +150,140 @@
             </div>
         </div>
 
-        <!-- SECTION 4: Xavfsizlik — Menejer Login & Parol -->
+        <!-- SECTION: Xodimlar Jarimalari va Stavkalarini Boshqarish (Penalty & Deduction Settings) -->
+        <div class="glass-card" style="padding: 28px 32px; margin-bottom: 24px; border-left: 4px solid #f43f5e;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+                <div>
+                    <h3 style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; color: #fb7185; margin: 0 0 4px 0; display: flex; align-items: center; gap: 9px;">
+                        <i data-lucide="scale" style="width: 22px; height: 22px;"></i>
+                        Xodimlar Jarimalari va Cheklovlari (Dinamik Stavkalar)
+                    </h3>
+                    <p style="font-size: 12px; color: var(--text-muted); margin: 0;">
+                        Kechikish va erta ketish uchun minutlik yoki foizli hisoblash usuli hamda oylik maoshga nisbatan maksimal chegara
+                    </p>
+                </div>
+                <span class="badge" style="background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); font-size: 11px; font-weight: 700;">
+                    Avtomatik Maosh Dökümi
+                </span>
+            </div>
+
+            <!-- General Calculation Mode & Max Limit -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 18px; background: rgba(255, 255, 255, 0.03); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.06); margin-bottom: 20px;">
+                <div class="form-group">
+                    <label class="form-label" style="font-weight: 700; color: white;">
+                        <i data-lucide="sliders" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle; margin-right: 4px; color: #38bdf8;"></i>
+                        Jarima Hisoblash Usuli:
+                    </label>
+                    {{ form.penalty_calc_mode }}
+                    {% if form.penalty_calc_mode.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.penalty_calc_mode.errors|join:", " }}</p>{% endif %}
+                    <p style="font-size: 11px; color: var(--text-dim); margin-top: 5px;">
+                        Foizli (kunlik maoshdan), Minutlik (har bir minut uchun qat'iy UZS) yoki Gibrid
+                    </p>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" style="font-weight: 700; color: white;">
+                        <i data-lucide="shield-alert" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle; margin-right: 4px; color: #fbbf24;"></i>
+                        Maksimal Ushlab Qolish Limiti (%):
+                    </label>
+                    <div style="position: relative;">
+                        {{ form.max_penalty_percent_limit }}
+                        <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 12px; color: var(--text-dim); font-weight: 700;">% maoshdan</span>
+                    </div>
+                    {% if form.max_penalty_percent_limit.errors %}<p style="color:#f87171;font-size:12px;margin-top:4px;">{{ form.max_penalty_percent_limit.errors|join:", " }}</p>{% endif %}
+                    <p style="font-size: 11px; color: var(--text-dim); margin-top: 5px;">
+                        Oylik maoshdan jami shtraflar ushbu foizdan oshmasligi qat'iy kafolatlanadi (standart: 50%)
+                    </p>
+                </div>
+            </div>
+
+            <!-- Subsection A: Kechikish Stavkalari (Late Arrival) -->
+            <div style="margin-bottom: 20px; padding: 18px; background: rgba(244, 63, 94, 0.04); border-radius: 12px; border: 1px solid rgba(244, 63, 94, 0.15);">
+                <h4 style="font-size: 14px; font-weight: 700; color: #fb7185; margin: 0 0 14px 0; display: flex; align-items: center; gap: 8px;">
+                    <i data-lucide="clock-alert" style="width: 16px; height: 16px;"></i>
+                    Ishga Kechikish (Late Arrival) Bo'yicha Stavkalar
+                </h4>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 11px;">1 Minut Kechikish (UZS):</label>
+                        {{ form.late_penalty_per_minute }}
+                        {% if form.late_penalty_per_minute.errors %}<p style="color:#f87171;font-size:11px;margin-top:3px;">{{ form.late_penalty_per_minute.errors|join:", " }}</p>{% endif %}
+                        <p style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">Minutlik usulda qo'llanadi</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 11px;">1-Daraja Chegarasi (Minut):</label>
+                        {{ form.late_grace_period_minutes }}
+                        {% if form.late_grace_period_minutes.errors %}<p style="color:#f87171;font-size:11px;margin-top:3px;">{{ form.late_grace_period_minutes.errors|join:", " }}</p>{% endif %}
+                        <p style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">Masalan: 15 daqiqagacha</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 11px;">1-Daraja Jarima (%):</label>
+                        {{ form.late_penalty_tier1_rate }}
+                        {% if form.late_penalty_tier1_rate.errors %}<p style="color:#f87171;font-size:11px;margin-top:3px;">{{ form.late_penalty_tier1_rate.errors|join:", " }}</p>{% endif %}
+                        <p style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">Kunlik maoshdan (masalan: 10%)</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 11px;">2-Daraja Jarima (%):</label>
+                        {{ form.late_penalty_tier2_rate }}
+                        {% if form.late_penalty_tier2_rate.errors %}<p style="color:#f87171;font-size:11px;margin-top:3px;">{{ form.late_penalty_tier2_rate.errors|join:", " }}</p>{% endif %}
+                        <p style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">Chegaradan oshganda (masalan: 20%)</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Subsection B: Erta Ketish Stavkalari (Early Leave) -->
+            <div style="margin-bottom: 16px; padding: 18px; background: rgba(249, 115, 22, 0.04); border-radius: 12px; border: 1px solid rgba(249, 115, 22, 0.18);">
+                <h4 style="font-size: 14px; font-weight: 700; color: #fb923c; margin: 0 0 14px 0; display: flex; align-items: center; gap: 8px;">
+                    <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
+                    Ishdan Erta Ketish (Early Leave) Bo'yicha Stavkalar
+                </h4>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 14px;">
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 11px;">1 Minut Erta Ketish (UZS):</label>
+                        {{ form.early_leave_penalty_per_minute }}
+                        {% if form.early_leave_penalty_per_minute.errors %}<p style="color:#f87171;font-size:11px;margin-top:3px;">{{ form.early_leave_penalty_per_minute.errors|join:", " }}</p>{% endif %}
+                        <p style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">Minutlik usulda qo'llanadi</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 11px;">1-Daraja Chegarasi (Minut):</label>
+                        {{ form.early_leave_grace_period_minutes }}
+                        {% if form.early_leave_grace_period_minutes.errors %}<p style="color:#f87171;font-size:11px;margin-top:3px;">{{ form.early_leave_grace_period_minutes.errors|join:", " }}</p>{% endif %}
+                        <p style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">Masalan: 15 daqiqagacha</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 11px;">1-Daraja Jarima (%):</label>
+                        {{ form.early_leave_tier1_rate }}
+                        {% if form.early_leave_tier1_rate.errors %}<p style="color:#f87171;font-size:11px;margin-top:3px;">{{ form.early_leave_tier1_rate.errors|join:", " }}</p>{% endif %}
+                        <p style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">Kunlik maoshdan (masalan: 10%)</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" style="font-size: 11px;">2-Daraja Jarima (%):</label>
+                        {{ form.early_leave_tier2_rate }}
+                        {% if form.early_leave_tier2_rate.errors %}<p style="color:#f87171;font-size:11px;margin-top:3px;">{{ form.early_leave_tier2_rate.errors|join:", " }}</p>{% endif %}
+                        <p style="font-size: 10px; color: var(--text-dim); margin-top: 3px;">Chegaradan oshganda (masalan: 20%)</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Current Summary Callout -->
+            <div style="padding: 12px 16px; background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.2); border-radius: 8px; font-size: 12px; color: #cbd5e1; display: flex; align-items: center; gap: 10px;">
+                <i data-lucide="info" style="width: 16px; height: 16px; color: #fb7185; flex-shrink: 0;"></i>
+                <span>
+                    Joriy faol rejim: <strong style="color: white;">{{ settings_obj.get_penalty_calc_mode_display }}</strong> &bull; 
+                    Oylik maksimal limit: <strong style="color: #fbbf24;">{{ settings_obj.max_penalty_percent_limit }}%</strong> &bull; 
+                    Kechikish: <strong style="color: #fb7185;">{{ settings_obj.late_penalty_tier1_rate }}% / {{ settings_obj.late_penalty_tier2_rate }}%</strong> (yoki {{ settings_obj.late_penalty_per_minute|floatformat:0 }} UZS/min) &bull; 
+                    Erta ketish: <strong style="color: #fb923c;">{{ settings_obj.early_leave_tier1_rate }}% / {{ settings_obj.early_leave_tier2_rate }}%</strong> (yoki {{ settings_obj.early_leave_penalty_per_minute|floatformat:0 }} UZS/min)
+                </span>
+            </div>
+        </div>
         <div class="glass-card" style="padding: 28px 32px; margin-bottom: 24px;">
             <h3 style="font-family: 'Outfit', sans-serif; font-size: 17px; font-weight: 700; color: #ef4444; margin: 0 0 8px 0; display: flex; align-items: center; gap: 9px;">
                 <i data-lucide="lock" style="width: 20px; height: 20px;"></i>

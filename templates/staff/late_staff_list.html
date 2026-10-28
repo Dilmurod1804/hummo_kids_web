@@ -21,7 +21,11 @@
             </p>
         </div>
 
-        <div style="display: flex; gap: 10px;">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{% url 'early_staff_list' %}" class="btn-glass" style="background: rgba(249, 115, 22, 0.15); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.35);">
+                <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
+                <span>Erta Ketganlar Ro'yxati</span>
+            </a>
             <a href="{% url 'staff_payroll' %}" class="btn-glass btn-emerald">
                 <i data-lucide="badge-dollar-sign" style="width: 16px; height: 16px;"></i>
                 <span>Oylik Maoshlar (Döküm) &rarr;</span>

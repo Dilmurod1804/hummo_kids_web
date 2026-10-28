@@ -99,15 +99,17 @@
             </div>
         </div>
 
-        <!-- Late Penalties -->
+        <!-- Penalties (Late + Early Leave) -->
         <div class="stat-card">
             <div>
-                <p class="stat-label">Kechikish Shtraflari</p>
+                <p class="stat-label">Ushlab Qolingan Shtraflar</p>
                 <h3 class="stat-value" style="font-size: 22px; color: #fb7185;">-{{ payroll.total_penalties|floatformat:0 }} <span style="font-size: 12px;">UZS</span></h3>
-                <p class="stat-subtext" style="color: #fb7185;">{{ late_count }} ta kechikish qayd etilgan</p>
+                <p class="stat-subtext" style="color: #fb7185;">
+                    {{ late_count }} ta kechikish &bull; {{ early_count }} ta erta ketish
+                </p>
             </div>
             <div class="stat-icon-wrapper icon-rose">
-                <i data-lucide="clock-alert" style="width: 22px; height: 22px;"></i>
+                <i data-lucide="alert-triangle" style="width: 22px; height: 22px;"></i>
             </div>
         </div>
 

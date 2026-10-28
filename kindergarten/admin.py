@@ -29,7 +29,32 @@ class UserAdmin(admin.ModelAdmin):
 
 @admin.register(KindergartenSettings)
 class KindergartenSettingsAdmin(admin.ModelAdmin):
-    list_display = ('name', 'work_start_time', 'work_end_time', 'default_monthly_fee', 'daily_meal_rate')
+    list_display = (
+        'name', 'penalty_calc_mode', 'late_penalty_per_minute', 'early_leave_penalty_per_minute',
+        'max_penalty_percent_limit', 'work_start_time', 'work_end_time'
+    )
+    fieldsets = (
+        ('Muassasa maʼlumotlari', {
+            'fields': ('name', 'address', 'contact_phone', 'contact_email', 'currency_symbol')
+        }),
+        ('GPS va Geofencing', {
+            'fields': ('latitude', 'longitude', 'geofence_radius', 'work_start_time', 'work_end_time')
+        }),
+        ('Moliyaviy stavkalar', {
+            'fields': ('default_monthly_fee', 'daily_meal_rate')
+        }),
+        ('Xodimlar Jarimalari va Stavkalar (Dinamik Sozlamalar)', {
+            'fields': (
+                'penalty_calc_mode', 'max_penalty_percent_limit',
+                ('late_penalty_per_minute', 'late_grace_period_minutes', 'late_penalty_tier1_rate', 'late_penalty_tier2_rate'),
+                ('early_leave_penalty_per_minute', 'early_leave_grace_period_minutes', 'early_leave_tier1_rate', 'early_leave_tier2_rate'),
+            ),
+            'description': 'Kechikish, barvaqt ketish jarima stavkalari va oylik maksimal ushlab qolish limiti.'
+        }),
+        ('Menejer Kirish Maʼlumotlari', {
+            'fields': ('manager_username', 'manager_password')
+        }),
+    )
 
 @admin.register(Group)
 class GroupAdmin(admin.ModelAdmin):

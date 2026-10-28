@@ -26,10 +26,22 @@
                 <i data-lucide="clock-alert" style="width: 16px; height: 16px;"></i>
                 <span>Kechikkanlar Ro'yxati</span>
             </a>
+            <a href="{% url 'early_staff_list' %}?month={{ month }}&year={{ year }}" class="btn-glass" style="background: rgba(249, 115, 22, 0.15); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.35);">
+                <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
+                <span>Erta Ketganlar Ro'yxati</span>
+            </a>
+            <button type="button" onclick="openEarlyLeaveModal()" class="btn-glass" style="background: rgba(234, 88, 12, 0.12); color: #fdba74; border: 1px solid rgba(234, 88, 12, 0.3);">
+                <i data-lucide="list-checks" style="width: 16px; height: 16px;"></i>
+                <span>Erta Ketganlar Dökümi ({{ total_early_count }})</span>
+            </button>
             <button type="button" onclick="openBonusModal()" class="btn-glass btn-emerald" style="padding: 10px 18px; font-weight: 700;">
                 <i data-lucide="award" style="width: 18px; height: 18px;"></i>
-                <span>+ Bonus / Rag'batlantirish Berish</span>
+                <span>+ Bonus Berish</span>
             </button>
+            <a href="{% url 'settings' %}" class="btn-glass" style="background: rgba(148, 163, 184, 0.12); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.3);">
+                <i data-lucide="settings" style="width: 16px; height: 16px;"></i>
+                <span>Jarima Sozlamalari</span>
+            </a>
         </div>
     </div>
 
@@ -60,7 +72,8 @@
     </div>
 
     <!-- KPI Summary Cards Grid -->
-    <div class="stats-grid" style="margin-bottom: 24px;">
+    <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin-bottom: 24px;">
+        <!-- Base Salary Fund -->
         <div class="stat-card">
             <div>
                 <p class="stat-label">Jami Asosiy Maosh Fondi</p>
@@ -72,17 +85,42 @@
             </div>
         </div>
 
+        <!-- Total Penalties (Late + Early + Other) -->
         <div class="stat-card">
             <div>
-                <p class="stat-label">Jami Ushlab Qolingan Shtraflar</p>
+                <p class="stat-label">Barcha Ushlab Qolingan Shtraflar</p>
                 <h3 class="stat-value" style="font-size: 20px; color: #fb7185;">-{{ total_penalties|floatformat:0 }} <span style="font-size: 12px;">UZS</span></h3>
-                <p class="stat-subtext" style="color: #fb7185;">Kechikishlar va ushlab qolishlar</p>
+                <p class="stat-subtext" style="color: #fb7185; font-size: 11px;">
+                    Kechikish: -{{ total_late_penalties|floatformat:0 }} UZS &bull; Erta: -{{ total_early_penalties|floatformat:0 }} UZS
+                </p>
+                <div style="margin-top: 5px; font-size: 10.5px; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
+                    <span>Rejim: <strong style="color: #38bdf8;">{{ settings_obj.get_penalty_calc_mode_display }}</strong></span>
+                    <span>&bull;</span>
+                    <span>Max: <strong style="color: #fbbf24;">{{ settings_obj.max_penalty_percent_limit }}%</strong></span>
+                </div>
             </div>
             <div class="stat-icon-wrapper icon-rose">
-                <i data-lucide="clock-alert" style="width: 22px; height: 22px;"></i>
+                <i data-lucide="alert-triangle" style="width: 22px; height: 22px;"></i>
             </div>
         </div>
 
+        <!-- Early Leave Indicator KPI Card -->
+        <div class="stat-card" style="cursor: pointer; border-color: rgba(249, 115, 22, 0.35); background: rgba(249, 115, 22, 0.06);" onclick="openEarlyLeaveModal()" title="Erta ketganlar ro'yxatini ko'rish">
+            <div>
+                <p class="stat-label" style="color: #fb923c; font-weight: 700;">Ishdan Erta Ketishlar</p>
+                <h3 class="stat-value" style="font-size: 20px; color: #fb923c;">
+                    {{ total_early_count }} <span style="font-size: 12px; color: #fed7aa;">ta holat</span>
+                </h3>
+                <p class="stat-subtext" style="color: #fb923c; font-size: 11px;">
+                    -{{ total_early_penalties|floatformat:0 }} UZS ({{ total_early_minutes }} min) &bull; Ko'rish &rarr;
+                </p>
+            </div>
+            <div class="stat-icon-wrapper" style="background: rgba(249, 115, 22, 0.15); color: #fb923c;">
+                <i data-lucide="log-out" style="width: 22px; height: 22px;"></i>
+            </div>
+        </div>
+
+        <!-- Bonuses -->
         <div class="stat-card">
             <div>
                 <p class="stat-label">Jami Berilgan Bonuslar</p>
@@ -94,6 +132,7 @@
             </div>
         </div>
 
+        <!-- Net Salary Fund -->
         <div class="stat-card" style="border-color: rgba(168, 85, 247, 0.4); background: rgba(168, 85, 247, 0.08);">
             <div>
                 <p class="stat-label" style="color: #c084fc; font-weight: 700;">Yakuniy To'lanadigan Sof Fond</p>
@@ -122,7 +161,7 @@
                         <th>Xodim F.I.Sh</th>
                         <th>Lavozimi</th>
                         <th>Asosiy Maosh</th>
-                        <th>Barcha Shtraflar</th>
+                        <th>Barcha Shtraflar (Kechikish + Erta Ketish)</th>
                         <th>Bonuslar</th>
                         <th>Yakuniy Oylik Maosh</th>
                         <th>To'lov Holati</th>
@@ -146,9 +185,33 @@
                         </td>
                         <td>
                             {% if p.total_penalties > 0 %}
-                            <strong style="color: #fb7185;">-{{ p.total_penalties|floatformat:0 }} UZS</strong>
+                            <div style="font-weight: 700; color: #fb7185; font-size: 14px;">-{{ p.total_penalties|floatformat:0 }} UZS</div>
+                            {% if p.is_penalty_capped %}
+                            <div style="margin-top: 3px;">
+                                <span class="badge" style="background: rgba(251, 191, 36, 0.15); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.4); font-size: 10px; font-weight: 700; padding: 2px 6px;" title="Haqiqiy jarima: -{{ p.raw_penalties|floatformat:0 }} UZS. Oylik maksimal limit ({{ settings_obj.max_penalty_percent_limit }}%) asosida cheklandi.">
+                                    🛡️ {{ settings_obj.max_penalty_percent_limit }}% limit (aslida: -{{ p.raw_penalties|floatformat:0 }})
+                                </span>
+                            </div>
+                            {% endif %}
+                            <div style="display: flex; flex-direction: column; gap: 3px; margin-top: 4px;">
+                                {% if p.late_penalties > 0 or p.late_count > 0 %}
+                                <span class="badge" style="background: rgba(251, 113, 133, 0.12); color: #fb7185; border: 1px solid rgba(251, 113, 133, 0.3); font-size: 10.5px; font-weight: 600; padding: 2px 6px; width: fit-content;" title="Kechikish jarimasi">
+                                    🕒 Kechikish: -{{ p.late_penalties|floatformat:0 }} ({{ p.late_count }} ta, {{ p.late_minutes }}m)
+                                </span>
+                                {% endif %}
+                                {% if p.early_penalties > 0 or p.early_count > 0 %}
+                                <span class="badge" style="background: rgba(249, 115, 22, 0.15); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.35); font-size: 10.5px; font-weight: 600; padding: 2px 6px; width: fit-content;" title="Erta ketish jarimasi">
+                                    🚪 Erta ketish: -{{ p.early_penalties|floatformat:0 }} ({{ p.early_count }} ta, {{ p.early_minutes }}m)
+                                </span>
+                                {% endif %}
+                                {% if p.other_penalties > 0 %}
+                                <span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.35); font-size: 10.5px; font-weight: 600; padding: 2px 6px; width: fit-content;" title="Boshqa ushlab qolishlar">
+                                    ⚠️ Boshqa: -{{ p.other_penalties|floatformat:0 }}
+                                </span>
+                                {% endif %}
+                            </div>
                             {% else %}
-                            <span style="color: var(--text-dim);">0 UZS</span>
+                            <span style="color: var(--text-dim); font-size: 13px;">0 UZS</span>
                             {% endif %}
                         </td>
                         <td>
@@ -253,7 +316,91 @@
     </div>
 </div>
 
+<!-- Modal: Early Leave List for Current Month -->
+<div id="modalEarlyLeave" class="glass-modal-backdrop">
+    <div class="glass-modal" style="max-width: 780px; max-height: 85vh; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 50%; background: rgba(249, 115, 22, 0.15); display: flex; align-items: center; justify-content: center; color: #fb923c;">
+                    <i data-lucide="log-out" style="width: 18px; height: 18px;"></i>
+                </div>
+                <div>
+                    <h3 style="font-family: 'Outfit', sans-serif; font-size: 19px; font-weight: 800; color: white; margin: 0;">
+                        {{ month }}/{{ year }} oyi Erta Ketganlar Dökümi
+                    </h3>
+                    <p style="font-size: 12px; color: var(--text-dim); margin: 2px 0 0 0;">
+                        Jami {{ monthly_early_logs|length }} ta holat &bull; Ushlab qolingan: <strong style="color: #fb7185;">-{{ total_early_penalties|floatformat:0 }} UZS</strong>
+                    </p>
+                </div>
+            </div>
+            <button onclick="document.getElementById('modalEarlyLeave').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer; padding: 4px;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <div style="overflow-y: auto; flex: 1; margin-bottom: 16px;">
+            <table class="glass-table" style="width: 100%; font-size: 13px;">
+                <thead>
+                    <tr>
+                        <th>Xodim</th>
+                        <th>Sana</th>
+                        <th>Chiqish Vaqti</th>
+                        <th>Ish Tugashi</th>
+                        <th>Erta Minut</th>
+                        <th>Jarima Summasi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for l in monthly_early_logs %}
+                    <tr>
+                        <td>
+                            <strong style="color: white;">{{ l.teacher.get_full_name|default:l.teacher.username }}</strong>
+                            <div style="font-size: 11px; color: var(--text-dim);">{{ l.teacher.position_display }}</div>
+                        </td>
+                        <td><strong>{{ l.date|date:"d.m.Y" }}</strong></td>
+                        <td>
+                            <span style="color: #fb923c; font-weight: 700;">{{ l.check_out_time|time:"H:i:s"|default:"—" }}</span>
+                        </td>
+                        <td>
+                            <span style="color: var(--text-dim);">{{ l.teacher.work_end_time|time:"H:i"|default:"18:00" }}</span>
+                        </td>
+                        <td>
+                            <span class="badge" style="background: rgba(249, 115, 22, 0.15); color: #fb923c; font-weight: 700;">
+                                {{ l.early_leave_minutes }} minut
+                            </span>
+                        </td>
+                        <td>
+                            <strong style="color: #fb7185;">-{{ l.early_leave_penalty_amount|floatformat:0 }} UZS</strong>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--text-dim); padding: 32px;">
+                            <i data-lucide="smile" style="width: 28px; height: 28px; color: #34d399; margin-bottom: 6px; display: inline-block;"></i>
+                            <p style="margin: 0; color: #34d399; font-weight: 600;">Ushbu oyda ishdan barvaqt ketish holatlari qayd etilmagan!</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; pt-2; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 12px;">
+            <a href="{% url 'early_staff_list' %}?month={{ month }}&year={{ year }}" class="btn-glass" style="font-size: 12px; color: #fb923c;">
+                To'liq Ro'yxat Sahifasiga o'tish &rarr;
+            </a>
+            <button type="button" onclick="document.getElementById('modalEarlyLeave').style.display='none'" class="btn-glass btn-secondary" style="font-size: 12px;">
+                Yopish
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
+    function openEarlyLeaveModal() {
+        document.getElementById('modalEarlyLeave').style.display = 'flex';
+    }
+
     function openBonusModal() {
         document.getElementById('formBonus').reset();
         document.getElementById('modalBonus').style.display = 'flex';

@@ -1664,8 +1664,6 @@ def staff_check_in_api(request):
                 log_entry.early_leave_minutes = early_minutes
                 log_entry.early_leave_penalty_amount = early_penalty_amount
                 log_entry.is_early_leave = is_early_leave
-                if is_early_leave:
-                    log_entry.penalty_amount = (log_entry.penalty_amount or Decimal('0.00')) + early_penalty_amount
                 log_entry.notes = (
                     (log_entry.notes or '') +
                     f" | Chiqish: {current_time.strftime('%H:%M:%S')} — {face_note}"
@@ -1989,8 +1987,6 @@ def face_identify_api(request):
                 log_entry.early_leave_minutes = early_minutes
                 log_entry.early_leave_penalty_amount = early_penalty_amount
                 log_entry.is_early_leave = is_early_leave
-                if is_early_leave:
-                    log_entry.penalty_amount = (log_entry.penalty_amount or Decimal('0.00')) + early_penalty_amount
                 log_entry.notes = (
                     (log_entry.notes or '') +
                     f" | Kiosk Chiqish: {current_time.strftime('%H:%M:%S')} — {face_note}"
@@ -3596,7 +3592,7 @@ def staff_profile(request):
         staff=user,
         date__year=current_year,
         date__month=current_month,
-        record_type__in=['PENALTY_LATE', 'OTHER_DEDUCTION']
+        record_type__in=['PENALTY_LATE', 'PENALTY_EARLY_LEAVE', 'OTHER_DEDUCTION']
     )
     my_bonuses = StaffBonusPenalty.objects.filter(
         staff=user,
@@ -3606,6 +3602,7 @@ def staff_profile(request):
     )
 
     late_count = monthly_logs.filter(is_late=True).count()
+    early_count = monthly_logs.filter(is_early_leave=True).count()
     on_time_count = monthly_logs.filter(status='ON_TIME').count()
 
     return render(request, 'staff/staff_profile.html', {
@@ -3615,6 +3612,7 @@ def staff_profile(request):
         'my_penalties': my_penalties,
         'my_bonuses': my_bonuses,
         'late_count': late_count,
+        'early_count': early_count,
         'on_time_count': on_time_count,
         'current_month': current_month,
         'current_year': current_year,
@@ -3659,6 +3657,45 @@ def late_staff_list(request):
     })
 
 
+# --- Erta Ketganlar Ro'yxati (Early Leave) ---
+@login_required
+@director_or_manager_required
+def early_staff_list(request):
+    today = timezone.localtime(timezone.now()).date()
+    date_filter = request.GET.get('date', '')
+    month_filter = request.GET.get('month', str(today.month))
+    year_filter = request.GET.get('year', str(today.year))
+
+    logs = StaffAttendance.objects.filter(is_early_leave=True).select_related('teacher')
+
+    if date_filter:
+        try:
+            sel_date = datetime.strptime(date_filter, '%Y-%m-%d').date()
+            logs = logs.filter(date=sel_date)
+        except ValueError:
+            sel_date = today
+            logs = logs.filter(date=today)
+    elif month_filter:
+        logs = logs.filter(date__year=int(year_filter), date__month=int(month_filter))
+    else:
+        logs = logs.filter(date=today)
+
+    logs = logs.order_by('-date', '-check_out_time')
+    total_early_sum = sum((l.early_leave_penalty_amount for l in logs), Decimal('0.00'))
+    total_early_minutes = sum((l.early_leave_minutes for l in logs))
+
+    return render(request, 'staff/early_staff_list.html', {
+        'logs': logs,
+        'date_filter': date_filter,
+        'month_filter': month_filter,
+        'year_filter': year_filter,
+        'total_early_sum': total_early_sum,
+        'total_early_minutes': total_early_minutes,
+        'today': today,
+        'months_range': range(1, 13),
+    })
+
+
 # --- Oylik Maosh Hisob-kitobi (Har oyning 10-sanasigacha tayyor döküm) ---
 @login_required
 @director_or_manager_required
@@ -3669,15 +3706,76 @@ def staff_payroll_dashboard(request):
 
     all_staff = User.objects.filter(is_active=True).exclude(role='DIRECTOR').order_by('role', 'first_name')
 
+    # Ushbu oy uchun barcha xodimlarning bonus va shtraf yozuvlari
+    month_penalties = StaffBonusPenalty.objects.filter(
+        date__year=year,
+        date__month=month
+    )
+    staff_penalties_map = {}
+    for pen in month_penalties:
+        if pen.staff_id not in staff_penalties_map:
+            staff_penalties_map[pen.staff_id] = {
+                'late_penalties': Decimal('0.00'),
+                'late_count': 0,
+                'late_minutes': 0,
+                'early_penalties': Decimal('0.00'),
+                'early_count': 0,
+                'early_minutes': 0,
+                'other_penalties': Decimal('0.00'),
+            }
+        entry = staff_penalties_map[pen.staff_id]
+        if pen.record_type == 'PENALTY_LATE':
+            entry['late_penalties'] += pen.amount
+            entry['late_count'] += 1
+            entry['late_minutes'] += pen.late_minutes
+        elif pen.record_type == 'PENALTY_EARLY_LEAVE':
+            entry['early_penalties'] += pen.amount
+            entry['early_count'] += 1
+            entry['early_minutes'] += pen.late_minutes
+        elif pen.record_type == 'OTHER_DEDUCTION':
+            entry['other_penalties'] += pen.amount
+
+    settings_obj = KindergartenSettings.get_settings()
     payrolls = []
     for staff in all_staff:
-        p = sync_staff_monthly_salary(staff, month, year)
+        p = sync_staff_monthly_salary(staff, month, year, settings_obj=settings_obj)
+        pen_info = staff_penalties_map.get(staff.id, {
+            'late_penalties': Decimal('0.00'),
+            'late_count': 0,
+            'late_minutes': 0,
+            'early_penalties': Decimal('0.00'),
+            'early_count': 0,
+            'early_minutes': 0,
+            'other_penalties': Decimal('0.00'),
+        })
+        p.late_penalties = pen_info['late_penalties']
+        p.late_count = pen_info['late_count']
+        p.late_minutes = pen_info['late_minutes']
+        p.early_penalties = pen_info['early_penalties']
+        p.early_count = pen_info['early_count']
+        p.early_minutes = pen_info['early_minutes']
+        p.other_penalties = pen_info['other_penalties']
         payrolls.append(p)
 
     total_base_payroll = sum((p.base_salary for p in payrolls), Decimal('0.00'))
     total_penalties = sum((p.total_penalties for p in payrolls), Decimal('0.00'))
     total_bonuses = sum((p.total_bonuses for p in payrolls), Decimal('0.00'))
     total_net_payroll = sum((p.net_salary for p in payrolls), Decimal('0.00'))
+
+    total_late_penalties = sum((p.late_penalties for p in payrolls), Decimal('0.00'))
+    total_late_count = sum((p.late_count for p in payrolls))
+    total_late_minutes = sum((p.late_minutes for p in payrolls))
+
+    total_early_penalties = sum((p.early_penalties for p in payrolls), Decimal('0.00'))
+    total_early_count = sum((p.early_count for p in payrolls))
+    total_early_minutes = sum((p.early_minutes for p in payrolls))
+
+    # Ushbu oydagi erta ketganlar to'liq loglari (modal va tezkor ko'rish uchun)
+    monthly_early_logs = StaffAttendance.objects.filter(
+        date__year=year,
+        date__month=month,
+        is_early_leave=True
+    ).select_related('teacher').order_by('-date', '-check_out_time')
 
     return render(request, 'staff/payroll.html', {
         'payrolls': payrolls,
@@ -3687,8 +3785,16 @@ def staff_payroll_dashboard(request):
         'total_penalties': total_penalties,
         'total_bonuses': total_bonuses,
         'total_net_payroll': total_net_payroll,
+        'total_late_penalties': total_late_penalties,
+        'total_late_count': total_late_count,
+        'total_late_minutes': total_late_minutes,
+        'total_early_penalties': total_early_penalties,
+        'total_early_count': total_early_count,
+        'total_early_minutes': total_early_minutes,
+        'monthly_early_logs': monthly_early_logs,
         'all_staff': all_staff,
         'months_range': range(1, 13),
+        'settings_obj': settings_obj,
     })
 
 

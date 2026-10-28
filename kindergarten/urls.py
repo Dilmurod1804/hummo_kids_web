@@ -35,6 +35,7 @@ urlpatterns = [
     path('staff/', views.staff_list, name='staff_list'),
     path('staff/my-profile/', views.staff_profile, name='staff_profile'),
     path('staff/late-list/', views.late_staff_list, name='late_staff_list'),
+    path('staff/early-list/', views.early_staff_list, name='early_staff_list'),
     path('staff/payroll/', views.staff_payroll_dashboard, name='staff_payroll'),
     path('staff/add-bonus-penalty-api/', views.add_bonus_penalty_api, name='add_bonus_penalty_api'),
     path('staff/mark-payroll-paid-api/', views.mark_payroll_paid_api, name='mark_payroll_paid_api'),

@@ -220,6 +220,84 @@ class KindergartenSettings(models.Model):
     manager_username = models.CharField(max_length=150, default="manager", help_text="Shared manager login username")
     manager_password = models.CharField(max_length=128, default="humomanager2026", help_text="Manager login password")
 
+    # ── Xodimlar Jarimalari va Cheklovlari (Penalty & Deduction Settings) ──
+    PENALTY_MODE_CHOICES = (
+        ('PERCENTAGE', 'Foizli stavka (Kunlik maoshdan %)'),
+        ('FIXED_PER_MINUTE', 'Har bir minut uchun qat’iy summa (UZS)'),
+        ('HYBRID', 'Gibrid (Kunlik foiz + Minutlik stavka)'),
+    )
+    penalty_calc_mode = models.CharField(
+        max_length=20,
+        choices=PENALTY_MODE_CHOICES,
+        default='PERCENTAGE',
+        verbose_name="Jarima hisoblash usuli",
+        help_text="Kechikish va erta ketish jarimasi qaysi uslubda hisoblanishi"
+    )
+    # Kechikish parametrlari
+    late_penalty_per_minute = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Har bir kechikkan minut uchun jarima (UZS)",
+        help_text="Minutlik hisoblanganda 1 minut kechikish uchun ushlab qolinadigan summa"
+    )
+    late_grace_period_minutes = models.PositiveIntegerField(
+        default=15,
+        verbose_name="Kechikish imtiyozli/1-daraja chegarasi (minut)",
+        help_text="Necha minutgacha 1-darajali foiz hisoblanishi (default: 15 minut)"
+    )
+    late_penalty_tier1_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('10.00'),
+        verbose_name="1-darajali kechikish jarima foizi (%)",
+        help_text="Chegara ichidagi kechikish uchun kunlik maoshdan foiz (default: 10%)"
+    )
+    late_penalty_tier2_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('20.00'),
+        verbose_name="2-darajali kechikish jarima foizi (%)",
+        help_text="Chegaradan oshgan kechikish uchun kunlik maoshdan foiz (default: 20%)"
+    )
+
+    # Erta ketish parametrlari
+    early_leave_penalty_per_minute = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0.00'),
+        verbose_name="Har bir erta ketgan minut uchun jarima (UZS)",
+        help_text="Minutlik hisoblanganda 1 minut barvaqt ketish uchun ushlab qolinadigan summa"
+    )
+    early_leave_grace_period_minutes = models.PositiveIntegerField(
+        default=15,
+        verbose_name="Erta ketish imtiyozli/1-daraja chegarasi (minut)",
+        help_text="Necha minutgacha 1-darajali foiz hisoblanishi (default: 15 minut)"
+    )
+    early_leave_tier1_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('10.00'),
+        verbose_name="1-darajali erta ketish jarima foizi (%)",
+        help_text="Chegara ichidagi erta ketish uchun kunlik maoshdan foiz (default: 10%)"
+    )
+    early_leave_tier2_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('20.00'),
+        verbose_name="2-darajali erta ketish jarima foizi (%)",
+        help_text="Chegaradan oshgan erta ketish uchun kunlik maoshdan foiz (default: 20%)"
+    )
+
+    # Oylik maksimal ushlab qolish foizi limiti
+    max_penalty_percent_limit = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal('50.00'),
+        verbose_name="Oylik maksimal ushlab qolish foizi limiti (%)",
+        help_text="Oylik maoshga nisbatan barcha jarimalarning maksimal ruxsat etilgan foizi (standart: 50%)"
+    )
+
     class Meta:
         verbose_name = "Kindergarten Settings"
         verbose_name_plural = "Kindergarten Settings"
@@ -388,6 +466,78 @@ class StaffAttendance(models.Model):
     class Meta:
         ordering = ['-date', '-created_at']
 
+    @property
+    def total_penalty_for_day(self):
+        """Kechikish va barvaqt ketish shtraflari yig'indisi"""
+        return (self.penalty_amount or Decimal('0.00')) + (self.early_leave_penalty_amount or Decimal('0.00'))
+
+    def check_and_calculate_early_leave(self):
+        """
+        Agar xodimning check_out_time vaqti kiritilgan bo'lsa va rasmiy ish tugash vaqtidan
+        oldin chiqib ketgan bo'lsa, 'early_leave' sifatida aniqlaydi va jarima hisoblaydi.
+        """
+        if not self.check_out_time or not self.teacher:
+            return 0, Decimal('0.00'), Decimal('0.00'), 0
+
+        # Dam olish kuni bo'lsa shtraf belgilanmaydi
+        if hasattr(self.teacher, 'is_working_day') and not self.teacher.is_working_day(self.date):
+            self.is_early_leave = False
+            self.early_leave_minutes = 0
+            self.early_leave_penalty_amount = Decimal('0.00')
+            return 0, Decimal('0.00'), Decimal('0.00'), 0
+
+        from .audit_utils import calculate_early_leave_penalty
+        early_mins, pen_pct, pen_amt, tier = calculate_early_leave_penalty(
+            self.check_out_time,
+            work_end_time=getattr(self.teacher, 'work_end_time', None),
+            salary=getattr(self.teacher, 'salary', Decimal('0.00')),
+            staff_user=self.teacher,
+            check_date=self.date
+        )
+
+        if early_mins > 0:
+            self.is_early_leave = True
+            self.early_leave_minutes = early_mins
+            self.early_leave_penalty_amount = pen_amt
+        else:
+            self.is_early_leave = False
+            self.early_leave_minutes = 0
+            self.early_leave_penalty_amount = Decimal('0.00')
+
+        return early_mins, pen_pct, pen_amt, tier
+
+    def save(self, *args, **kwargs):
+        # Agar check_out_time bor bo'lsa va erta ketish ko'rsatkichi hisoblanmagan bo'lsa
+        if self.check_out_time and not self.early_leave_minutes and not self.is_early_leave:
+            self.check_and_calculate_early_leave()
+        super().save(*args, **kwargs)
+
+        # Erta ketish jarimasi mavjud bo'lsa StaffBonusPenalty jadvali va oylik maoshni sinxronlash
+        if self.is_early_leave and self.early_leave_penalty_amount > 0 and self.teacher:
+            try:
+                from django.apps import apps
+                BonusPenaltyModel = apps.get_model('kindergarten', 'StaffBonusPenalty')
+                from .audit_utils import sync_staff_monthly_salary
+                BonusPenaltyModel.objects.update_or_create(
+                    staff=self.teacher,
+                    date=self.date,
+                    record_type='PENALTY_EARLY_LEAVE',
+                    defaults={
+                        'late_minutes': self.early_leave_minutes,
+                        'percentage': getattr(self.teacher, 'penalty_rate_tier1', Decimal('10.00')),
+                        'amount': self.early_leave_penalty_amount,
+                        'description': (
+                            f"Ishdan barvaqt ketish: {self.check_out_time.strftime('%H:%M:%S') if self.check_out_time else ''}. "
+                            f"{self.early_leave_minutes} minut erta ketdi (-{self.early_leave_penalty_amount:,.0f} UZS)."
+                        ),
+                        'staff_attendance': self,
+                    }
+                )
+                sync_staff_monthly_salary(self.teacher, self.date.month, self.date.year)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("Error syncing early leave penalty: %s", e)
+
     def __str__(self):
         return f"{self.teacher.get_full_name() or self.teacher.username} [{self.date}] - {self.get_status_display()} ({self.distance_meters}m)"
 
@@ -549,6 +699,8 @@ class StaffMonthlySalary(models.Model):
     year = models.PositiveIntegerField(default=2026)
     base_salary = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Asosiy Maosh")
     total_penalties = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Barcha Shtraflar")
+    raw_penalties = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Haqiqiy hisoblangan shtraflar (limitgacha)")
+    is_penalty_capped = models.BooleanField(default=False, verbose_name="Maksimal limit qo'llanganmi")
     total_bonuses = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Barcha Bonuslar")
     net_salary = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), verbose_name="Yakuniy Oylik Maosh")
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='PENDING', verbose_name="Holati")
