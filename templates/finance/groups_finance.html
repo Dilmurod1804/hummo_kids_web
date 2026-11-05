@@ -1,0 +1,1371 @@
+{% extends 'base.html' %}
+
+{% block title %}Guruhlar Bo'yicha Oylik To'lovlar Hisoboti — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="max-width: 1280px; margin: 0 auto; padding-bottom: 40px;">
+    
+    <!-- Top Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white; margin: 0;">
+                    Guruhlar To'lovi Bo'limi
+                </h2>
+                <span class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); font-size: 12px; font-weight: 800;">
+                    {{ month }}-oy / {{ year }}-yil
+                </span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+                Guruhlar kesimida oylik to'lovlar, qarzdorliklar, to'lov turlari taqsimoti va grafik hisoboti
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{% url 'finance_dashboard' %}?month={{ month }}&year={{ year }}" class="btn-glass btn-secondary">
+                <i data-lucide="receipt" style="width: 16px; height: 16px;"></i>
+                <span>Umumiy Moliya &rarr;</span>
+            </a>
+            <a href="{% url 'export_finance' %}?month={{ month }}&year={{ year }}" class="btn-glass btn-excel">
+                <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px;"></i>
+                <span>Excel Yuklab Olish</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Month & Year Selector -->
+    <div class="glass-card" style="padding: 16px 20px; margin-bottom: 24px;">
+        <form method="GET" style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+            {% if active_group %}
+            <input type="hidden" name="group" value="{{ active_group.id }}">
+            {% endif %}
+            
+            <div style="min-width: 170px;">
+                <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Hisob Oyi:</label>
+                <select name="month" class="glass-select" onchange="this.form.submit()" style="padding: 8px 12px; width: 100%;">
+                    {% for m in months_range %}
+                    <option value="{{ m }}" {% if month == m %}selected{% endif %}>{{ m }}-oy</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div style="min-width: 150px;">
+                <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Hisob Yili:</label>
+                <select name="year" class="glass-select" onchange="this.form.submit()" style="padding: 8px 12px; width: 100%;">
+                    <option value="2026" {% if year == 2026 %}selected{% endif %}>2026-yil</option>
+                    <option value="2025" {% if year == 2025 %}selected{% endif %}>2025-yil</option>
+                </select>
+            </div>
+        </form>
+    </div>
+
+    <!-- 📊 Guruhlar bo'yicha Oylik To'lovlar Umumiy Hisoboti (Excel-style Jadval) -->
+    <div class="glass-card" style="margin-bottom: 28px; padding: 22px; border-left: 4px solid #38bdf8;">
+        <div class="glass-card-header" style="flex-wrap: wrap; gap: 12px; margin-bottom: 18px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(135deg, #10b981, #06b6d4); display: flex; align-items: center; justify-content: center; color: white;">
+                    <i data-lucide="table" style="width: 20px; height: 20px;"></i>
+                </div>
+                <div>
+                    <h3 class="glass-card-title" style="margin: 0; font-size: 18px; font-weight: 800;">
+                        Guruhlar Bo'yicha Oylik To'lovlar Umumiy Hisoboti
+                    </h3>
+                    <p style="font-size: 12px; color: var(--text-muted); margin: 2px 0 0 0;">
+                        {{ month }}-oy / {{ year }}-yil bo'yicha guruhlar kesimidagi tushumlar, qoldiq qarz va to'lov turlari
+                    </p>
+                </div>
+            </div>
+
+            <!-- Quick Badge Stats -->
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); font-weight: 700; font-size: 12px; padding: 6px 12px;">
+                    Jami To'langan: {{ grand_totals.total_paid|floatformat:0 }} UZS ({{ grand_totals.paid_percent }}%)
+                </span>
+                <span class="badge" style="background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3); font-weight: 700; font-size: 12px; padding: 6px 12px;">
+                    🎁 Jami Skidka: {{ grand_totals.total_discount|floatformat:0 }} UZS
+                </span>
+                <span class="badge" style="background: rgba(244, 63, 94, 0.15); color: #fda4af; border: 1px solid rgba(244, 63, 94, 0.3); font-weight: 700; font-size: 12px; padding: 6px 12px;">
+                    Jami Qoldiq Qarz: {{ grand_totals.total_debt|floatformat:0 }} UZS
+                </span>
+            </div>
+        </div>
+
+        <!-- Excel Styled Summary Table -->
+        <div class="glass-table-wrapper" style="border: 1px solid rgba(255, 255, 255, 0.12); border-radius: var(--radius-md); overflow-x: auto;">
+            <table class="glass-table excel-style-table" style="width: 100%; border-collapse: collapse; min-width: 860px; font-size: 12px;">
+                <thead>
+                    <tr style="background: rgba(255, 255, 255, 0.07); border-bottom: 2px solid rgba(56, 189, 248, 0.4); font-size: 11px;">
+                        <th style="padding: 8px 10px; text-align: left; font-weight: 700; color: #e2e8f0; border-right: 1px solid rgba(255,255,255,0.06);">Guruh</th>
+                        <th style="padding: 8px 10px; text-align: center; font-weight: 700; color: #e2e8f0; border-right: 1px solid rgba(255,255,255,0.06);">Bola</th>
+                        <th style="padding: 8px 10px; text-align: right; font-weight: 700; color: #94a3b8; border-right: 1px solid rgba(255,255,255,0.06);">Hisoblangan</th>
+                        <th style="padding: 8px 8px; text-align: right; font-weight: 700; color: #ec4899; border-right: 1px solid rgba(255,255,255,0.06);">Skidka</th>
+                        <th style="padding: 8px 10px; text-align: right; font-weight: 700; color: #34d399; border-right: 1px solid rgba(255,255,255,0.06);">To'langan</th>
+                        <th style="padding: 8px 10px; text-align: right; font-weight: 700; color: #fb7185; border-right: 1px solid rgba(255,255,255,0.06);">Qoldiq</th>
+                        <th style="padding: 8px 8px; text-align: right; font-weight: 700; color: #38bdf8; border-right: 1px solid rgba(255,255,255,0.06);">Karta</th>
+                        <th style="padding: 8px 8px; text-align: right; font-weight: 700; color: #818cf8; border-right: 1px solid rgba(255,255,255,0.06);">Terminal</th>
+                        <th style="padding: 8px 8px; text-align: right; font-weight: 700; color: #c084fc; border-right: 1px solid rgba(255,255,255,0.06);">Payme</th>
+                        <th style="padding: 8px 8px; text-align: right; font-weight: 700; color: #f59e0b; border-right: 1px solid rgba(255,255,255,0.06);">Naqd</th>
+                        <th style="padding: 8px 8px; text-align: right; font-weight: 700; color: #ec4899; border-right: 1px solid rgba(255,255,255,0.06);">Marta</th>
+                        <th style="padding: 8px 10px; text-align: left; font-weight: 700; color: #fbbf24;">Sabab / Izoh</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for gs in groups_summary %}
+                    <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(56, 189, 248, 0.06)'" onmouseout="this.style.background='transparent'">
+                        <td style="padding: 7px 10px; border-right: 1px solid rgba(255,255,255,0.06);">
+                            <a href="?group={{ gs.group.id }}&month={{ month }}&year={{ year }}" style="color: white; text-decoration: none; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+                                <span>{{ gs.name }}</span>
+                                {% if active_group.id == gs.group.id %}
+                                <span class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; font-size: 10px; padding: 2px 6px;">Faol</span>
+                                {% endif %}
+                            </a>
+                        </td>
+                        <td style="padding: 7px 10px; text-align: center; color: #cbd5e1; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.children_count }} ta
+                        </td>
+                        <td style="padding: 7px 10px; text-align: right; color: #e2e8f0; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.total_expected|floatformat:0 }}
+                        </td>
+                        <td style="padding: 7px 8px; text-align: right; color: #ec4899; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.total_discount|floatformat:0 }}
+                        </td>
+                        <td style="padding: 7px 10px; text-align: right; color: #34d399; font-weight: 700; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.total_paid|floatformat:0 }}
+                        </td>
+                        <td style="padding: 7px 10px; text-align: right; color: {% if gs.total_debt > 0 %}#fb7185{% else %}#34d399{% endif %}; font-weight: 700; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.total_debt|floatformat:0 }}
+                        </td>
+                        <td style="padding: 7px 8px; text-align: right; color: #38bdf8; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.paid_card|floatformat:0 }}
+                        </td>
+                        <td style="padding: 7px 8px; text-align: right; color: #818cf8; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.paid_terminal|floatformat:0 }}
+                        </td>
+                        <td style="padding: 7px 8px; text-align: right; color: #c084fc; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.paid_payme|floatformat:0 }}
+                        </td>
+                        <td style="padding: 7px 8px; text-align: right; color: #f59e0b; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.paid_cash|floatformat:0 }}
+                        </td>
+                        <td style="padding: 7px 8px; text-align: right; color: #ec4899; font-weight: 600; border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ gs.paid_marta|floatformat:0 }}
+                        </td>
+                        <td style="padding: 7px 10px; text-align: left; font-size: 11px;">
+                            {% if gs.reasons_list %}
+                                <div style="display: flex; flex-direction: column; gap: 3px; max-width: 200px;">
+                                {% for r in gs.reasons_list %}
+                                    <span style="display: inline-block; background: rgba(245, 158, 11, 0.15); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.35); padding: 1px 5px; border-radius: 4px; font-size: 10.5px; white-space: normal; word-break: break-word;">
+                                        {{ r }}
+                                    </span>
+                                {% endfor %}
+                                </div>
+                            {% else %}
+                                <span style="color: var(--text-dim);">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="12" style="text-align: center; color: var(--text-dim); padding: 20px;">
+                            Hozircha guruhlar mavjud emas.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <!-- JAMI (Grand Total) Row -->
+                <tfoot>
+                    <tr style="background: rgba(56, 189, 248, 0.14); border-top: 2px solid #38bdf8; font-size: 12px;">
+                        <td style="padding: 9px 10px; font-weight: 900; color: #38bdf8; border-right: 1px solid rgba(255,255,255,0.1); letter-spacing: 0.5px;">
+                            JAMI
+                        </td>
+                        <td style="padding: 9px 10px; text-align: center; font-weight: 900; color: white; border-right: 1px solid rgba(255,255,255,0.1);">
+                            {{ grand_totals.children_count }} ta
+                        </td>
+                        <td style="padding: 9px 10px; text-align: right; font-weight: 900; color: white; border-right: 1px solid rgba(255,255,255,0.1);">
+                            {{ grand_totals.total_expected|floatformat:0 }}
+                        </td>
+                        <td style="padding: 9px 8px; text-align: right; font-weight: 900; color: #ec4899; border-right: 1px solid rgba(255,255,255,0.1); font-size: 13px;">
+                            {{ grand_totals.total_discount|floatformat:0 }}
+                        </td>
+                        <td style="padding: 9px 10px; text-align: right; font-weight: 900; color: #34d399; border-right: 1px solid rgba(255,255,255,0.1); font-size: 13px;">
+                            {{ grand_totals.total_paid|floatformat:0 }}
+                        </td>
+                        <td style="padding: 9px 10px; text-align: right; font-weight: 900; color: #fb7185; border-right: 1px solid rgba(255,255,255,0.1); font-size: 13px;">
+                            {{ grand_totals.total_debt|floatformat:0 }}
+                        </td>
+                        <td style="padding: 9px 8px; text-align: right; font-weight: 900; color: #38bdf8; border-right: 1px solid rgba(255,255,255,0.1);">
+                            {{ grand_totals.paid_card|floatformat:0 }}
+                        </td>
+                        <td style="padding: 9px 8px; text-align: right; font-weight: 900; color: #818cf8; border-right: 1px solid rgba(255,255,255,0.1);">
+                            {{ grand_totals.paid_terminal|floatformat:0 }}
+                        </td>
+                        <td style="padding: 9px 8px; text-align: right; font-weight: 900; color: #c084fc; border-right: 1px solid rgba(255,255,255,0.1);">
+                            {{ grand_totals.paid_payme|floatformat:0 }}
+                        </td>
+                        <td style="padding: 9px 8px; text-align: right; font-weight: 900; color: #f59e0b; border-right: 1px solid rgba(255,255,255,0.1);">
+                            {{ grand_totals.paid_cash|floatformat:0 }}
+                        </td>
+                        <td style="padding: 9px 8px; text-align: right; font-weight: 900; color: #ec4899; border-right: 1px solid rgba(255,255,255,0.1);">
+                            {{ grand_totals.paid_marta|floatformat:0 }}
+                        </td>
+                        <td style="padding: 9px 10px; text-align: left; font-weight: 700; color: var(--text-dim); font-size: 11px;">
+                            -
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <!-- 📈 Chart.js Vizual Ustunli Diagramma (Bar Chart) -->
+        <div style="margin-top: 26px; padding-top: 20px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <i data-lucide="bar-chart-3" style="color: #38bdf8; width: 20px; height: 20px;"></i>
+                    <h4 style="font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 700; color: white; margin: 0;">
+                        Guruhlar Bo'yicha Tushgan To'lov va Qoldiq Diagrammasi
+                    </h4>
+                </div>
+                <div style="display: flex; gap: 14px; font-size: 12px; align-items: center; flex-wrap: wrap;">
+                    <span style="display: flex; align-items: center; gap: 6px; color: #34d399; font-weight: 600;">
+                        <span style="width: 12px; height: 12px; background: #34d399; border-radius: 3px; display: inline-block;"></span>
+                        To'langan
+                    </span>
+                    <span style="display: flex; align-items: center; gap: 6px; color: #fb7185; font-weight: 600;">
+                        <span style="width: 12px; height: 12px; background: #fb7185; border-radius: 3px; display: inline-block;"></span>
+                        Qoldiq qarz
+                    </span>
+                    <span style="display: flex; align-items: center; gap: 6px; color: #94a3b8; font-weight: 600;">
+                        <span style="width: 12px; height: 12px; background: rgba(148, 163, 184, 0.4); border-radius: 3px; display: inline-block;"></span>
+                        Hisoblangan (Jami)
+                    </span>
+                </div>
+            </div>
+
+            <div style="position: relative; height: 320px; width: 100%;">
+                <canvas id="groupPaymentsChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Group Cards Grid (Tabs) -->
+    <div style="margin-bottom: 14px;">
+        <h4 style="font-size: 13px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">
+            Guruhlar Tafsiloti (Bola ro'yxatini ko'rish uchun tanlang):
+        </h4>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-bottom: 28px;">
+        {% for gs in groups_summary %}
+        <a href="?group={{ gs.group.id }}&month={{ month }}&year={{ year }}" style="text-decoration: none;">
+            <div class="glass-card" style="padding: 18px; border-radius: var(--radius-md); transition: all 0.2s ease; cursor: pointer; border: {% if active_group.id == gs.group.id %}2px solid #38bdf8{% else %}1px solid var(--border-glass){% endif %}; background: {% if active_group.id == gs.group.id %}rgba(56, 189, 248, 0.08){% else %}var(--bg-glass-card){% endif %};">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                    <div>
+                        <h4 style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 800; color: white; margin: 0;">
+                            {{ gs.group.name }}
+                        </h4>
+                        <span style="font-size: 11px; color: var(--text-dim);">
+                            {{ gs.group.get_age_category_display }}
+                        </span>
+                    </div>
+                    <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-weight: 700; font-size: 11px;">
+                        {{ gs.children_count }} ta bola
+                    </span>
+                </div>
+
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+                    {% if gs.group.primary_teacher %}
+                    Tarbiyachi: <strong style="color: white;">{{ gs.group.primary_teacher.get_full_name|default:gs.group.primary_teacher.username }}</strong>
+                    {% else %}
+                    Tarbiyachi: <strong style="color: white;">Biriktirilmagan</strong>
+                    {% endif %}
+                </div>
+
+                <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px;">
+                    <span style="color: var(--text-dim);">To'langan:</span>
+                    <strong style="color: #34d399;">{{ gs.total_paid|floatformat:0 }} UZS</strong>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 12px;">
+                    <span style="color: var(--text-dim);">Qarzdorlik:</span>
+                    <strong style="color: #fb7185;">{{ gs.total_debt|floatformat:0 }} UZS</strong>
+                </div>
+
+                <!-- Progress Bar -->
+                <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 4px; overflow: hidden;">
+                    <div style="width: {{ gs.paid_percent }}%; height: 100%; background: linear-gradient(90deg, #38bdf8, #34d399); border-radius: 4px;"></div>
+                </div>
+                <div style="text-align: right; font-size: 11px; color: var(--text-dim); margin-top: 4px;">
+                    {{ gs.paid_percent }}% yig'ildi
+                </div>
+            </div>
+        </a>
+        {% empty %}
+        <div class="glass-card" style="padding: 24px; text-align: center; color: var(--text-dim); grid-column: 1 / -1;">
+            Hozircha guruhlar mavjud emas.
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if active_group %}
+    <!-- Detailed Children Payment & Debt Table for Active Group -->
+    <div class="glass-card">
+        <div class="glass-card-header" style="flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h3 class="glass-card-title" style="margin: 0;">
+                    <i data-lucide="layers" style="color: #38bdf8; width: 22px; height: 22px;"></i>
+                    <span>"{{ active_group.name }}" Guruhi — Bolalar To'lovi va Qarzdorlik Jadvali ({{ month }}/{{ year }})</span>
+                </h3>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">
+                    Guruh badali: <strong>{{ active_group.monthly_fee|floatformat:0 }} UZS / oy</strong> &bull; 
+                    Tarbiyachi: <strong>{% if active_group.primary_teacher %}{{ active_group.primary_teacher.get_full_name|default:active_group.primary_teacher.username }}{% else %}Biriktirilmagan{% endif %}</strong>
+                </p>
+            </div>
+
+            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                <div style="background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #34d399;">
+                    Jami To'langan: <b>{{ active_group_stats.total_paid|floatformat:0 }}</b>
+                </div>
+                <div style="background: rgba(236, 72, 153, 0.12); border: 1px solid rgba(236, 72, 153, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #f472b6;">
+                    🎁 Jami Skidka: <b>{{ active_group_stats.total_discount|floatformat:0 }}</b>
+                </div>
+                <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #fbbf24;">
+                    💵 Naqd: <b>{{ active_group_stats.paid_cash|floatformat:0 }}</b>
+                </div>
+                <div style="background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #38bdf8;">
+                    💳 Karta: <b>{{ active_group_stats.paid_card|floatformat:0 }}</b>
+                </div>
+                <div style="background: rgba(129, 140, 248, 0.12); border: 1px solid rgba(129, 140, 248, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #818cf8;">
+                    📟 Terminal: <b>{{ active_group_stats.paid_terminal|floatformat:0 }}</b>
+                </div>
+                <div style="background: rgba(192, 132, 252, 0.12); border: 1px solid rgba(192, 132, 252, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #c084fc;">
+                    ⚡ Payme: <b>{{ active_group_stats.paid_payme|floatformat:0 }}</b>
+                </div>
+                <div style="background: rgba(251, 113, 133, 0.12); border: 1px solid rgba(251, 113, 133, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #fb7185;">
+                    Qarzdorlik: <b>{{ active_group_stats.total_debt|floatformat:0 }}</b>
+                </div>
+            </div>
+        </div>
+
+        <div class="glass-table-wrapper" style="overflow-x: auto;">
+            <table class="glass-table compact-finance-table" style="width: 100%; border-collapse: collapse; min-width: 900px; font-size: 12px;">
+                <thead>
+                    <tr style="border-bottom: 2px solid rgba(56, 189, 248, 0.35); background: rgba(255, 255, 255, 0.04); font-size: 11px;">
+                        <th style="padding: 7px 8px; text-align: left; min-width: 130px;">Bola F.I.Sh</th>
+                        <th style="padding: 7px 8px; text-align: left; min-width: 110px;">Ota-onasi / Tel</th>
+                        <th style="padding: 7px 8px; text-align: right; min-width: 85px;">Tarifi</th>
+                        <!-- Yangi: Skidka Ustuni -->
+                        <th style="padding: 7px 6px; text-align: right; width: 75px; color: #ec4899; font-weight: 800;">Skidka</th>
+                        <th style="padding: 7px 6px; text-align: center; width: 50px;">Sababli</th>
+                        <th style="padding: 7px 6px; text-align: right; width: 68px;">Qayta hisob</th>
+                        <th style="padding: 7px 8px; text-align: right; min-width: 85px; color: #34d399; font-weight: 800;">Jami to'lov</th>
+                        <!-- To'lov turlari ustunlari: Naqd, Karta, Terminal, Payme -->
+                        <th style="padding: 7px 6px; text-align: right; width: 72px; color: #fbbf24; font-weight: 800; background: rgba(245, 158, 11, 0.08); border-left: 1px solid rgba(255,255,255,0.06); border-right: 1px solid rgba(255,255,255,0.06);">Naqd</th>
+                        <th style="padding: 7px 6px; text-align: right; width: 72px; color: #38bdf8; font-weight: 800; background: rgba(56, 189, 248, 0.08); border-right: 1px solid rgba(255,255,255,0.06);">Karta</th>
+                        <th style="padding: 7px 6px; text-align: right; width: 72px; color: #818cf8; font-weight: 800; background: rgba(129, 140, 248, 0.08); border-right: 1px solid rgba(255,255,255,0.06);">Terminal</th>
+                        <th style="padding: 7px 6px; text-align: right; width: 72px; color: #c084fc; font-weight: 800; background: rgba(192, 132, 252, 0.08); border-right: 1px solid rgba(255,255,255,0.06);">Payme</th>
+                        <th style="padding: 7px 8px; text-align: right; min-width: 80px; color: #fb7185; font-weight: 800;">Qarzdorlik</th>
+                        <th style="padding: 7px 6px; text-align: center; width: 64px;">Holati</th>
+                        <th style="padding: 7px 8px; text-align: right; width: 145px;">Amallar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inv in group_invoices %}
+                    <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: background 0.15s ease;" onmouseover="this.style.background='rgba(56, 189, 248, 0.04)'" onmouseout="this.style.background='transparent'">
+                        <!-- Bola F.I.Sh -->
+                        <td style="padding: 7px 8px; line-height: 1.3;">
+                            <strong style="color: white; font-size: 13px; display: block;">
+                                {{ inv.child.full_name }}
+                                {% if inv.child.is_mahalla %}
+                                <span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.4); font-size: 10px; padding: 1px 5px; font-weight: 700; display: inline-block; margin-left: 4px;">🏛️ Mahalla</span>
+                                {% endif %}
+                            </strong>
+                            <span style="font-size: 10.5px; color: var(--text-dim);">Yosh: {{ inv.child.age }}</span>
+                        </td>
+                        <!-- Ota-onasi / Tel -->
+                        <td style="padding: 7px 8px; line-height: 1.3;">
+                            <div style="font-weight: 600; color: #cbd5e1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;">{{ inv.child.parent_full_name }}</div>
+                            <div style="font-size: 11px; color: #38bdf8;">{{ inv.child.parent_phone }}</div>
+                        </td>
+                        <!-- Tarifi -->
+                        <td style="padding: 7px 8px; text-align: right; white-space: nowrap;">
+                            {% if inv.child.is_mahalla %}
+                            <strong style="color: #38bdf8; font-size: 11px;">0 (Ozod)</strong>
+                            {% else %}
+                            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px;">
+                                <strong style="color: white; font-size: 12px;">{{ inv.base_fee|floatformat:0 }}</strong>
+                                <button type="button" onclick="openTariffModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.base_fee }})" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 4px; padding: 2px 4px; color: #38bdf8; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1;" title="Tarifni tahrirlash">
+                                    <i data-lucide="edit-3" style="width: 11px; height: 11px;"></i>
+                                </button>
+                            </div>
+                            {% if inv.recalculation_amount > 0 or inv.discount > 0 %}
+                            <div style="font-size: 10px; color: #34d399; margin-top: 1px;">
+                                Hisob: <b>{{ inv.total_amount|floatformat:0 }}</b>
+                            </div>
+                            {% endif %}
+                            {% endif %}
+                        </td>
+                        <!-- Skidka (Chegirma) -->
+                        <td style="padding: 7px 6px; text-align: right; white-space: nowrap;">
+                            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 4px;">
+                                {% if inv.discount > 0 %}
+                                <strong style="color: #ec4899; font-size: 12px;">{{ inv.discount|floatformat:0 }}</strong>
+                                {% else %}
+                                <span style="color: var(--text-dim); font-size: 11px;">0</span>
+                                {% endif %}
+                                <button type="button" onclick="openDiscountModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.discount }}, {{ inv.base_fee }})" style="background: rgba(236, 72, 153, 0.15); border: 1px solid rgba(236, 72, 153, 0.35); border-radius: 4px; padding: 2px 4px; color: #ec4899; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; line-height: 1;" title="Skidkani kiritish / tahrirlash">
+                                    <i data-lucide="percent" style="width: 11px; height: 11px;"></i>
+                                </button>
+                            </div>
+                        </td>
+                        <!-- Sababli kun -->
+                        <td style="padding: 7px 6px; text-align: center; white-space: nowrap; font-size: 11.5px;">
+                            <strong>{{ inv.excused_days_count }} k</strong>
+                        </td>
+                        <!-- Qayta hisob -->
+                        <td style="padding: 7px 6px; text-align: right; white-space: nowrap; font-size: 11.5px;">
+                            {% if inv.recalculation_amount > 0 %}
+                            <span style="color: #34d399; font-weight: 700;">-{{ inv.recalculation_amount|floatformat:0 }}</span>
+                            {% else %}
+                            <span style="color: var(--text-dim);">0</span>
+                            {% endif %}
+                        </td>
+                        <!-- Jami To'langan Summa -->
+                        <td style="padding: 7px 8px; text-align: right; white-space: nowrap;">
+                            <strong style="color: #34d399; font-size: 12.5px;">{{ inv.paid_amount|floatformat:0 }}</strong>
+                        </td>
+                        <!-- 1. Naqd To'lov -->
+                        <td style="padding: 7px 6px; text-align: right; white-space: nowrap; background: rgba(245, 158, 11, 0.04); border-left: 1px solid rgba(255,255,255,0.06); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {% if inv.cash_amount > 0 %}
+                            <strong style="color: #fbbf24; font-size: 12px;">{{ inv.cash_amount|floatformat:0 }}</strong>
+                            {% else %}
+                            <span style="color: var(--text-dim); font-size: 11px;">—</span>
+                            {% endif %}
+                        </td>
+                        <!-- 2. Karta To'lov -->
+                        <td style="padding: 7px 6px; text-align: right; white-space: nowrap; background: rgba(56, 189, 248, 0.04); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {% if inv.card_amount > 0 %}
+                            <strong style="color: #38bdf8; font-size: 12px;">{{ inv.card_amount|floatformat:0 }}</strong>
+                            {% else %}
+                            <span style="color: var(--text-dim); font-size: 11px;">—</span>
+                            {% endif %}
+                        </td>
+                        <!-- 3. Terminal To'lov -->
+                        <td style="padding: 7px 6px; text-align: right; white-space: nowrap; background: rgba(129, 140, 248, 0.04); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {% if inv.terminal_amount > 0 %}
+                            <strong style="color: #818cf8; font-size: 12px;">{{ inv.terminal_amount|floatformat:0 }}</strong>
+                            {% else %}
+                            <span style="color: var(--text-dim); font-size: 11px;">—</span>
+                            {% endif %}
+                        </td>
+                        <!-- 4. Payme To'lov -->
+                        <td style="padding: 7px 6px; text-align: right; white-space: nowrap; background: rgba(192, 132, 252, 0.04); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {% if inv.payme_amount > 0 %}
+                            <strong style="color: #c084fc; font-size: 12px;">{{ inv.payme_amount|floatformat:0 }}</strong>
+                            {% else %}
+                            <span style="color: var(--text-dim); font-size: 11px;">—</span>
+                            {% endif %}
+                        </td>
+                        <!-- Qarzdorlik (Qoldiq) -->
+                        <td style="padding: 7px 8px; text-align: right; white-space: nowrap;">
+                            {% if inv.remaining_debt > 0 %}
+                            <strong style="color: #fb7185; font-size: 12.5px;">{{ inv.remaining_debt|floatformat:0 }}</strong>
+                            {% else %}
+                            <span style="color: #34d399; font-weight: 700; font-size: 11px;">0 (Qarz yo'q)</span>
+                            {% endif %}
+                        </td>
+                        <!-- Holati -->
+                        <td style="padding: 7px 6px; text-align: center; white-space: nowrap;">
+                            {% if inv.child.is_mahalla %}
+                            <span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.4); font-size: 10px; padding: 2px 5px; font-weight: 700;">🏛️ Mahalla</span>
+                            {% elif inv.status == 'PAID' %}
+                            <span class="badge badge-paid" style="font-size: 10px; padding: 2px 5px;">To'langan</span>
+                            {% elif inv.status == 'PARTIAL' %}
+                            <span class="badge badge-partial" style="font-size: 10px; padding: 2px 5px;">Qisman</span>
+                            {% else %}
+                            <span class="badge badge-unpaid" style="font-size: 10px; padding: 2px 5px;">Qarzdor</span>
+                            {% endif %}
+                        </td>
+                        <!-- Amallar -->
+                        <td style="padding: 7px 8px; text-align: right; white-space: nowrap;">
+                            <div style="display: flex; gap: 4px; justify-content: flex-end; align-items: center;">
+                                <button type="button" onclick="openPaymentModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.remaining_debt }})" class="btn-glass" style="padding: 3px 6px; font-size: 11px; display: inline-flex; align-items: center; gap: 3px; color: #34d399; border-color: rgba(52, 211, 153, 0.35); background: rgba(52, 211, 153, 0.08); border-radius: 6px;" title="To'lov qabul qilish">
+                                    <i data-lucide="plus-circle" style="width: 12px; height: 12px;"></i>
+                                    <span>To'lov</span>
+                                </button>
+                                <button type="button" onclick="openTariffModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}', {{ inv.base_fee }})" class="btn-glass" style="padding: 3px 6px; font-size: 11px; display: inline-flex; align-items: center; gap: 3px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.08); border-radius: 6px;" title="Tarifni tahrirlash">
+                                    <i data-lucide="edit-3" style="width: 12px; height: 12px;"></i>
+                                    <span>Tarif</span>
+                                </button>
+                                <button type="button" onclick="openPaymentHistoryModal({{ inv.id }}, '{{ inv.child.full_name|escapejs }}')" class="btn-glass" style="padding: 3px 6px; font-size: 11px; display: inline-flex; align-items: center; gap: 3px; color: #c084fc; border-color: rgba(192, 132, 252, 0.35); background: rgba(192, 132, 252, 0.08); border-radius: 6px;" title="To'lovlar tarixi">
+                                    <i data-lucide="history" style="width: 12px; height: 12px;"></i>
+                                    <span>({{ inv.payments.count }})</span>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="14" style="text-align: center; color: var(--text-dim); padding: 24px;">
+                            Ushbu guruhda faol bolalar mavjud emas yoki {{ month }}/{{ year }} oyi uchun invoyslar topilmadi.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <!-- Jami Guruh Bo'yicha Qator (Grand Total) -->
+                {% if group_invoices %}
+                <tfoot>
+                    <tr style="background: rgba(56, 189, 248, 0.12); border-top: 2px solid #38bdf8; font-size: 12px;">
+                        <td colspan="2" style="padding: 8px 8px; font-weight: 800; color: #38bdf8;">
+                            JAMI (Guruh bo'yicha):
+                        </td>
+                        <td style="padding: 8px 8px; text-align: right; font-weight: 800; color: white;">
+                            {{ active_group_stats.total_expected|floatformat:0 }}
+                        </td>
+                        <!-- Jami Skidka -->
+                        <td style="padding: 8px 6px; text-align: right; font-weight: 800; color: #ec4899; font-size: 12.5px;">
+                            {{ active_group_stats.total_discount|floatformat:0 }}
+                        </td>
+                        <td colspan="2" style="padding: 8px 6px; text-align: center; color: var(--text-dim); font-size: 11px;">
+                            —
+                        </td>
+                        <td style="padding: 8px 8px; text-align: right; font-weight: 800; color: #34d399; font-size: 13px;">
+                            {{ active_group_stats.total_paid|floatformat:0 }}
+                        </td>
+                        <!-- Guruh Jami To'lov Turlari -->
+                        <td style="padding: 8px 6px; text-align: right; font-weight: 800; color: #fbbf24; background: rgba(245, 158, 11, 0.08); border-left: 1px solid rgba(255,255,255,0.06); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ active_group_stats.paid_cash|floatformat:0 }}
+                        </td>
+                        <td style="padding: 8px 6px; text-align: right; font-weight: 800; color: #38bdf8; background: rgba(56, 189, 248, 0.08); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ active_group_stats.paid_card|floatformat:0 }}
+                        </td>
+                        <td style="padding: 8px 6px; text-align: right; font-weight: 800; color: #818cf8; background: rgba(129, 140, 248, 0.08); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ active_group_stats.paid_terminal|floatformat:0 }}
+                        </td>
+                        <td style="padding: 8px 6px; text-align: right; font-weight: 800; color: #c084fc; background: rgba(192, 132, 252, 0.08); border-right: 1px solid rgba(255,255,255,0.06);">
+                            {{ active_group_stats.paid_payme|floatformat:0 }}
+                        </td>
+                        <td style="padding: 8px 8px; text-align: right; font-weight: 800; color: #fb7185; font-size: 13px;">
+                            {{ active_group_stats.total_debt|floatformat:0 }}
+                        </td>
+                        <td colspan="2" style="padding: 8px 6px; text-align: center; color: var(--text-dim); font-size: 11px;">
+                            —
+                        </td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- Record Payment Modal (Qisman / Istalgan to'lov summasi) -->
+<div id="modalPayment" class="glass-modal-backdrop">
+    <div class="glass-modal" style="max-width: 500px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #10b981, #06b6d4); display: flex; align-items: center; justify-content: center; color: white;">
+                    <i data-lucide="credit-card" style="width: 18px; height: 18px;"></i>
+                </div>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white; margin: 0;">To'lovni Qayd Etish</h3>
+            </div>
+            <button onclick="document.getElementById('modalPayment').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form id="formPayment" onsubmit="submitPayment(event)">
+            {% csrf_token %}
+            <input type="hidden" id="payInvoiceId" name="invoice_id">
+            
+            <div style="background: rgba(255, 255, 255, 0.04); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 18px; border: 1px solid rgba(255, 255, 255, 0.08);">
+                <div style="font-size: 12px; color: var(--text-dim);">Bola:</div>
+                <div id="payChildName" style="font-size: 16px; font-weight: 700; color: white; margin-bottom: 6px;"></div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                    <span style="color: var(--text-dim);">Joriy qoldiq qarz:</span>
+                    <strong id="payCurrentDebt" style="color: #fb7185; font-size: 14px;">0 UZS</strong>
+                </div>
+            </div>
+
+            <!-- Manual Amount Input (Qisman / Istalgan summa) -->
+            <div class="form-group" style="margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label class="form-label" style="margin: 0;">To'lanayotgan Summa (UZS) *</label>
+                    <span style="font-size: 11px; color: #38bdf8;">Qisman yoki to'liq kiritish mumkin</span>
+                </div>
+                <input type="number" id="payAmount" class="glass-input" step="any" min="0" required placeholder="Masalan: 500000" oninput="updateLiveDebtPreview()" style="width: 100%; font-size: 17px; font-weight: 700; color: #34d399;">
+            </div>
+
+            <!-- Quick Buttons for partial / full payment -->
+            <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+                <button type="button" onclick="setQuickAmount(1.0)" class="btn-glass" style="font-size: 11px; padding: 4px 10px; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">
+                    To'liq qarz (100%)
+                </button>
+                <button type="button" onclick="setQuickAmount(0.5)" class="btn-glass" style="font-size: 11px; padding: 4px 10px; background: rgba(168, 85, 247, 0.15); color: #c084fc; border-color: rgba(168, 85, 247, 0.3);">
+                    Yarmi (50%)
+                </button>
+                <button type="button" onclick="setQuickAmount(0.3)" class="btn-glass" style="font-size: 11px; padding: 4px 10px; background: rgba(251, 146, 60, 0.15); color: #fb923c; border-color: rgba(251, 146, 60, 0.3);">
+                    30%
+                </button>
+                <button type="button" onclick="document.getElementById('payAmount').value=''; updateLiveDebtPreview();" class="btn-glass" style="font-size: 11px; padding: 4px 10px;">
+                    Tozalash
+                </button>
+            </div>
+
+            <!-- Live Remaining Debt Preview -->
+            <div id="liveRemainingBox" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+                <span style="color: var(--text-dim);">To'lovdan keyingi qoldiq:</span>
+                <strong id="liveRemainingVal" style="font-size: 14px; color: #e2e8f0;">0 UZS</strong>
+            </div>
+
+            <!-- Payment Method Selection -->
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">To'lov Usuli *</label>
+                <select id="payMethod" class="glass-select" style="width: 100%;" onchange="toggleReasonField()">
+                    <option value="CARD">💳 Karta (Uzcard / Humo)</option>
+                    <option value="TERMINAL">📟 Terminal</option>
+                    <option value="CLICK_PAYME">⚡ Payme / Click</option>
+                    <option value="CASH">💵 Naqd pul</option>
+                    <option value="MARTA">🚇 Marta orqali</option>
+                    <option value="BANK_TRANSFER">🏦 Bank o'tkazmasi</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label class="form-label">Izoh / Chek raqami (Ixtiyoriy):</label>
+                <input type="text" id="payNotes" class="glass-input" placeholder="Chek #, tranzaksiya ID..." style="width: 100%;">
+            </div>
+
+            <!-- To'lov sababi / Chegirma izohi (qisman to'lovda avtomatik ko'rinadi) -->
+            <div id="reasonFieldWrapper" class="form-group" style="margin-bottom: 14px; display: none;">
+                <label class="form-label" style="color: #fbbf24;">📝 To'lov Sababi / Chegirma Izohi
+                    <span style="font-size: 11px; color: var(--text-dim);">(qisman to'lov yoki chegirma uchun)</span>
+                </label>
+                <textarea id="payReason" class="glass-input" rows="2"
+                    placeholder="Masalan: Chegirma berildi, Ota-ona kelishuvi, Qisman to'lov..."
+                    style="width: 100%; resize: none;"></textarea>
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" onclick="document.getElementById('modalPayment').style.display='none'" class="btn-glass btn-secondary">
+                    Bekor Qilish
+                </button>
+                <button type="submit" id="btnSubmitPay" class="btn-glass btn-emerald" style="font-weight: 700;">
+                    ✓ To'lovni Saqlash
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal 1: Bolaning Oylik Tarifini Tahrirlash -->
+<div id="modalEditTariff" class="glass-modal-backdrop" style="display: none;">
+    <div class="glass-modal" style="max-width: 480px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #0284c7, #38bdf8); display: flex; align-items: center; justify-content: center; color: white;">
+                    <i data-lucide="edit-3" style="width: 18px; height: 18px;"></i>
+                </div>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white; margin: 0;">Bolaning Tarifini Tahrirlash</h3>
+            </div>
+            <button type="button" onclick="document.getElementById('modalEditTariff').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form id="formEditTariff" onsubmit="submitTariffEdit(event)">
+            <input type="hidden" id="editTariffInvoiceId">
+
+            <div style="background: rgba(255, 255, 255, 0.04); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 18px; border: 1px solid rgba(255, 255, 255, 0.08);">
+                <div style="font-size: 12px; color: var(--text-dim);">Bola:</div>
+                <div id="editTariffChildName" style="font-size: 16px; font-weight: 700; color: white; margin-bottom: 6px;"></div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                    <span style="color: var(--text-dim);">Amaldagi tarif:</span>
+                    <strong id="editTariffCurrentFee" style="color: #38bdf8; font-size: 14px;">0 UZS</strong>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+                <label class="form-label" style="font-weight: 600; color: white;">Yangi Oylik Tarif (UZS) *</label>
+                <input type="number" id="editTariffNewFee" class="glass-input" step="any" min="0" required placeholder="Masalan: 2000000" style="width: 100%; font-size: 16px; font-weight: 700; color: #38bdf8;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label">Sabab / Chegirma izohi (Ixtiyoriy):</label>
+                <input type="text" id="editTariffReason" class="glass-input" placeholder="Masalan: Oilaviy chegirma, xato tuzatildi..." style="width: 100%;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; color: #cbd5e1;">
+                    <input type="checkbox" id="editTariffUpdateDefault" style="width: 16px; height: 16px; accent-color: #38bdf8;">
+                    <span>Kelgusi oylar uchun ham guruh standarti sifatida belgilansin</span>
+                </label>
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" onclick="document.getElementById('modalEditTariff').style.display='none'" class="btn-glass btn-secondary">
+                    Bekor Qilish
+                </button>
+                <button type="submit" id="btnSubmitTariff" class="btn-glass btn-primary" style="font-weight: 700;">
+                    ✓ Tarifni Saqlash
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Bolaga Chegirma (Skidka) Berish / Tahrirlash -->
+<div id="modalEditDiscount" class="glass-modal-backdrop" style="display: none;">
+    <div class="glass-modal" style="max-width: 480px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #ec4899, #f43f5e); display: flex; align-items: center; justify-content: center; color: white;">
+                    <i data-lucide="percent" style="width: 18px; height: 18px;"></i>
+                </div>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white; margin: 0;">Chegirma (Skidka) Kiritish</h3>
+            </div>
+            <button type="button" onclick="document.getElementById('modalEditDiscount').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form id="formEditDiscount" onsubmit="submitDiscountEdit(event)">
+            <input type="hidden" id="editDiscountInvoiceId">
+
+            <div style="background: rgba(255, 255, 255, 0.04); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 18px; border: 1px solid rgba(255, 255, 255, 0.08);">
+                <div style="font-size: 12px; color: var(--text-dim);">Bola:</div>
+                <div id="editDiscountChildName" style="font-size: 16px; font-weight: 700; color: white; margin-bottom: 6px;"></div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+                    <span style="color: var(--text-dim);">Guruh/Bola tarifi:</span>
+                    <strong id="editDiscountBaseFee" style="color: #38bdf8; font-size: 13px;">0 UZS</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                    <span style="color: var(--text-dim);">Amaldagi chegirma:</span>
+                    <strong id="editDiscountCurrentVal" style="color: #ec4899; font-size: 14px;">0 UZS</strong>
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label class="form-label" style="font-weight: 600; color: white; margin: 0;">Chegirma (Skidka) Summasi (UZS) *</label>
+                    <span style="font-size: 11px; color: #ec4899;">0 kiritilsa chegirma bekor bo'ladi</span>
+                </div>
+                <input type="number" id="editDiscountNewVal" class="glass-input" step="any" min="0" required placeholder="Masalan: 200000" style="width: 100%; font-size: 16px; font-weight: 700; color: #ec4899;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 18px;">
+                <label class="form-label">Sabab / Chegirma asosi (Ixtiyoriy):</label>
+                <input type="text" id="editDiscountReason" class="glass-input" placeholder="Masalan: 2-farzand chegirmasi, direktor ruxsati..." style="width: 100%;">
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" onclick="document.getElementById('modalEditDiscount').style.display='none'" class="btn-glass btn-secondary">
+                    Bekor Qilish
+                </button>
+                <button type="submit" id="btnSubmitDiscount" class="btn-glass" style="background: linear-gradient(135deg, #ec4899, #db2777); color: white; font-weight: 700; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer;">
+                    ✓ Skidkani Saqlash
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal 2: To'lovlar Tarixi va Boshqaruvi -->
+<div id="modalPaymentHistory" class="glass-modal-backdrop" style="display: none;">
+    <div class="glass-modal" style="max-width: 760px; width: 95%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #7c3aed, #c084fc); display: flex; align-items: center; justify-content: center; color: white;">
+                    <i data-lucide="history" style="width: 18px; height: 18px;"></i>
+                </div>
+                <div>
+                    <h3 style="font-family: 'Outfit', sans-serif; font-size: 19px; font-weight: 700; color: white; margin: 0;">To'lovlar Tarixi va Tahrirlash</h3>
+                    <div id="histChildSubtitle" style="font-size: 12px; color: var(--text-dim); margin-top: 2px;"></div>
+                </div>
+            </div>
+            <button type="button" onclick="document.getElementById('modalPaymentHistory').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <!-- Summary info bar -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px 16px; margin-bottom: 18px;">
+            <div>
+                <div style="font-size: 11px; color: var(--text-dim);">Tarifi / Hisoblangan:</div>
+                <strong id="histBaseFee" style="font-size: 14px; color: white;">0 UZS</strong>
+            </div>
+            <div>
+                <div style="font-size: 11px; color: var(--text-dim);">Jami To'langan:</div>
+                <strong id="histTotalPaid" style="font-size: 14px; color: #34d399;">0 UZS</strong>
+            </div>
+            <div>
+                <div style="font-size: 11px; color: var(--text-dim);">Qoldiq Qarz:</div>
+                <strong id="histRemainingDebt" style="font-size: 14px; color: #fb7185;">0 UZS</strong>
+            </div>
+        </div>
+
+        <!-- Payments Table / List -->
+        <div id="histPaymentsContainer" style="max-height: 340px; overflow-y: auto; margin-bottom: 18px;">
+            <div style="text-align: center; color: var(--text-dim); padding: 24px;">Yuklanmoqda...</div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px;">
+            <button type="button" id="histBtnAddNewPay" class="btn-glass btn-emerald" style="font-size: 12px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="plus-circle" style="width: 14px; height: 14px;"></i>
+                <span>+ Yangi To'lov Qabul Qilish</span>
+            </button>
+            <button type="button" onclick="document.getElementById('modalPaymentHistory').style.display='none'" class="btn-glass btn-secondary">
+                Yopish
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal 3: Kiritilgan To'lovni Tahrirlash -->
+<div id="modalEditPayment" class="glass-modal-backdrop" style="display: none; z-index: 1050;">
+    <div class="glass-modal" style="max-width: 480px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #f59e0b, #ef4444); display: flex; align-items: center; justify-content: center; color: white;">
+                    <i data-lucide="edit" style="width: 18px; height: 18px;"></i>
+                </div>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 19px; font-weight: 700; color: white; margin: 0;">To'lovni Tahrirlash</h3>
+            </div>
+            <button type="button" onclick="document.getElementById('modalEditPayment').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form id="formEditPayment" onsubmit="submitPaymentEdit(event)">
+            <input type="hidden" id="editPaymentId">
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label" style="font-weight: 600; color: white;">To'lov Summasi (UZS) *</label>
+                <input type="number" id="editPaymentAmount" class="glass-input" step="any" min="0" required style="width: 100%; font-size: 16px; font-weight: 700; color: #34d399;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label">To'lov Usuli *</label>
+                <select id="editPaymentMethod" class="glass-select" style="width: 100%;">
+                    <option value="CARD">💳 Karta (Uzcard / Humo)</option>
+                    <option value="TERMINAL">📟 Terminal</option>
+                    <option value="CLICK_PAYME">⚡ Payme / Click</option>
+                    <option value="CASH">💵 Naqd pul</option>
+                    <option value="MARTA">🚇 Marta orqali</option>
+                    <option value="BANK_TRANSFER">🏦 Bank o'tkazmasi</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label">To'lov Sanasi:</label>
+                <input type="date" id="editPaymentDate" class="glass-input" style="width: 100%;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label class="form-label">Chek / Kvitansiya ID:</label>
+                <input type="text" id="editPaymentTransactionId" class="glass-input" placeholder="Chek raqami..." style="width: 100%;">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 18px;">
+                <label class="form-label">To'lov Sababi / Izoh:</label>
+                <input type="text" id="editPaymentReason" class="glass-input" placeholder="Izoh yoki sabab..." style="width: 100%;">
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" onclick="document.getElementById('modalEditPayment').style.display='none'" class="btn-glass btn-secondary">
+                    Bekor Qilish
+                </button>
+                <button type="submit" id="btnSubmitPaymentEdit" class="btn-glass btn-emerald" style="font-weight: 700;">
+                    ✓ O'zgarishlarni Saqlash
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    let currentModalDebt = 0;
+
+    function openPaymentModal(invoiceId, childName, debt) {
+        currentModalDebt = Number(debt) || 0;
+        document.getElementById('payInvoiceId').value = invoiceId;
+        document.getElementById('payChildName').innerText = childName;
+        document.getElementById('payCurrentDebt').innerText = currentModalDebt.toLocaleString() + ' UZS';
+        document.getElementById('payAmount').value = currentModalDebt > 0 ? currentModalDebt : '';
+        updateLiveDebtPreview();
+        document.getElementById('modalPayment').style.display = 'flex';
+    }
+
+    function setQuickAmount(factor) {
+        if (currentModalDebt > 0) {
+            const val = Math.round((currentModalDebt * factor) / 1000) * 1000;
+            document.getElementById('payAmount').value = val;
+            updateLiveDebtPreview();
+        }
+    }
+
+    function updateLiveDebtPreview() {
+        const amt = parseFloat(document.getElementById('payAmount').value) || 0;
+        const diff = currentModalDebt - amt;
+        const el = document.getElementById('liveRemainingVal');
+        if (!el) return;
+        if (diff <= 0) {
+            el.innerHTML = '<span style="color: #34d399; font-weight: 700;">To\'liq qoplanadi (0 UZS)</span>';
+        } else {
+            el.innerHTML = '<span style="color: #fb7185; font-weight: 700;">' + diff.toLocaleString() + ' UZS</span>';
+        }
+        // Qisman to'lov bo'lsa reason maydonini ko'rsat
+        const reasonWrapper = document.getElementById('reasonFieldWrapper');
+        if (reasonWrapper) {
+            reasonWrapper.style.display = (diff > 0 && amt > 0) ? 'block' : 'none';
+        }
+    }
+
+    function toggleReasonField() {
+        const amt = parseFloat(document.getElementById('payAmount').value) || 0;
+        const diff = currentModalDebt - amt;
+        const reasonWrapper = document.getElementById('reasonFieldWrapper');
+        if (reasonWrapper) {
+            reasonWrapper.style.display = (diff > 0 && amt > 0) ? 'block' : 'none';
+        }
+    }
+
+    async function submitPayment(e) {
+        e.preventDefault();
+        const invoiceId = document.getElementById('payInvoiceId').value;
+        const amount = document.getElementById('payAmount').value;
+        const paymentMethod = document.getElementById('payMethod').value;
+        const notes = document.getElementById('payNotes').value;
+        const reason = document.getElementById('payReason')?.value || '';
+        const btn = document.getElementById('btnSubmitPay');
+
+        if (!amount || parseFloat(amount) <= 0) {
+            alert("Iltimos, to'g'ri to'lov summasini kiriting!");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "Saqlanmoqda...";
+
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const res = await fetch("{% url 'record_payment_api' %}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                },
+                body: JSON.stringify({
+                    invoice_id: invoiceId,
+                    amount: amount,
+                    payment_method: paymentMethod,
+                    notes: notes,
+                    reason: reason
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ " + data.message);
+                window.location.reload();
+            } else {
+                alert("Xatolik: " + data.message);
+            }
+        } catch (err) {
+            alert("Aloqa xatosi: " + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "✓ To'lovni Saqlash";
+        }
+    }
+
+    // --- Tarifni Tahrirlash Mantiqi ---
+    function openTariffModal(invoiceId, childName, currentBaseFee) {
+        document.getElementById('editTariffInvoiceId').value = invoiceId;
+        document.getElementById('editTariffChildName').innerText = childName;
+        document.getElementById('editTariffCurrentFee').innerText = Number(currentBaseFee).toLocaleString() + ' UZS';
+        document.getElementById('editTariffNewFee').value = currentBaseFee;
+        document.getElementById('editTariffReason').value = '';
+        document.getElementById('editTariffUpdateDefault').checked = false;
+        document.getElementById('modalEditTariff').style.display = 'flex';
+        document.getElementById('editTariffNewFee').focus();
+    }
+
+    async function submitTariffEdit(e) {
+        e.preventDefault();
+        const invoiceId = document.getElementById('editTariffInvoiceId').value;
+        const baseFee = document.getElementById('editTariffNewFee').value;
+        const reason = document.getElementById('editTariffReason').value;
+        const updateGroupDefault = document.getElementById('editTariffUpdateDefault').checked;
+        const btn = document.getElementById('btnSubmitTariff');
+
+        if (!baseFee || parseFloat(baseFee) < 0) {
+            alert("Iltimos, to'g'ri tarif summasini kiriting!");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "Saqlanmoqda...";
+
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const res = await fetch("{% url 'update_invoice_tariff_api' %}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                },
+                body: JSON.stringify({
+                    invoice_id: invoiceId,
+                    base_fee: baseFee,
+                    reason: reason,
+                    update_group_default: updateGroupDefault
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ " + data.message);
+                window.location.reload();
+            } else {
+                alert("Xatolik: " + data.message);
+            }
+        } catch (err) {
+            alert("Aloqa xatosi: " + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "✓ Tarifni Saqlash";
+        }
+    }
+
+    // --- Chegirma (Skidka) Tahrirlash Mantiqi ---
+    function openDiscountModal(invoiceId, childName, currentDiscount, baseFee) {
+        document.getElementById('editDiscountInvoiceId').value = invoiceId;
+        document.getElementById('editDiscountChildName').innerText = childName;
+        document.getElementById('editDiscountBaseFee').innerText = Number(baseFee || 0).toLocaleString() + ' UZS';
+        document.getElementById('editDiscountCurrentVal').innerText = Number(currentDiscount || 0).toLocaleString() + ' UZS';
+        document.getElementById('editDiscountNewVal').value = currentDiscount || 0;
+        document.getElementById('editDiscountReason').value = '';
+        document.getElementById('modalEditDiscount').style.display = 'flex';
+        document.getElementById('editDiscountNewVal').focus();
+    }
+
+    async function submitDiscountEdit(e) {
+        e.preventDefault();
+        const invoiceId = document.getElementById('editDiscountInvoiceId').value;
+        const discountVal = document.getElementById('editDiscountNewVal').value;
+        const reason = document.getElementById('editDiscountReason').value;
+        const btn = document.getElementById('btnSubmitDiscount');
+
+        if (discountVal === '' || parseFloat(discountVal) < 0) {
+            alert("Iltimos, to'g'ri chegirma summasini kiriting (kamida 0)!");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "Saqlanmoqda...";
+
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const res = await fetch("{% url 'update_invoice_discount_api' %}", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                },
+                body: JSON.stringify({
+                    invoice_id: invoiceId,
+                    discount: discountVal,
+                    reason: reason
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ " + data.message);
+                window.location.reload();
+            } else {
+                alert("Xatolik: " + data.message);
+            }
+        } catch (err) {
+            alert("Aloqa xatosi: " + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "✓ Skidkani Saqlash";
+        }
+    }
+
+    // --- To'lovlar Tarixi va Tahrirlash Mantiqi ---
+    let currentHistoryInvoiceId = null;
+
+    async function openPaymentHistoryModal(invoiceId, childName) {
+        currentHistoryInvoiceId = invoiceId;
+        document.getElementById('histChildSubtitle').innerText = childName;
+        document.getElementById('histPaymentsContainer').innerHTML = '<div style="text-align: center; color: var(--text-dim); padding: 24px;">Yuklanmoqda...</div>';
+        document.getElementById('modalPaymentHistory').style.display = 'flex';
+
+        try {
+            const res = await fetch(`/finance/invoice/${invoiceId}/payments/`);
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('histBaseFee').innerText = Number(data.base_fee).toLocaleString() + ' UZS';
+                document.getElementById('histTotalPaid').innerText = Number(data.paid_amount).toLocaleString() + ' UZS';
+                document.getElementById('histRemainingDebt').innerText = Number(data.remaining_debt).toLocaleString() + ' UZS';
+                
+                document.getElementById('histBtnAddNewPay').onclick = function() {
+                    document.getElementById('modalPaymentHistory').style.display = 'none';
+                    openPaymentModal(invoiceId, childName, data.remaining_debt);
+                };
+
+                renderHistoryList(data.payments);
+            } else {
+                document.getElementById('histPaymentsContainer').innerHTML = '<div style="color: #fb7185; padding: 16px;">Xatolik yuz berdi: ' + data.message + '</div>';
+            }
+        } catch (err) {
+            document.getElementById('histPaymentsContainer').innerHTML = '<div style="color: #fb7185; padding: 16px;">Aloqa xatosi: ' + err.message + '</div>';
+        }
+    }
+
+    function renderHistoryList(payments) {
+        const container = document.getElementById('histPaymentsContainer');
+        if (!payments || payments.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; color: var(--text-dim); padding: 32px; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px dashed rgba(255,255,255,0.1);">
+                    <i data-lucide="inbox" style="width: 32px; height: 32px; margin-bottom: 8px; opacity: 0.5;"></i>
+                    <div>Ushbu oy uchun hali hech qanday to'lov amalga oshirilmagan.</div>
+                </div>`;
+            if (window.lucide) lucide.createIcons();
+            return;
+        }
+
+        let html = `
+        <table class="glass-table" style="width: 100%; font-size: 12px; border-collapse: collapse;">
+            <thead>
+                <tr style="background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.1);">
+                    <th style="padding: 9px 12px; text-align: left;">Sana</th>
+                    <th style="padding: 9px 12px; text-align: right;">Summa</th>
+                    <th style="padding: 9px 12px; text-align: center;">Turi</th>
+                    <th style="padding: 9px 12px; text-align: left;">Chek ID</th>
+                    <th style="padding: 9px 12px; text-align: left;">Qabul qiluvchi</th>
+                    <th style="padding: 9px 12px; text-align: left;">Izoh</th>
+                    <th style="padding: 9px 12px; text-align: right;">Amal</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+        payments.forEach(p => {
+            const safeTx = (p.transaction_id || '').replace(/'/g, "\\'");
+            const safeReason = (p.reason || p.notes || '').replace(/'/g, "\\'");
+            html += `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 9px 12px; white-space: nowrap; color: #cbd5e1;">${p.paid_at}</td>
+                <td style="padding: 9px 12px; text-align: right; font-weight: 700; color: #34d399; white-space: nowrap;">${Number(p.amount).toLocaleString()} UZS</td>
+                <td style="padding: 9px 12px; text-align: center;"><span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 10px; padding: 2px 7px;">${p.payment_method_display}</span></td>
+                <td style="padding: 9px 12px; font-family: monospace; color: #e2e8f0;">${p.transaction_id || '—'}</td>
+                <td style="padding: 9px 12px; color: var(--text-dim);">${p.recorded_by}</td>
+                <td style="padding: 9px 12px; color: var(--text-dim); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p.reason || p.notes || '—'}</td>
+                <td style="padding: 9px 12px; text-align: right; white-space: nowrap;">
+                    <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                        <button type="button" onclick="openEditPaymentModal(${p.id}, ${p.amount}, '${p.payment_method}', '${safeTx}', '${p.date_only}', '${safeReason}')" class="btn-icon" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 4px 6px; color: #38bdf8; cursor: pointer;" title="Tahrirlash">
+                            <i data-lucide="edit-2" style="width: 12px; height: 12px;"></i>
+                        </button>
+                        <button type="button" onclick="deletePayment(${p.id}, ${p.amount})" class="btn-icon" style="background: rgba(244, 63, 94, 0.15); border: 1px solid rgba(244, 63, 94, 0.3); border-radius: 4px; padding: 4px 6px; color: #fb7185; cursor: pointer;" title="O'chirish">
+                            <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>`;
+        });
+
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+        if (window.lucide) lucide.createIcons();
+    }
+
+    function openEditPaymentModal(paymentId, amount, method, transactionId, dateOnly, reason) {
+        document.getElementById('editPaymentId').value = paymentId;
+        document.getElementById('editPaymentAmount').value = amount;
+        document.getElementById('editPaymentMethod').value = method;
+        document.getElementById('editPaymentTransactionId').value = transactionId || '';
+        document.getElementById('editPaymentDate').value = dateOnly || '';
+        document.getElementById('editPaymentReason').value = reason || '';
+        document.getElementById('modalEditPayment').style.display = 'flex';
+    }
+
+    async function submitPaymentEdit(e) {
+        e.preventDefault();
+        const paymentId = document.getElementById('editPaymentId').value;
+        const amount = document.getElementById('editPaymentAmount').value;
+        const paymentMethod = document.getElementById('editPaymentMethod').value;
+        const transactionId = document.getElementById('editPaymentTransactionId').value;
+        const paidAt = document.getElementById('editPaymentDate').value;
+        const reason = document.getElementById('editPaymentReason').value;
+        const btn = document.getElementById('btnSubmitPaymentEdit');
+
+        if (!amount || parseFloat(amount) <= 0) {
+            alert("Iltimos, to'g'ri to'lov summasini kiriting!");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "Saqlanmoqda...";
+
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const res = await fetch(`/finance/payment/${paymentId}/update/`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                },
+                body: JSON.stringify({
+                    amount: amount,
+                    payment_method: paymentMethod,
+                    transaction_id: transactionId,
+                    paid_at: paidAt,
+                    reason: reason
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ " + data.message);
+                document.getElementById('modalEditPayment').style.display = 'none';
+                window.location.reload();
+            } else {
+                alert("Xatolik: " + data.message);
+            }
+        } catch (err) {
+            alert("Aloqa xatosi: " + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "✓ O'zgarishlarni Saqlash";
+        }
+    }
+
+    async function deletePayment(paymentId, amount) {
+        if (!confirm(`Haqiqatan ham ushbu ${Number(amount).toLocaleString()} UZS to'lovni bekor qilmoqchimisiz? Invoys qoldig'i avtomatik qayta hisoblanadi.`)) {
+            return;
+        }
+
+        try {
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const res = await fetch(`/finance/payment/${paymentId}/delete/`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": csrfToken
+                }
+            });
+            const data = await res.json();
+            if (data.success) {
+                alert("✓ " + data.message);
+                window.location.reload();
+            } else {
+                alert("Xatolik: " + data.message);
+            }
+        } catch (err) {
+            alert("Aloqa xatosi: " + err.message);
+        }
+    }
+
+    // Chart.js Bar Chart Initialization
+    document.addEventListener('DOMContentLoaded', function() {
+        const labels = {{ chart_labels_json|safe }};
+        const paidData = {{ chart_paid_json|safe }};
+        const debtData = {{ chart_debt_json|safe }};
+        const expectedData = {{ chart_expected_json|safe }};
+
+        const canvasEl = document.getElementById('groupPaymentsChart');
+        if (canvasEl && labels && labels.length > 0) {
+            new Chart(canvasEl.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: "To'langan",
+                            data: paidData,
+                            backgroundColor: 'rgba(52, 211, 153, 0.85)',
+                            borderColor: '#34d399',
+                            borderWidth: 1.5,
+                            borderRadius: 6,
+                            barPercentage: 0.7,
+                            categoryPercentage: 0.75
+                        },
+                        {
+                            label: "Qoldiq Qarz",
+                            data: debtData,
+                            backgroundColor: 'rgba(251, 113, 133, 0.85)',
+                            borderColor: '#fb7185',
+                            borderWidth: 1.5,
+                            borderRadius: 6,
+                            barPercentage: 0.7,
+                            categoryPercentage: 0.75
+                        },
+                        {
+                            label: "Hisoblangan (Jami)",
+                            data: expectedData,
+                            backgroundColor: 'rgba(148, 163, 184, 0.35)',
+                            borderColor: '#94a3b8',
+                            borderWidth: 1,
+                            borderRadius: 6,
+                            barPercentage: 0.7,
+                            categoryPercentage: 0.75
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                            titleColor: '#ffffff',
+                            bodyColor: '#cbd5e1',
+                            borderColor: 'rgba(255, 255, 255, 0.1)',
+                            borderWidth: 1,
+                            padding: 12,
+                            boxPadding: 6,
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + Number(context.raw).toLocaleString() + ' UZS';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.05)'
+                            },
+                            ticks: {
+                                color: '#94a3b8',
+                                font: {
+                                    family: "'Outfit', sans-serif",
+                                    weight: 600
+                                }
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.06)'
+                            },
+                            ticks: {
+                                color: '#94a3b8',
+                                callback: function(value) {
+                                    if (value >= 1000000) {
+                                        return (value / 1000000).toFixed(1) + ' mln';
+                                    }
+                                    return value.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,473 @@
+{% extends 'base.html' %}
+
+{% block title %}Qabul & CRM Lidlar Boshqaruvi — Humo Kids{% endblock %}
+
+{% block content %}
+<!-- Top Header & Actions -->
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+    <div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, #0284c7, #38bdf8); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(56, 189, 248, 0.4);">
+                <i data-lucide="user-plus" style="width: 22px; height: 22px; color: white;"></i>
+            </div>
+            <div>
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white; margin: 0;">Qabul & CRM (Lidlar) Boshqaruvi</h2>
+                <p style="font-size: 13px; color: var(--text-muted); margin: 2px 0 0 0;">Ota-onalar murojaatlari, qayta qo'ng'iroqlar, qabulga tashriflar va shartnomalar</p>
+            </div>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <a href="{% url 'crm_marketing_analytics' %}" class="btn-glass btn-secondary">
+            <i data-lucide="target" style="width: 16px; height: 16px; color: #f43f5e;"></i>
+            <span>Marketing Tahlili</span>
+        </a>
+        <button onclick="document.getElementById('modalAddLead').style.display='flex'" class="btn-glass btn-primary" style="background: linear-gradient(135deg, #38bdf8, #6366f1); border-color: rgba(99, 102, 241, 0.4); box-shadow: 0 4px 16px rgba(56, 189, 248, 0.35);">
+            <i data-lucide="plus-circle" style="width: 16px; height: 16px;"></i>
+            <span>Yangi Lid Qo'shish</span>
+        </button>
+    </div>
+</div>
+
+<!-- KPI Stat Cards Grid -->
+<div class="stats-grid" style="margin-bottom: 24px;">
+    <!-- Jami Lidlar -->
+    <div class="stat-card">
+        <div>
+            <p class="stat-label">Jami Lidlar</p>
+            <h3 class="stat-value">{{ total_leads }}</h3>
+            <p class="stat-subtext">Barcha marketing kanallaridan</p>
+        </div>
+        <div class="stat-icon-wrapper icon-blue">
+            <i data-lucide="users" style="width: 24px; height: 24px;"></i>
+        </div>
+    </div>
+
+    <!-- Bugungi Tashriflar -->
+    <a href="{% url 'crm_leads_list' %}?filter=today_visits" style="text-decoration: none;" class="stat-card">
+        <div>
+            <p class="stat-label">Bugun Qabulga Keluvchilar</p>
+            <h3 class="stat-value" style="color: #38bdf8;">{{ today_visits_count }}</h3>
+            <p class="stat-subtext" style="color: #38bdf8;">Bugungi sanaga belgilangan</p>
+        </div>
+        <div class="stat-icon-wrapper" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">
+            <i data-lucide="calendar-check" style="width: 24px; height: 24px;"></i>
+        </div>
+    </a>
+
+    <!-- Bugungi Qo'ng'iroqlar -->
+    <a href="{% url 'crm_leads_list' %}?filter=today_calls" style="text-decoration: none;" class="stat-card">
+        <div>
+            <p class="stat-label">Bugun Qayta Qo'ng'iroq</p>
+            <h3 class="stat-value" style="color: #f59e0b;">{{ today_calls_count }}</h3>
+            {% if overdue_calls_count > 0 %}
+            <p class="stat-subtext" style="color: #fb7185;">⚠️ {{ overdue_calls_count }} ta muddati o'tgan</p>
+            {% else %}
+            <p class="stat-subtext" style="color: #34d399;">Muddati o'tganlar yo'q</p>
+            {% endif %}
+        </div>
+        <div class="stat-icon-wrapper icon-amber">
+            <i data-lucide="phone-call" style="width: 24px; height: 24px;"></i>
+        </div>
+    </a>
+
+    <!-- Shartnoma va Konversiya -->
+    <a href="{% url 'crm_leads_list' %}?filter=contracted" style="text-decoration: none;" class="stat-card">
+        <div>
+            <p class="stat-label">Shartnoma Tuzildi</p>
+            <h3 class="stat-value" style="color: #34d399;">{{ contracted_count }} <span style="font-size: 14px; color: var(--text-dim);">({{ conversion_rate }}%)</span></h3>
+            <p class="stat-subtext" style="color: #34d399;">Muvaffaqiyatli konversiya</p>
+        </div>
+        <div class="stat-icon-wrapper icon-emerald">
+            <i data-lucide="check-check" style="width: 24px; height: 24px;"></i>
+        </div>
+    </a>
+</div>
+
+<!-- Guruhlar Sig'imi Prognozi (Mini-Panel) -->
+<div class="glass-card" style="margin-bottom: 24px; padding: 18px 22px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="pie-chart" style="color: #c084fc; width: 20px; height: 20px;"></i>
+            <h4 style="font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 700; color: white; margin: 0;">Guruhlar Sig'imi Prognozi (Bo'sh Joylar)</h4>
+        </div>
+        <div style="font-size: 12px; color: var(--text-dim);">
+            Menejer uchun yangi kelgan bolani to'g'ri guruhga joylashtirish yo'riqnomasi
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px;">
+        {% for g in groups %}
+        <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                <div>
+                    <span style="font-weight: 700; font-size: 14px; color: white;">{{ g.name }}</span>
+                    <div style="font-size: 11px; color: var(--text-dim);">{{ g.get_age_category_display }}</div>
+                </div>
+                {% if g.available_seats > 3 %}
+                <span class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.3); font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 8px;">
+                    {{ g.available_seats }} ta bo'sh joy bor
+                </span>
+                {% elif g.available_seats > 0 %}
+                <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 8px;">
+                    Faqat {{ g.available_seats }} ta joy qoldi!
+                </span>
+                {% else %}
+                <span class="badge" style="background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3); font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 8px;">
+                    Guruh to'lgan
+                </span>
+                {% endif %}
+            </div>
+
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">
+                <span>Bandlik: {{ g.active_children }} / {{ g.capacity }} bola</span>
+                <span>{{ g.occupancy_percent }}%</span>
+            </div>
+            <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden;">
+                <div style="width: {{ g.occupancy_percent }}%; height: 100%; background: {% if g.available_seats == 0 %}#f43f5e{% elif g.available_seats <= 3 %}#f59e0b{% else %}#10b981{% endif %};"></div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Filters & Search Toolbar -->
+<div class="glass-card" style="margin-bottom: 24px; padding: 16px 20px;">
+    <form method="GET" action="{% url 'crm_leads_list' %}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; justify-content: space-between;">
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; flex: 1; min-width: 300px;">
+            <!-- Qidiruv -->
+            <div style="position: relative; flex: 1; min-width: 200px;">
+                <i data-lucide="search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-dim);"></i>
+                <input type="text" name="q" value="{{ search_query }}" placeholder="Ota-ona, bola, telefon yoki yo'nalish..." class="glass-input" style="padding-left: 36px; width: 100%;">
+            </div>
+
+            <!-- Status filtri -->
+            <select name="status" class="glass-select" style="min-width: 150px;" onchange="this.form.submit()">
+                <option value="">Barcha holatlar</option>
+                {% for sk, sv in status_choices %}
+                <option value="{{ sk }}" {% if status_filter == sk %}selected{% endif %}>{{ sv }}</option>
+                {% endfor %}
+            </select>
+
+            <!-- Kanal filtri -->
+            <select name="channel" class="glass-select" style="min-width: 160px;" onchange="this.form.submit()">
+                <option value="">Barcha kanallar</option>
+                {% for ck, cv in channel_choices %}
+                <option value="{{ ck }}" {% if channel_filter == ck %}selected{% endif %}>{{ cv }}</option>
+                {% endfor %}
+            </select>
+
+            <button type="submit" class="btn-glass btn-secondary" style="padding: 0 16px;">
+                <span>Filtrlash</span>
+            </button>
+            
+            {% if search_query or status_filter or channel_filter or quick_filter %}
+            <a href="{% url 'crm_leads_list' %}" class="btn-glass btn-secondary" style="padding: 0 12px; color: #fb7185;" title="Filtrlarni tozalash">
+                <i data-lucide="x" style="width: 14px; height: 14px;"></i>
+            </a>
+            {% endif %}
+        </div>
+
+        <!-- Tezkor filtr tugmachalari -->
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <a href="{% url 'crm_leads_list' %}?filter=active" class="btn-glass {% if quick_filter == 'active' %}btn-primary{% else %}btn-secondary{% endif %}" style="font-size: 12px; padding: 6px 12px;">Faollar</a>
+            <a href="{% url 'crm_leads_list' %}?filter=today_visits" class="btn-glass {% if quick_filter == 'today_visits' %}btn-primary{% else %}btn-secondary{% endif %}" style="font-size: 12px; padding: 6px 12px; color: #38bdf8;">Bugungi Qabul</a>
+            <a href="{% url 'crm_leads_list' %}?filter=today_calls" class="btn-glass {% if quick_filter == 'today_calls' %}btn-primary{% else %}btn-secondary{% endif %}" style="font-size: 12px; padding: 6px 12px; color: #fbbf24;">Bugungi Qo'ng'iroq</a>
+            <a href="{% url 'crm_leads_list' %}?filter=contracted" class="btn-glass {% if quick_filter == 'contracted' %}btn-primary{% else %}btn-secondary{% endif %}" style="font-size: 12px; padding: 6px 12px; color: #34d399;">Shartnoma</a>
+        </div>
+    </form>
+</div>
+
+<!-- Leads List Table -->
+<div class="glass-card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; justify-content: space-between; align-items: center;">
+        <h3 class="glass-card-title" style="margin: 0;">
+            <i data-lucide="list-filter" style="width: 18px; height: 18px; color: #818cf8;"></i>
+            <span>Lidlar Ro'yxati ({{ leads.count }} ta)</span>
+        </h3>
+        <span style="font-size: 12px; color: var(--text-dim);">Status ustiga bosib tezkor yangilashingiz mumkin</span>
+    </div>
+
+    <div style="overflow-x: auto;">
+        <table class="glass-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); text-align: left; font-size: 12px; color: var(--text-muted);">
+                    <th style="padding: 14px 18px;">OTA-ONA VA ALOQA</th>
+                    <th style="padding: 14px 18px;">FARZANDI VA QIZIQISHI</th>
+                    <th style="padding: 14px 18px;">REKLAMA MANBASI</th>
+                    <th style="padding: 14px 18px;">QABULGA KELISH VAQTI</th>
+                    <th style="padding: 14px 18px;">QAYTA QO'NG'IROQ</th>
+                    <th style="padding: 14px 18px;">HOLATI (STATUS)</th>
+                    <th style="padding: 14px 18px;">MENEJER</th>
+                    <th style="padding: 14px 18px; text-align: right;">AMALLAR</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for lead in leads %}
+                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+                    <!-- Ota-ona ismi va tel -->
+                    <td style="padding: 14px 18px;">
+                        <div style="font-weight: 700; font-size: 14px; color: white;">{{ lead.full_name }}</div>
+                        <a href="tel:{{ lead.phone }}" style="font-size: 13px; color: #38bdf8; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; margin-top: 2px;">
+                            <i data-lucide="phone" style="width: 12px; height: 12px;"></i>
+                            <span>{{ lead.phone }}</span>
+                        </a>
+                        {% if lead.is_contract_signed %}
+                        <div style="margin-top: 4px;">
+                            <span class="badge" style="background: rgba(52, 211, 153, 0.2); color: #34d399; font-size: 10px; padding: 2px 6px;">✓ Shartnoma tuzilgan</span>
+                        </div>
+                        {% endif %}
+                    </td>
+
+                    <!-- Bola va qiziqish -->
+                    <td style="padding: 14px 18px;">
+                        {% if lead.child_name %}
+                        <div style="font-weight: 600; color: #e2e8f0; font-size: 13px;">{{ lead.child_name }} {% if lead.child_age %}({{ lead.child_age }} yosh){% endif %}</div>
+                        {% else %}
+                        <div style="color: var(--text-dim); font-size: 12px;">Yosh: {{ lead.child_age|default:"Noma'lum" }}</div>
+                        {% endif %}
+                        <div style="font-size: 12px; color: #a5b4fc; margin-top: 2px; font-weight: 500;">
+                            🎯 {{ lead.interested_direction }}
+                        </div>
+                    </td>
+
+                    <!-- Marketing kanali -->
+                    <td style="padding: 14px 18px;">
+                        {% if lead.marketing_channel == 'TELEGRAM' %}
+                        <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);">
+                            <i data-lucide="send" style="width: 11px; height: 11px; margin-right: 4px;"></i> Telegram
+                        </span>
+                        {% elif lead.marketing_channel == 'INSTAGRAM' %}
+                        <span class="badge" style="background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3);">
+                            <i data-lucide="camera" style="width: 11px; height: 11px; margin-right: 4px;"></i> Instagram
+                        </span>
+                        {% elif lead.marketing_channel == 'BANNER' %}
+                        <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">
+                            <i data-lucide="flag" style="width: 11px; height: 11px; margin-right: 4px;"></i> Banner
+                        </span>
+                        {% elif lead.marketing_channel == 'WORD_OF_MOUTH' %}
+                        <span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">
+                            <i data-lucide="message-circle" style="width: 11px; height: 11px; margin-right: 4px;"></i> Salafan / Flayer
+                        </span>
+                        {% else %}
+                        <span class="badge" style="background: rgba(255, 255, 255, 0.1); color: var(--text-dim);">
+                            {{ lead.get_marketing_channel_display }}
+                        </span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Tashrif sanasi va vaqti -->
+                    <td style="padding: 14px 18px;">
+                        {% if lead.visit_date %}
+                            {% if lead.is_visit_today %}
+                            <div style="background: rgba(56, 189, 248, 0.2); border: 1px solid rgba(56, 189, 248, 0.4); padding: 4px 8px; border-radius: 6px; display: inline-block;">
+                                <div style="font-weight: 800; color: #38bdf8; font-size: 13px;">BUGUN: {{ lead.visit_date|date:"H:i" }}</div>
+                                <div style="font-size: 10px; color: #bae6fd;">Qabulga kelishi kutilmoqda</div>
+                            </div>
+                            {% else %}
+                            <div style="font-size: 13px; color: white; font-weight: 600;">{{ lead.visit_date|date:"d.m.Y" }}</div>
+                            <div style="font-size: 11px; color: var(--text-dim);">Soat: {{ lead.visit_date|date:"H:i" }}</div>
+                            {% endif %}
+                        {% else %}
+                        <span style="font-size: 12px; color: var(--text-dim);">Belgilanmagan</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Qayta qo'ng'iroq sanasi -->
+                    <td style="padding: 14px 18px;">
+                        {% if lead.next_call_date %}
+                            {% if lead.is_call_today %}
+                            <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); font-weight: 700;">
+                                Bugun qo'ng'iroq!
+                            </span>
+                            {% elif lead.is_call_overdue %}
+                            <span class="badge" style="background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); font-weight: 700;">
+                                ⚠️ {{ lead.next_call_date|date:"d.m.Y" }} (Muddati o'tgan)
+                            </span>
+                            {% else %}
+                            <span style="font-size: 12px; color: var(--text-muted);">{{ lead.next_call_date|date:"d.m.Y" }}</span>
+                            {% endif %}
+                        {% else %}
+                        <span style="font-size: 12px; color: var(--text-dim);">Rejalashtirilmagan</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Status Dropdown (Tezkor yangilash) -->
+                    <td style="padding: 14px 18px;">
+                        <select onchange="updateLeadStatus({{ lead.id }}, this.value)" class="glass-select" style="padding: 4px 8px; font-size: 12px; border-radius: 8px; font-weight: 600; 
+                            {% if lead.status == 'NEW' %}color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);
+                            {% elif lead.status == 'THINKING' %}color: #fbbf24; border-color: rgba(245, 158, 11, 0.3);
+                            {% elif lead.status == 'VISITED' %}color: #c084fc; border-color: rgba(168, 85, 247, 0.3);
+                            {% elif lead.status == 'CONTRACTED' %}color: #34d399; border-color: rgba(52, 211, 153, 0.3);
+                            {% else %}color: #fb7185; border-color: rgba(244, 63, 94, 0.3);{% endif %}">
+                            {% for sk, sv in status_choices %}
+                            <option value="{{ sk }}" {% if lead.status == sk %}selected{% endif %}>{{ sv }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+
+                    <!-- Menejer -->
+                    <td style="padding: 14px 18px; font-size: 13px; color: var(--text-muted);">
+                        {% if lead.manager %}
+                            👤 {{ lead.manager.get_full_name|default:lead.manager.username }}
+                        {% else %}
+                            <span style="color: var(--text-dim);">Biriktirilmagan</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Amallar -->
+                    <td style="padding: 14px 18px; text-align: right;">
+                        <div style="display: inline-flex; gap: 6px; align-items: center;">
+                            <!-- Shartnoma / Bolaga aylantirish -->
+                            <a href="{% url 'crm_lead_convert' lead.id %}" class="btn-glass btn-secondary" style="padding: 6px 10px; font-size: 11px; color: #34d399;" title="Bog'chaga qabul qilish / Bolaga aylantirish">
+                                <i data-lucide="user-check" style="width: 14px; height: 14px;"></i>
+                                <span style="margin-left: 2px;">Qabul</span>
+                            </a>
+
+                            <!-- Tahrirlash -->
+                            <a href="{% url 'crm_lead_update' lead.id %}" class="btn-glass btn-secondary" style="padding: 6px 8px;" title="Tahrirlash">
+                                <i data-lucide="edit-3" style="width: 14px; height: 14px;"></i>
+                            </a>
+
+                            <!-- O'chirish -->
+                            <form method="POST" action="{% url 'crm_lead_delete' lead.id %}" onsubmit="return confirm('Haqiqatan ham ushbu lidni o\'chirmoqchimisiz?');" style="display: inline; margin: 0;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-glass btn-rose" style="padding: 6px 8px; cursor: pointer;" title="O'chirish">
+                                    <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" style="padding: 48px; text-align: center; color: var(--text-muted);">
+                        <i data-lucide="inbox" style="width: 42px; height: 42px; margin-bottom: 12px; color: var(--text-dim); opacity: 0.6;"></i>
+                        <p style="font-size: 15px; font-weight: 600; color: white;">Hozircha lidlar topilmadi</p>
+                        <p style="font-size: 13px; color: var(--text-dim);">Yangi lid qo'shish uchun yuqoridagi "Yangi Lid Qo'shish" tugmasini bosing</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal: Yangi Lid Qo'shish -->
+<div id="modalAddLead" class="glass-modal-backdrop" style="display: none;">
+    <div class="glass-modal" style="max-width: 600px; width: 100%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="user-plus" style="color: #38bdf8; width: 20px; height: 20px;"></i>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; color: white; margin: 0;">Yangi Qabul Lidi Qo'shish</h3>
+            </div>
+            <button onclick="document.getElementById('modalAddLead').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form method="POST" action="{% url 'crm_lead_create' %}">
+            {% csrf_token %}
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Ota-ona F.I.SH *</label>
+                    {{ form.full_name }}
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Telefon Raqami *</label>
+                    {{ form.phone }}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 14px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Farzandining Ismi</label>
+                    {{ form.child_name }}
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Yoshi</label>
+                    {{ form.child_age }}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Qiziqqan Yo'nalishi *</label>
+                {{ form.interested_direction }}
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Marketing Manbasi *</label>
+                    {{ form.marketing_channel }}
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Holati (Status) *</label>
+                    {{ form.status }}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Qabulga Kelish Vaqti</label>
+                    {{ form.visit_date }}
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Qayta Qo'ng'iroq Sanasi</label>
+                    {{ form.next_call_date }}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Mas'ul Menejer</label>
+                {{ form.manager }}
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Muloqot Xulosasi va Izohlar</label>
+                {{ form.notes }}
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button type="button" onclick="document.getElementById('modalAddLead').style.display='none'" class="btn-glass btn-secondary">Bekor qilish</button>
+                <button type="submit" class="btn-glass btn-primary">Saqlash</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// CSRF Token olish
+function getCSRFToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
+// Tezkor status o'zgartirish
+async function updateLeadStatus(leadId, newStatus) {
+    try {
+        const formData = new FormData();
+        formData.append('status', newStatus);
+
+        const response = await fetch(`/crm/leads/${leadId}/quick-update-api/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCSRFToken(),
+            },
+            body: formData
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            // Success notification or reload
+            window.location.reload();
+        } else {
+            alert('Xatolik: ' + (data.error || 'Yangilab bo\'lmadi'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Server bilan aloqada xatolik yuz berdi');
+    }
+}
+</script>
+{% endblock %}

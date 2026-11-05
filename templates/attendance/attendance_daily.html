@@ -1,0 +1,313 @@
+{% extends 'base.html' %}
+
+{% block title %}Kunlik Davomat — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+    <div>
+        <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white;">Kunlik Davomat Jurnali</h2>
+        <p style="font-size: 13px; color: var(--text-muted);">Guruh va sana bo'yicha bolalar davomatini belgilash</p>
+    </div>
+
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <a href="{% url 'children_attendance_matrix' %}{% if selected_group %}?group={{ selected_group.id }}{% endif %}" class="btn-glass btn-secondary" style="display: inline-flex; align-items: center; gap: 6px;">
+            <i data-lucide="grid" style="width: 16px; height: 16px; color: #818cf8;"></i>
+            <span>Oylik Kalendar Tabel (+ / -)</span>
+        </a>
+        <a href="{% url 'export_attendance' %}?group={{ selected_group.id|default:'' }}&date={{ selected_date_str }}" class="btn-glass btn-excel">
+            <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px;"></i>
+            <span>Excel Yuklab Olish</span>
+        </a>
+        <button type="button" onclick="markAllPresent()" class="btn-glass btn-emerald">
+            <i data-lucide="check-check" style="width: 16px; height: 16px;"></i>
+            <span>Barchasini "Keldi" Qilish</span>
+        </button>
+        <button type="button" onclick="saveAttendanceBatch()" id="btnSaveAttendance" class="btn-glass btn-primary">
+            <i data-lucide="save" style="width: 16px; height: 16px;"></i>
+            <span>Davomatni Saqlash</span>
+        </button>
+    </div>
+</div>
+
+<!-- Selection Filter Bar -->
+<div class="glass-card" style="padding: 16px; margin-bottom: 24px;">
+    <form method="GET" style="display: flex; gap: 14px; flex-wrap: wrap; align-items: center;">
+        <div style="min-width: 220px;">
+            <label class="form-label" style="margin-bottom: 4px; font-size: 11px;">Guruhni tanlang:</label>
+            <select name="group" class="glass-select" onchange="this.form.submit()" style="padding: 8px 14px;">
+                {% for g in groups %}
+                <option value="{{ g.id }}" {% if selected_group and selected_group.id == g.id %}selected{% endif %}>
+                    {{ g.name }} ({{ g.get_age_category_display }})
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div style="min-width: 180px;">
+            <label class="form-label" style="margin-bottom: 4px; font-size: 11px;">Sana:</label>
+            <input type="date" name="date" value="{{ selected_date_str }}" class="glass-input" onchange="this.form.submit()" style="padding: 8px 14px;">
+        </div>
+    </form>
+</div>
+
+<!-- Attendance Marking Table -->
+<div class="glass-card">
+    <div class="glass-card-header">
+        <h3 class="glass-card-title">
+            <i data-lucide="users" style="color: #6366f1; width: 20px; height: 20px;"></i>
+            <span>{{ selected_group.name|default:"Guruh tanlanmagan" }} — {{ selected_date|date:"d F, Y" }}</span>
+        </h3>
+        <div style="font-size: 12px; color: var(--text-dim);">Jami: {{ children|length }} ta bola</div>
+    </div>
+
+    <div class="glass-table-wrapper">
+        <table class="glass-table">
+            <thead>
+                <tr>
+                    <th style="width: 50px;">№</th>
+                    <th>Bola F.I.SH</th>
+                    <th>Tibbiy Eslatma</th>
+                    <th style="width: 320px; text-align: center;">Davomat Holati</th>
+                    <th>Izoh (Sababi)</th>
+                </tr>
+            </thead>
+            <tbody id="attendanceTableBody">
+                {% for child in children %}
+                <tr data-child-id="{{ child.id }}">
+                    <td style="text-align: center; color: var(--text-dim);">{{ forloop.counter }}</td>
+                    <td>
+                        <div style="font-weight: 700; color: white;">{{ child.full_name }}</div>
+                        <div style="font-size: 11px; color: var(--text-dim);">{{ child.parent_phone }}</div>
+                    </td>
+                    <td>
+                        {% if child.medical_notes %}
+                        <span style="color: #fca5a5; font-size: 12px; background: rgba(244, 63, 94, 0.15); padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(244, 63, 94, 0.3);">
+                            ⚠️ {{ child.medical_notes }}
+                        </span>
+                        {% else %}
+                        <span style="color: var(--text-dim); font-size: 12px;">Yo'q</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 6px; justify-content: center; align-items: center;">
+                            <!-- PRESENT -->
+                            <label class="att-status-btn present {% if child.current_attendance.status == 'PRESENT' or not child.current_attendance %}active{% endif %}" onclick="selectStatus(this, '{{ child.id }}', 'PRESENT')">
+                                <input type="radio" name="status_{{ child.id }}" value="PRESENT" style="display: none;" {% if child.current_attendance.status == 'PRESENT' or not child.current_attendance %}checked{% endif %}>
+                                <span>Keldi</span>
+                            </label>
+                            <!-- EXCUSED -->
+                            <label class="att-status-btn excused {% if child.current_attendance.status == 'EXCUSED' or child.current_attendance.status == 'ABSENT_EXCUSED' %}active{% endif %}" onclick="selectStatus(this, '{{ child.id }}', 'EXCUSED')">
+                                <input type="radio" name="status_{{ child.id }}" value="EXCUSED" style="display: none;" {% if child.current_attendance.status == 'EXCUSED' or child.current_attendance.status == 'ABSENT_EXCUSED' %}checked{% endif %}>
+                                <span>Sababli</span>
+                            </label>
+                            <!-- UNEXCUSED -->
+                            <label class="att-status-btn unexcused {% if child.current_attendance.status == 'UNEXCUSED' or child.current_attendance.status == 'ABSENT_UNEXCUSED' or child.current_attendance.status == 'ABSENT' %}active{% endif %}" onclick="selectStatus(this, '{{ child.id }}', 'UNEXCUSED')">
+                                <input type="radio" name="status_{{ child.id }}" value="UNEXCUSED" style="display: none;" {% if child.current_attendance.status == 'UNEXCUSED' or child.current_attendance.status == 'ABSENT_UNEXCUSED' or child.current_attendance.status == 'ABSENT' %}checked{% endif %}>
+                                <span>Sababsiz</span>
+                            </label>
+                            <span class="save-status-indicator" id="indicator_{{ child.id }}" style="font-size: 13px; min-width: 18px; text-align: center;"></span>
+                        </div>
+                    </td>
+                    <td>
+                        <input type="text" class="glass-input input-notes" value="{{ child.current_attendance.notes|default:'' }}" onchange="autoSaveChild('{{ child.id }}')" placeholder="Qoldirish sababi..." style="padding: 6px 12px; font-size: 12px;">
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" style="text-align: center; color: var(--text-dim); padding: 32px;">
+                        Tanlangan guruhda bolalar ro'yxatga olinmagan.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+.att-status-btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted);
+    transition: all 0.2s;
+    user-select: none;
+}
+.att-status-btn.present.active {
+    background: rgba(16, 185, 129, 0.25);
+    color: #34d399;
+    border-color: rgba(16, 185, 129, 0.6);
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+}
+.att-status-btn.excused.active {
+    background: rgba(245, 158, 11, 0.25);
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.6);
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+}
+.att-status-btn.unexcused.active {
+    background: rgba(244, 63, 94, 0.25);
+    color: #fb7185;
+    border-color: rgba(244, 63, 94, 0.6);
+    box-shadow: 0 0 10px rgba(244, 63, 94, 0.3);
+}
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// CSRF token ni cookie yoki base.html yashirin form'dan o'qish
+function getCsrfToken() {
+    const m = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/);
+    if (m) return decodeURIComponent(m[1]);
+    const inp = document.querySelector('#csrf-sync-form [name=csrfmiddlewaretoken]');
+    if (inp) return inp.value;
+    return '';
+}
+function getCookie(name) {
+    if (name === 'csrftoken') return getCsrfToken();
+    const m = document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith(name+'='));
+    return m ? decodeURIComponent(m.split('=')[1]) : null;
+}
+
+async function selectStatus(labelElem, childId, status) {
+    const parentRow = labelElem.closest('tr');
+    parentRow.querySelectorAll('.att-status-btn').forEach(btn => btn.classList.remove('active'));
+    labelElem.classList.add('active');
+    const radio = labelElem.querySelector('input');
+    if (radio) radio.checked = true;
+
+    if (childId) {
+        await autoSaveChild(childId, status);
+    }
+}
+
+async function autoSaveChild(childId, overrideStatus = null) {
+    const row = document.querySelector(`tr[data-child-id="${childId}"]`);
+    if (!row) return;
+
+    let status = overrideStatus;
+    if (!status) {
+        const checked = row.querySelector('input[type="radio"]:checked');
+        status = checked ? checked.value : 'PRESENT';
+    }
+    const notes = row.querySelector('.input-notes')?.value || '';
+    const dateInput = document.querySelector('input[name="date"]');
+    const dateVal = dateInput?.value || "{{ selected_date_str }}";
+    const indicator = document.getElementById(`indicator_${childId}`);
+    if (indicator) indicator.innerHTML = "<span style='color: #38bdf8;'>⏳</span>";
+
+    try {
+        const response = await fetch("{% url 'attendance_save_ajax' %}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie('csrftoken'),
+            },
+            body: JSON.stringify({
+                date: dateVal,
+                child_id: childId,
+                status: status,
+                notes: notes
+            })
+        });
+        const result = await response.json();
+        if (result.success) {
+            if (indicator) {
+                indicator.innerHTML = "<span style='color: #34d399; font-weight: bold;'>✓</span>";
+                setTimeout(() => { if (indicator) indicator.innerHTML = ""; }, 2200);
+            }
+        } else {
+            if (indicator) indicator.innerHTML = "<span style='color: #fb7185;'>⚠️</span>";
+        }
+    } catch (err) {
+        console.error("Auto-save error:", err);
+        if (indicator) indicator.innerHTML = "<span style='color: #fb7185;'>⚠️</span>";
+    }
+}
+
+function markAllPresent() {
+    document.querySelectorAll('#attendanceTableBody tr[data-child-id]').forEach(row => {
+        const presentBtn = row.querySelector('.att-status-btn.present');
+        if (presentBtn) {
+            row.querySelectorAll('.att-status-btn').forEach(btn => btn.classList.remove('active'));
+            presentBtn.classList.add('active');
+            const radio = presentBtn.querySelector('input');
+            if (radio) radio.checked = true;
+        }
+    });
+    // Barcha o'zgarishlarni darhol saqlash
+    saveAttendanceBatch(false);
+}
+
+async function saveAttendanceBatch(showAlert = true) {
+    const btn = document.getElementById('btnSaveAttendance');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = "<span>⏳ Saqlanmoqda...</span>";
+    }
+
+    const rows = document.querySelectorAll('#attendanceTableBody tr[data-child-id]');
+    const records = [];
+    const dateInput = document.querySelector('input[name="date"]');
+    const dateVal = dateInput?.value || "{{ selected_date_str }}";
+
+    rows.forEach(row => {
+        const childId = row.getAttribute('data-child-id');
+        const checkedRadio = row.querySelector('input[type="radio"]:checked');
+        const status = checkedRadio ? checkedRadio.value : 'PRESENT';
+        const notes = row.querySelector('.input-notes')?.value || '';
+
+        records.push({
+            child_id: childId,
+            status: status,
+            notes: notes
+        });
+    });
+
+    try {
+        const response = await fetch("{% url 'attendance_save_ajax' %}", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCookie('csrftoken'),
+            },
+            body: JSON.stringify({
+                date: dateVal,
+                records: records
+            })
+        });
+
+        const result = await response.json();
+        if (result.success) {
+            if (showAlert) {
+                alert("✓ " + result.message);
+            }
+            // Flash all indicators green
+            rows.forEach(row => {
+                const childId = row.getAttribute('data-child-id');
+                const ind = document.getElementById(`indicator_${childId}`);
+                if (ind) {
+                    ind.innerHTML = "<span style='color: #34d399; font-weight: bold;'>✓</span>";
+                    setTimeout(() => { if (ind) ind.innerHTML = ""; }, 2200);
+                }
+            });
+        } else {
+            alert("Xatolik: " + result.message);
+        }
+    } catch (err) {
+        alert("Server bilan aloqa xatoligi: " + err.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="save" style="width: 16px; height: 16px;"></i><span>Davomatni Saqlash</span>';
+            if (window.lucide) lucide.createIcons();
+        }
+    }
+}
+</script>
+{% endblock %}

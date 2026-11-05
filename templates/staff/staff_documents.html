@@ -1,0 +1,169 @@
+{% extends 'base.html' %}
+
+{% block title %}Xodim Hujjatlari — {{ staff_member.get_full_name|default:staff_member.username }} — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <a href="{% url 'staff_list' %}" class="btn-glass btn-secondary" style="padding: 8px 12px;">
+                <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
+            </a>
+            <div>
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 24px; font-weight: 800; color: white; margin: 0;">
+                    Xodim Hujjatlari: {{ staff_member.get_full_name|default:staff_member.username }}
+                </h2>
+                <p style="font-size: 13px; color: var(--text-muted); margin: 2px 0 0 0;">
+                    Lavozimi: {{ staff_member.position_display }} · Jami hujjatlar: {{ documents.count }} ta
+                </p>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <a href="{% url 'staff_rate' staff_member.id %}" class="btn-glass btn-secondary" style="color: #fbbf24;">
+                <i data-lucide="star" style="width: 16px; height: 16px;"></i>
+                <span>Xodimni Baholash</span>
+            </a>
+            <button onclick="document.getElementById('modalAddDoc').style.display='flex'" class="btn-glass btn-primary">
+                <i data-lucide="upload" style="width: 16px; height: 16px;"></i>
+                <span>Yangi Hujjat Yuklash</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Hujjatlar Jadvali -->
+    <div class="glass-card" style="padding: 0; overflow: hidden; margin-bottom: 28px;">
+        <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; justify-content: space-between; align-items: center;">
+            <h3 class="glass-card-title" style="margin: 0;">
+                <i data-lucide="file-text" style="width: 18px; height: 18px; color: #38bdf8;"></i>
+                <span>Yuklangan Hujjatlar va Ma'lumotnomalar</span>
+            </h3>
+        </div>
+
+        <div style="overflow-x: auto;">
+            <table class="glass-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); text-align: left; font-size: 12px; color: var(--text-muted);">
+                        <th style="padding: 14px 18px;">HUJJAT NOMI</th>
+                        <th style="padding: 14px 18px;">TURI</th>
+                        <th style="padding: 14px 18px;">AMAL QILISH MUDDATI</th>
+                        <th style="padding: 14px 18px;">YUKLANGAN VAQT</th>
+                        <th style="padding: 14px 18px; text-align: right;">AMALLAR</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in documents %}
+                    <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04);">
+                        <td style="padding: 14px 18px;">
+                            <div style="font-weight: 700; color: white; font-size: 14px;">{{ doc.title }}</div>
+                            {% if doc.notes %}
+                            <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">{{ doc.notes }}</div>
+                            {% endif %}
+                        </td>
+                        <td style="padding: 14px 18px;">
+                            <span class="badge" style="background: rgba(255, 255, 255, 0.08); font-size: 11px;">
+                                {{ doc.get_document_type_display }}
+                            </span>
+                        </td>
+                        <td style="padding: 14px 18px;">
+                            {% if doc.expiry_date %}
+                                {% if doc.is_expired %}
+                                <span class="badge" style="background: rgba(244, 63, 94, 0.2); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.4); font-weight: 700;">
+                                    ⚠️ Muddati o'tgan: {{ doc.expiry_date|date:"d.m.Y" }}
+                                </span>
+                                {% else %}
+                                <span style="font-size: 13px; color: #34d399;">
+                                    Gacha: {{ doc.expiry_date|date:"d.m.Y" }}
+                                </span>
+                                {% endif %}
+                            {% else %}
+                            <span style="font-size: 12px; color: var(--text-dim);">Cheklanmagan</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding: 14px 18px; font-size: 12px; color: var(--text-muted);">
+                            {{ doc.uploaded_at|date:"d.m.Y H:i" }}
+                        </td>
+                        <td style="padding: 14px 18px; text-align: right;">
+                            <div style="display: inline-flex; gap: 8px;">
+                                <a href="{{ doc.file.url }}" target="_blank" class="btn-glass btn-secondary" style="padding: 6px 12px; font-size: 12px; color: #38bdf8;">
+                                    <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+                                    <span>Ko'rish</span>
+                                </a>
+                                {% if user.can_manage_all %}
+                                <form method="POST" action="{% url 'staff_document_delete' doc.id %}" onsubmit="return confirm('Haqiqatan ham ushbu hujjatni o\'chirmoqchimisiz?');" style="display: inline; margin: 0;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn-glass btn-rose" style="padding: 6px 10px; cursor: pointer;">
+                                        <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" style="padding: 40px; text-align: center; color: var(--text-muted);">
+                            <i data-lucide="file-question" style="width: 36px; height: 36px; color: var(--text-dim); margin-bottom: 8px;"></i>
+                            <div style="font-size: 14px; font-weight: 600; color: white;">Hozircha hech qanday hujjat yuklanmagan</div>
+                            <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+                                Pasport, diplom, tibbiy daftarcha yoki mehnat shartnomasini yuklash uchun "Yangi Hujjat Yuklash" tugmasini bosing
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Hujjat Yuklash -->
+<div id="modalAddDoc" class="glass-modal-backdrop" style="display: none;">
+    <div class="glass-modal" style="max-width: 500px; width: 100%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="upload-cloud" style="color: #38bdf8; width: 20px; height: 20px;"></i>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; color: white; margin: 0;">Yangi Hujjat Yuklash</h3>
+            </div>
+            <button onclick="document.getElementById('modalAddDoc').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+            
+            <div class="form-group">
+                <label class="form-label">Hujjat Nomi *</label>
+                {{ form.title }}
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Hujjat Turi *</label>
+                    {{ form.document_type }}
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Amal Qilish Muddati</label>
+                    {{ form.expiry_date }}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Faylni Tanlang (PDF, Rasm, DOCX) *</label>
+                {{ form.file }}
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Qo'shimcha Izoh</label>
+                {{ form.notes }}
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button type="button" onclick="document.getElementById('modalAddDoc').style.display='none'" class="btn-glass btn-secondary">Bekor qilish</button>
+                <button type="submit" class="btn-glass btn-primary">Yuklash</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+
+{% block title %}Lidni Tahrirlash — {{ lead.full_name }} — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="max-width: 760px; margin: 0 auto;">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <a href="{% url 'crm_leads_list' %}" class="btn-glass btn-secondary" style="padding: 8px 12px;">
+                <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
+            </a>
+            <div>
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 24px; font-weight: 800; color: white; margin: 0;">Lid Ma'lumotlarini Tahrirlash</h2>
+                <p style="font-size: 13px; color: var(--text-muted); margin: 2px 0 0 0;">{{ lead.full_name }} ({{ lead.phone }})</p>
+            </div>
+        </div>
+
+        <a href="{% url 'crm_lead_convert' lead.id %}" class="btn-glass btn-primary" style="background: linear-gradient(135deg, #10b981, #059669);">
+            <i data-lucide="user-check" style="width: 16px; height: 16px;"></i>
+            <span>Bog'chaga Qabul Qilish</span>
+        </a>
+    </div>
+
+    <div class="glass-card">
+        <form method="POST">
+            {% csrf_token %}
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Ota-ona F.I.SH *</label>
+                    {{ form.full_name }}
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Telefon Raqami *</label>
+                    {{ form.phone }}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Farzandining Ismi</label>
+                    {{ form.child_name }}
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Farzand Yoshi</label>
+                    {{ form.child_age }}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Qiziqqan Yo'nalishi *</label>
+                {{ form.interested_direction }}
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Marketing Manbasi (Kanal) *</label>
+                    {{ form.marketing_channel }}
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Holati (Status) *</label>
+                    {{ form.status }}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Qabulga Kelish Vaqti</label>
+                    {{ form.visit_date }}
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Qayta Qo'ng'iroq Sanasi</label>
+                    {{ form.next_call_date }}
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; margin-bottom: 16px; align-items: center;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Mas'ul Menejer</label>
+                    {{ form.manager }}
+                </div>
+                <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); padding: 12px; border-radius: 10px; display: flex; align-items: center; gap: 10px; margin-top: 18px;">
+                    {{ form.is_contract_signed }}
+                    <label for="{{ form.is_contract_signed.id_for_label }}" style="font-size: 13px; font-weight: 600; color: white; cursor: pointer; margin: 0;">
+                        Shartnoma tuzilganmi
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Muloqot Xulosasi va Izohlar</label>
+                {{ form.notes }}
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+                <a href="{% url 'crm_leads_list' %}" class="btn-glass btn-secondary">Bekor qilish</a>
+                <button type="submit" class="btn-glass btn-primary" style="padding: 10px 24px;">
+                    <i data-lucide="save" style="width: 16px; height: 16px;"></i>
+                    <span>O'zgarishlarni Saqlash</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

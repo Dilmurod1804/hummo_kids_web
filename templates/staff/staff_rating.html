@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+
+{% block title %}Xodim Reytingi — {{ staff_member.get_full_name|default:staff_member.username }} — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 0 auto;">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <a href="{% url 'staff_list' %}" class="btn-glass btn-secondary" style="padding: 8px 12px;">
+                <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
+            </a>
+            <div>
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 24px; font-weight: 800; color: white; margin: 0;">
+                    Xodim Reytingi & Baholash: {{ staff_member.get_full_name|default:staff_member.username }}
+                </h2>
+                <p style="font-size: 13px; color: var(--text-muted); margin: 2px 0 0 0;">
+                    Lavozimi: {{ staff_member.position_display }} · Jami baholar: {{ ratings.count }} ta
+                </p>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <a href="{% url 'staff_documents' staff_member.id %}" class="btn-glass btn-secondary">
+                <i data-lucide="file-text" style="width: 16px; height: 16px;"></i>
+                <span>Hujjatlar</span>
+            </a>
+            <button onclick="document.getElementById('modalAddRating').style.display='flex'" class="btn-glass btn-primary" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                <i data-lucide="star" style="width: 16px; height: 16px;"></i>
+                <span>Baho Qo'yish</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Rating Summary Banner -->
+    <div class="glass-card" style="margin-bottom: 24px; border-left: 4px solid #f59e0b; padding: 20px 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <div style="display: flex; align-items: center; gap: 18px;">
+                <div style="width: 68px; height: 68px; border-radius: 18px; background: rgba(245, 158, 11, 0.15); border: 2px solid rgba(245, 158, 11, 0.4); display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fbbf24;">
+                    <span style="font-size: 24px; font-weight: 800; line-height: 1;">{{ avg_score|default:"—" }}</span>
+                    <span style="font-size: 10px; font-weight: 700;">/ 5.0</span>
+                </div>
+                <div>
+                    <h3 style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; color: white; margin: 0;">
+                        O'rtacha Ish Faoliyati Balli
+                    </h3>
+                    <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px; color: #fbbf24;">
+                        {% if avg_score %}
+                            {% for i in "12345" %}
+                                {% if forloop.counter <= avg_score %}
+                                <i data-lucide="star" style="width: 16px; height: 16px; fill: #fbbf24;"></i>
+                                {% else %}
+                                <i data-lucide="star" style="width: 16px; height: 16px; opacity: 0.3;"></i>
+                                {% endif %}
+                            {% endfor %}
+                            <span style="font-size: 13px; color: var(--text-muted); margin-left: 6px;">({{ ratings.count }} ta baholash asosida)</span>
+                        {% else %}
+                            <span style="font-size: 13px; color: var(--text-dim);">Hozircha baholanmagan</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div style="font-size: 13px; color: var(--text-muted); max-width: 320px; line-height: 1.4;">
+                Rahbariyat tomonidan xodimning dars berish mahorati, intizomi, ota-onalar bilan muomalasi va faolligi baholab boriladi.
+            </div>
+        </div>
+    </div>
+
+    <!-- Baholashlar Tarixi -->
+    <div class="glass-card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); display: flex; justify-content: space-between; align-items: center;">
+            <h3 class="glass-card-title" style="margin: 0;">
+                <i data-lucide="history" style="width: 18px; height: 18px; color: #fbbf24;"></i>
+                <span>Baholashlar Tarixi va Fikr-mulohazalar</span>
+            </h3>
+        </div>
+
+        <div style="padding: 12px 20px;">
+            {% for r in ratings %}
+            <div style="padding: 16px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.05); display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 250px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                        <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; font-weight: 800; font-size: 13px;">
+                            ⭐ {{ r.score }} / 5 ball
+                        </span>
+                        <span style="font-weight: 700; color: white; font-size: 14px;">{{ r.get_criteria_display }}</span>
+                    </div>
+
+                    {% if r.comment %}
+                    <p style="font-size: 13px; color: var(--text-muted); margin: 6px 0 0 0; line-height: 1.5; background: rgba(255, 255, 255, 0.02); padding: 8px 12px; border-radius: 8px; border-left: 2px solid rgba(245, 158, 11, 0.3);">
+                        "{{ r.comment }}"
+                    </p>
+                    {% endif %}
+                </div>
+
+                <div style="text-align: right; font-size: 12px; color: var(--text-dim);">
+                    <div>Sana: <b style="color: white;">{{ r.date|date:"d.m.Y" }}</b></div>
+                    <div style="margin-top: 2px;">
+                        Baholagan: 
+                        {% if r.rated_by %}
+                            {{ r.rated_by.get_full_name|default:r.rated_by.username }}
+                        {% else %}
+                            Tizim / Rahbariyat
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div style="padding: 40px; text-align: center; color: var(--text-muted);">
+                <i data-lucide="star-off" style="width: 36px; height: 36px; color: var(--text-dim); margin-bottom: 8px;"></i>
+                <div style="font-size: 14px; font-weight: 600; color: white;">Hozircha baholashlar mavjud emas</div>
+                <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+                    Xodim faoliyatiga baho berish uchun "Baho Qo'yish" tugmasini bosing
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Baho Qo'yish -->
+<div id="modalAddRating" class="glass-modal-backdrop" style="display: none;">
+    <div class="glass-modal" style="max-width: 500px; width: 100%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <i data-lucide="award" style="color: #fbbf24; width: 20px; height: 20px;"></i>
+                <h3 style="font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; color: white; margin: 0;">Xodimga Baho Qo'yish</h3>
+            </div>
+            <button onclick="document.getElementById('modalAddRating').style.display='none'" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer;">
+                <i data-lucide="x" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+
+        <form method="POST">
+            {% csrf_token %}
+            
+            <div class="form-group">
+                <label class="form-label">Reyting Balli (1-5) *</label>
+                {{ form.score }}
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Baholash Mezoni *</label>
+                    {{ form.criteria }}
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label">Sana *</label>
+                    {{ form.date }}
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Fikr-mulohaza yoki Izoh</label>
+                {{ form.comment }}
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                <button type="button" onclick="document.getElementById('modalAddRating').style.display='none'" class="btn-glass btn-secondary">Bekor qilish</button>
+                <button type="submit" class="btn-glass btn-primary" style="background: linear-gradient(135deg, #f59e0b, #d97706);">Saqlash</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

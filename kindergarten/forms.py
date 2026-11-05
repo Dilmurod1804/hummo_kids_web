@@ -1,0 +1,463 @@
+from django import forms
+from .models import (
+    Child, Group, MonthlyInvoice, Payment, KindergartenSettings, User, ChildAttendance,
+    Expense, AdmissionLead, StaffDocument, StaffRating
+)
+
+class LoginForm(forms.Form):
+    username = forms.CharField(widget=forms.TextInput(attrs={
+        'class': 'glass-input',
+        'placeholder': 'Foydalanuvchi nomi (Username)',
+        'autocomplete': 'username'
+    }))
+    password = forms.CharField(widget=forms.PasswordInput(attrs={
+        'class': 'glass-input',
+        'placeholder': 'Parol',
+        'autocomplete': 'current-password'
+    }))
+
+
+class ChildForm(forms.ModelForm):
+    class Meta:
+        model = Child
+        fields = [
+            'first_name', 'last_name', 'birth_date', 'gender', 'group',
+            'parent_full_name', 'parent_phone', 'parent_email', 'address',
+            'emergency_contact', 'medical_notes', 'photo', 'is_active', 'is_mahalla', 'enrollment_date'
+        ]
+        widgets = {
+            'first_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Ismi'}),
+            'last_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Familiyasi'}),
+            'birth_date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
+            'gender': forms.Select(attrs={'class': 'glass-input'}),
+            'group': forms.Select(attrs={'class': 'glass-input'}),
+            'parent_full_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Ota-onasi F.I.SH'}),
+            'parent_phone': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': '+998 90 123 45 67'}),
+            'parent_email': forms.EmailInput(attrs={'class': 'glass-input', 'placeholder': 'email@example.com'}),
+            'address': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Yashash manzili'}),
+            'emergency_contact': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Qo‘shimcha aloqa / Qarindosh'}),
+            'medical_notes': forms.Textarea(attrs={'class': 'glass-input', 'rows': 3, 'placeholder': 'Allergiyalar, parhez yoki tibbiy eslatmalar...'}),
+            'photo': forms.FileInput(attrs={'class': 'glass-input-file'}),
+            'is_mahalla': forms.CheckboxInput(attrs={'class': 'glass-checkbox', 'id': 'child_is_mahalla'}),
+            'enrollment_date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
+        }
+
+
+class GroupForm(forms.ModelForm):
+    class Meta:
+        model = Group
+        fields = ['name', 'age_category', 'room_number', 'capacity', 'monthly_fee', 'primary_teacher', 'assistant_teacher', 'description']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Guruh nomi (Masalan: Yulduzcha)'}),
+            'age_category': forms.Select(attrs={'class': 'glass-input'}),
+            'room_number': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Xona raqami (Masalan: 104-xona)'}),
+            'capacity': forms.NumberInput(attrs={'class': 'glass-input'}),
+            'monthly_fee': forms.NumberInput(attrs={'class': 'glass-input'}),
+            'primary_teacher': forms.Select(attrs={'class': 'glass-input'}),
+            'assistant_teacher': forms.Select(attrs={'class': 'glass-input'}),
+            'description': forms.Textarea(attrs={'class': 'glass-input', 'rows': 2, 'placeholder': 'Guruh haqida tavsif...'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['primary_teacher'].queryset = User.objects.filter(role__in=['TEACHER', 'ASSISTANT', 'MANAGER', 'DIRECTOR'], is_active=True)
+        self.fields['assistant_teacher'].queryset = User.objects.filter(role__in=['TEACHER', 'ASSISTANT', 'MANAGER', 'DIRECTOR'], is_active=True)
+
+
+class PaymentForm(forms.ModelForm):
+    class Meta:
+        model = Payment
+        fields = ['invoice', 'amount', 'payment_method', 'transaction_id', 'reason', 'notes']
+        widgets = {
+            'invoice': forms.Select(attrs={'class': 'glass-input'}),
+            'amount': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': 'To‘lov summasi', 'step': 'any', 'min': '0'}),
+            'payment_method': forms.Select(attrs={'class': 'glass-input'}),
+            'transaction_id': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Tranzaksiya / Kvitansiya ID'}),
+            'reason': forms.Textarea(attrs={'class': 'glass-input', 'rows': 2, 'placeholder': 'To‘lov sababi / Chegirma izohi'}),
+            'notes': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Qo‘shimcha izoh'}),
+        }
+
+
+class SettingsForm(forms.ModelForm):
+    # Extra fields for changing manager credentials securely
+    new_manager_username = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'glass-input',
+            'placeholder': 'Yangi login (o\'zgartirmoqchi bo\'lsangiz kiriting)',
+            'autocomplete': 'off',
+        }),
+        label="Yangi Menejer Logini"
+    )
+    new_manager_password = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(attrs={
+            'class': 'glass-input',
+            'placeholder': 'Yangi parol (o\'zgartirmoqchi bo\'lsangiz kiriting)',
+            'autocomplete': 'new-password',
+        }),
+        label="Yangi Menejer Paroli"
+    )
+    confirm_manager_password = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(attrs={
+            'class': 'glass-input',
+            'placeholder': 'Yangi parolni tasdiqlang',
+            'autocomplete': 'new-password',
+        }),
+        label="Parolni Tasdiqlash"
+    )
+    latitude = forms.CharField(
+        required=True,
+        widget=forms.NumberInput(attrs={
+            'class': 'glass-input',
+            'placeholder': '41.311081',
+            'step': 'any',
+        }),
+        label="Kenglik (Latitude)"
+    )
+    longitude = forms.CharField(
+        required=True,
+        widget=forms.NumberInput(attrs={
+            'class': 'glass-input',
+            'placeholder': '69.240562',
+            'step': 'any',
+        }),
+        label="Uzunlik (Longitude)"
+    )
+    geofence_radius = forms.IntegerField(
+        required=True,
+        widget=forms.NumberInput(attrs={
+            'class': 'glass-input',
+            'placeholder': '80',
+            'min': '10',
+            'max': '5000'
+        }),
+        label="Geofence Masofasi (Metrda)"
+    )
+    geofence_radius_meters = forms.FloatField(
+        required=False,
+        widget=forms.HiddenInput()
+    )
+
+    class Meta:
+        model = KindergartenSettings
+        fields = ['name', 'address', 'latitude', 'longitude', 'geofence_radius', 'geofence_radius_meters',
+                  'work_start_time', 'work_end_time',
+                  'daily_meal_rate', 'default_monthly_fee', 'currency_symbol',
+                  'contact_phone', 'contact_email', 'manager_username', 'manager_password',
+                  'penalty_calc_mode', 'late_penalty_per_minute', 'late_grace_period_minutes',
+                  'late_penalty_tier1_rate', 'late_penalty_tier2_rate',
+                  'early_leave_penalty_per_minute', 'early_leave_grace_period_minutes',
+                  'early_leave_tier1_rate', 'early_leave_tier2_rate',
+                  'max_penalty_percent_limit']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Bog\'cha nomi'}),
+            'address': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'To\'liq manzil'}),
+            'latitude': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any', 'placeholder': '41.311081'}),
+            'longitude': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any', 'placeholder': '69.240562'}),
+            'geofence_radius': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '80', 'min': '10'}),
+            'geofence_radius_meters': forms.HiddenInput(),
+            'work_start_time': forms.TimeInput(attrs={'class': 'glass-input', 'type': 'time'}),
+            'work_end_time': forms.TimeInput(attrs={'class': 'glass-input', 'type': 'time'}),
+            'daily_meal_rate': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any'}),
+            'default_monthly_fee': forms.NumberInput(attrs={'class': 'glass-input', 'step': 'any'}),
+            'currency_symbol': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'UZS'}),
+            'contact_phone': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': '+998 71 200 00 00'}),
+            'contact_email': forms.EmailInput(attrs={'class': 'glass-input', 'placeholder': 'info@humokids.uz'}),
+            # manager credentials are stored in DB but only changed via new_ fields
+            'manager_username': forms.HiddenInput(),
+            'manager_password': forms.HiddenInput(),
+            # Jarimalar va Cheklovlar sozlamalari
+            'penalty_calc_mode': forms.Select(attrs={'class': 'glass-select'}),
+            'late_penalty_per_minute': forms.NumberInput(attrs={'class': 'glass-input', 'step': '100', 'min': '0', 'placeholder': 'Masalan: 1000'}),
+            'late_grace_period_minutes': forms.NumberInput(attrs={'class': 'glass-input', 'min': '0', 'max': '120', 'placeholder': '15'}),
+            'late_penalty_tier1_rate': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.1', 'min': '0', 'max': '100', 'placeholder': '10.0'}),
+            'late_penalty_tier2_rate': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.1', 'min': '0', 'max': '100', 'placeholder': '20.0'}),
+            'early_leave_penalty_per_minute': forms.NumberInput(attrs={'class': 'glass-input', 'step': '100', 'min': '0', 'placeholder': 'Masalan: 1000'}),
+            'early_leave_grace_period_minutes': forms.NumberInput(attrs={'class': 'glass-input', 'min': '0', 'max': '120', 'placeholder': '15'}),
+            'early_leave_tier1_rate': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.1', 'min': '0', 'max': '100', 'placeholder': '10.0'}),
+            'early_leave_tier2_rate': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.1', 'min': '0', 'max': '100', 'placeholder': '20.0'}),
+            'max_penalty_percent_limit': forms.NumberInput(attrs={'class': 'glass-input', 'step': '1.0', 'min': '5', 'max': '100', 'placeholder': '50.0'}),
+        }
+
+    def clean_latitude(self):
+        val = str(self.cleaned_data.get('latitude', '')).replace(',', '.').strip()
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            raise forms.ValidationError("To'g'ri koordinata kiriting (masalan: 41.311081)")
+
+    def clean_longitude(self):
+        val = str(self.cleaned_data.get('longitude', '')).replace(',', '.').strip()
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            raise forms.ValidationError("To'g'ri koordinata kiriting (masalan: 69.240562)")
+
+    def clean_geofence_radius(self):
+        val = self.cleaned_data.get('geofence_radius')
+        try:
+            radius = int(val)
+            if radius < 5:
+                raise forms.ValidationError("Geofence radiusi kamida 5 metr bo'lishi kerak.")
+            return radius
+        except (ValueError, TypeError):
+            return 80
+
+    def clean(self):
+        cleaned_data = super().clean()
+        new_uname = cleaned_data.get('new_manager_username', '').strip()
+        new_pw = cleaned_data.get('new_manager_password')
+        confirm_pw = cleaned_data.get('confirm_manager_password')
+
+        # Validate new username
+        if new_uname:
+            if len(new_uname) < 3:
+                self.add_error('new_manager_username', 'Login kamida 3 belgidan iborat bo\'lishi kerak.')
+            elif ' ' in new_uname:
+                self.add_error('new_manager_username', 'Login bo\'sh joy (space) o\'z ichiga olmasligi kerak.')
+            else:
+                cleaned_data['manager_username'] = new_uname
+
+        # Validate new password
+        if new_pw or confirm_pw:
+            if new_pw != confirm_pw:
+                self.add_error('confirm_manager_password', 'Parollar mos kelmadi. Iltimos qaytadan kiriting.')
+            elif len(new_pw) < 6:
+                self.add_error('new_manager_password', 'Parol kamida 6 belgidan iborat bo\'lishi kerak.')
+        # Sync geofence_radius_meters with geofence_radius
+        if cleaned_data.get('geofence_radius') is not None:
+            cleaned_data['geofence_radius_meters'] = float(cleaned_data['geofence_radius'])
+
+        return cleaned_data
+
+
+import random
+import re
+
+def generate_staff_credentials(first_name, last_name=''):
+    tr = {
+        'а':'a', 'б':'b', 'в':'v', 'г':'g', 'д':'d', 'е':'e', 'ё':'yo', 'ж':'j',
+        'з':'z', 'и':'i', 'й':'y', 'к':'k', 'л':'l', 'м':'m', 'н':'n', 'о':'o',
+        'п':'p', 'р':'r', 'с':'s', 'т':'t', 'у':'u', 'ф':'f', 'х':'x', 'ц':'ts',
+        'ч':'ch', 'ш':'sh', 'щ':'sh', 'ъ':'', 'ы':'i', 'ь':'', 'э':'e', 'ю':'yu',
+        'я':'ya', 'ў':'o', 'ғ':'g', 'қ':'q', 'ҳ':'h', "'": '', "‘": '', "’": '', "`": ''
+    }
+    base = (first_name or 'xodim').strip().lower()
+    for cyr, lat in tr.items():
+        base = base.replace(cyr, lat)
+    base = re.sub(r'[^a-z0-9]', '', base)
+    if not base or len(base) < 2:
+        base = "xodim"
+
+    candidate = f"{base}_{random.randint(100, 999)}"
+    while User.objects.filter(username=candidate).exists():
+        candidate = f"{base}_{random.randint(1000, 9999)}"
+
+    pin = random.randint(1000, 9999)
+    password = f"Humo_{pin}"
+    return candidate, password
+
+
+WEEKDAY_CHOICES = (
+    ('1', 'Dushanba'),
+    ('2', 'Seshanba'),
+    ('3', 'Chorshanba'),
+    ('4', 'Payshanba'),
+    ('5', 'Juma'),
+    ('6', 'Shanba'),
+    ('7', 'Yakshanba'),
+)
+
+
+class StaffForm(forms.ModelForm):
+    custom_username = forms.CharField(
+        required=False,
+        label="Login (ixtiyoriy)",
+        widget=forms.TextInput(attrs={
+            'class': 'glass-input',
+            'placeholder': 'Ixtiyoriy login (bo\'sh qolsa avtomatik generatsiya bo\'ladi)'
+        })
+    )
+    custom_password = forms.CharField(
+        required=False,
+        label="Parol (ixtiyoriy)",
+        widget=forms.TextInput(attrs={
+            'class': 'glass-input',
+            'placeholder': 'Ixtiyoriy parol (bo\'sh qolsa avtomatik generatsiya bo\'ladi)'
+        })
+    )
+    working_days = forms.MultipleChoiceField(
+        choices=WEEKDAY_CHOICES,
+        required=False,
+        widget=forms.CheckboxSelectMultiple(attrs={'class': 'day-checkbox'}),
+        label="Ish kunlari",
+        help_text="Xodim qaysi kunlari ishga kelishini belgilang"
+    )
+
+    class Meta:
+        model = User
+        fields = [
+            'first_name', 'last_name', 'phone_number', 'role', 'custom_position', 'salary', 'avatar',
+            'work_start_time', 'work_end_time', 'late_grace_period_minutes', 'penalty_rate_tier1', 'penalty_rate_tier2',
+            'working_days',
+        ]
+        widgets = {
+            'first_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Ism'}),
+            'last_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Familiya'}),
+            'phone_number': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': '+998 90 123 45 67'}),
+            'role': forms.Select(attrs={'class': 'glass-input'}),
+            'custom_position': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': "Ixtiyoriy aniq lavozim (masalan: Bosh oshpaz)"}),
+            'salary': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': 'Oylik maosh (UZS)'}),
+            'avatar': forms.FileInput(attrs={'class': 'glass-input-file'}),
+            'work_start_time': forms.TimeInput(attrs={'class': 'glass-input', 'type': 'time', 'placeholder': '08:00'}),
+            'work_end_time': forms.TimeInput(attrs={'class': 'glass-input', 'type': 'time', 'placeholder': '18:00'}),
+            'late_grace_period_minutes': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '15', 'min': '0'}),
+            'penalty_rate_tier1': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.01', 'placeholder': '10.00', 'min': '0'}),
+            'penalty_rate_tier2': forms.NumberInput(attrs={'class': 'glass-input', 'step': '0.01', 'placeholder': '20.00', 'min': '0'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['first_name'].required = True
+        self.fields['last_name'].required = True
+        self.fields['phone_number'].required = True
+        self.fields['salary'].required = True
+        self.fields['role'].required = True
+        if self.instance and self.instance.pk:
+            self.fields['custom_username'].initial = self.instance.username
+            self.fields['custom_username'].widget.attrs['placeholder'] = self.instance.username
+            days = self.instance.get_working_days_list()
+            self.fields['working_days'].initial = [str(d) for d in days]
+        else:
+            self.fields['working_days'].initial = ['1', '2', '3', '4', '5']
+
+    def clean_working_days(self):
+        days = self.cleaned_data.get('working_days', [])
+        if not days:
+            return [1, 2, 3, 4, 5]
+        try:
+            return [int(d) for d in days]
+        except (ValueError, TypeError):
+            return [1, 2, 3, 4, 5]
+
+
+class TeacherReplaceForm(forms.ModelForm):
+    class Meta:
+        model = Group
+        fields = ['primary_teacher', 'assistant_teacher']
+        widgets = {
+            'primary_teacher': forms.Select(attrs={'class': 'glass-input'}),
+            'assistant_teacher': forms.Select(attrs={'class': 'glass-input'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['primary_teacher'].queryset = User.objects.filter(
+            role__in=['TEACHER', 'ASSISTANT', 'MANAGER', 'DIRECTOR'],
+            is_active=True
+        )
+        self.fields['assistant_teacher'].queryset = User.objects.filter(
+            role__in=['TEACHER', 'ASSISTANT', 'MANAGER', 'DIRECTOR'],
+            is_active=True
+        )
+        self.fields['primary_teacher'].required = True
+        self.fields['assistant_teacher'].required = False
+
+
+class ExpenseForm(forms.ModelForm):
+    class Meta:
+        model = Expense
+        fields = ['title', 'amount', 'category', 'payment_method', 'date', 'description', 'receipt_number']
+        widgets = {
+            'title': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Masalan: Oziq-ovqat xaridi, Avans, Kommunal'}),
+            'amount': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': '0.00', 'step': '1000'}),
+            'category': forms.Select(attrs={'class': 'glass-select'}),
+            'payment_method': forms.Select(attrs={'class': 'glass-select'}),
+            'date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
+            'description': forms.Textarea(attrs={'class': 'glass-input', 'rows': 3, 'placeholder': 'Qo\'shimcha izoh yoki sababi...'}),
+            'receipt_number': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Chek yoki kvitansiya raqami (ixtiyoriy)'}),
+        }
+
+
+class AdmissionLeadForm(forms.ModelForm):
+    class Meta:
+        model = AdmissionLead
+        fields = [
+            'full_name', 'phone', 'child_name', 'child_age',
+            'interested_direction', 'marketing_channel', 'status',
+            'is_contract_signed', 'manager', 'visit_date', 'next_call_date', 'notes'
+        ]
+        widgets = {
+            'full_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Ota-ona F.I.SH (masalan: Rustamova Dilnoza)'}),
+            'phone': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': '+998 90 123 45 67'}),
+            'child_name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Farzandining ismi (masalan: Amirbek)'}),
+            'child_age': forms.NumberInput(attrs={'class': 'glass-input', 'placeholder': 'Farzand yoshi (masalan: 4)', 'min': '1', 'max': '10'}),
+            'interested_direction': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Masalan: Standart bog\'cha, Rus tili guruhi, Mental arifmetika'}),
+            'marketing_channel': forms.Select(attrs={'class': 'glass-select'}),
+            'status': forms.Select(attrs={'class': 'glass-select'}),
+            'is_contract_signed': forms.CheckboxInput(attrs={'class': 'glass-checkbox'}),
+            'manager': forms.Select(attrs={'class': 'glass-select'}),
+            'visit_date': forms.DateTimeInput(attrs={'class': 'glass-input', 'type': 'datetime-local'}),
+            'next_call_date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
+            'notes': forms.Textarea(attrs={'class': 'glass-input', 'rows': 3, 'placeholder': 'Suhbat natijasi, ota-ona talablari yoki eslatmalar...'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['manager'].queryset = User.objects.filter(role__in=['DIRECTOR', 'MANAGER', 'TEACHER'], is_active=True)
+        self.fields['manager'].required = False
+        self.fields['child_name'].required = False
+        self.fields['child_age'].required = False
+        self.fields['visit_date'].required = False
+        self.fields['next_call_date'].required = False
+        self.fields['notes'].required = False
+        self.fields['is_contract_signed'].required = False
+
+
+class StaffDocumentForm(forms.ModelForm):
+    class Meta:
+        model = StaffDocument
+        fields = ['title', 'document_type', 'file', 'expiry_date', 'notes']
+        widgets = {
+            'title': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Masalan: Pasport nusxasi, Diplom, Tibbiy daftarcha'}),
+            'document_type': forms.Select(attrs={'class': 'glass-select'}),
+            'file': forms.FileInput(attrs={'class': 'glass-input-file'}),
+            'expiry_date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
+            'notes': forms.Textarea(attrs={'class': 'glass-input', 'rows': 2, 'placeholder': 'Hujjat bo\'yicha qo\'shimcha ma\'lumot...'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['expiry_date'].required = False
+        self.fields['notes'].required = False
+
+
+class StaffRatingForm(forms.ModelForm):
+    SCORE_CHOICES = (
+        (5, '⭐⭐⭐⭐⭐ 5 Ball (Namunali)'),
+        (4, '⭐⭐⭐⭐ 4 Ball (A\'lo)'),
+        (3, '⭐⭐⭐ 3 Ball (Yaxshi)'),
+        (2, '⭐⭐ 2 Ball (Qoniqarli)'),
+        (1, '⭐ 1 Ball (Qoniqarsiz)'),
+    )
+    score = forms.ChoiceField(
+        choices=SCORE_CHOICES,
+        widget=forms.Select(attrs={'class': 'glass-select'}),
+        label="Baho"
+    )
+
+    class Meta:
+        model = StaffRating
+        fields = ['score', 'criteria', 'date', 'comment']
+        widgets = {
+            'criteria': forms.Select(attrs={'class': 'glass-select'}),
+            'date': forms.DateInput(attrs={'class': 'glass-input', 'type': 'date'}),
+            'comment': forms.Textarea(attrs={'class': 'glass-input', 'rows': 3, 'placeholder': 'Xodim faoliyati haqida batafsil fikr-mulohaza yoki takliflar...'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['comment'].required = False
+

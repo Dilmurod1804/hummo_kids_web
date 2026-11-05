@@ -1,0 +1,440 @@
+{% extends 'base.html' %}
+
+{% block title %}Bolalar Davomat Jadvali (Tabel + / -) — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="max-width: 100%; margin: 0 auto;">
+
+    <!-- Top Header & Navigation -->
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white; display: flex; align-items: center; gap: 10px;">
+                <span>Bolalar Oylik Davomat Jadvali (Tabel)</span>
+                <span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.4); font-size: 13px; font-weight: 700;">
+                    {{ month_name }} {{ year }}
+                </span>
+            </h2>
+            <p style="font-size: 13px; color: var(--text-muted);">
+                Kalendar ko'rinishida har bir bola uchun <b>(+)</b> va <b>(-)</b> toggle orqali tez va qulay davomat nazorati
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{% url 'attendance_daily' %}{% if selected_group %}?group={{ selected_group.id }}{% endif %}" class="btn-glass btn-secondary" style="padding: 9px 18px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="calendar" style="width: 16px; height: 16px;"></i>
+                <span>Kunlik Jurnal</span>
+            </a>
+            <a href="{% url 'children_attendance_matrix' %}?month={{ month }}&year={{ year }}{% if selected_group %}&group={{ selected_group.id }}{% endif %}" class="btn-glass btn-primary" style="padding: 9px 18px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="grid" style="width: 16px; height: 16px;"></i>
+                <span>Oylik Tabel (+ / -)</span>
+            </a>
+            <a href="{% url 'export_attendance' %}{% if selected_group %}?group={{ selected_group.id }}{% endif %}" class="btn-glass btn-excel" style="padding: 9px 16px; font-size: 13px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px;"></i>
+                <span>Excel Eksport</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Group, Month, Year & Search Filter Bar -->
+    <div class="glass-card" style="padding: 18px 24px; margin-bottom: 22px;">
+        <form method="GET" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <!-- Month Navigator -->
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <a href="?month={{ prev_month }}&year={{ prev_year }}{% if selected_group %}&group={{ selected_group.id }}{% endif %}{% if search_q %}&q={{ search_q }}{% endif %}" class="btn-glass btn-secondary" style="padding: 8px 12px; font-size: 13px; text-decoration: none;">
+                    &larr; Oldingi
+                </a>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <select name="month" class="glass-select" onchange="this.form.submit()" style="padding: 8px 14px; font-weight: 700;">
+                        {% for m in months_range %}
+                        <option value="{{ m }}" {% if m == month %}selected{% endif %}>
+                            {{ forloop.counter }} - {{ month_names_uz|slice:m|last|default:m }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <input type="number" name="year" value="{{ year }}" class="glass-input" style="width: 86px; padding: 8px 10px; font-weight: 700; text-align: center;" onchange="this.form.submit()">
+                </div>
+                <a href="?month={{ next_month }}&year={{ next_year }}{% if selected_group %}&group={{ selected_group.id }}{% endif %}{% if search_q %}&q={{ search_q }}{% endif %}" class="btn-glass btn-secondary" style="padding: 8px 12px; font-size: 13px; text-decoration: none;">
+                    Keyingi &rarr;
+                </a>
+            </div>
+
+            <!-- Group & Search filters -->
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <div style="min-width: 220px;">
+                    <select name="group" class="glass-select" onchange="this.form.submit()" style="padding: 8px 14px; font-weight: 600;">
+                        {% for g in groups %}
+                        <option value="{{ g.id }}" {% if selected_group and selected_group.id == g.id %}selected{% endif %}>
+                            {{ g.name }} ({{ g.get_age_category_display }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="position: relative;">
+                    <input type="text" name="q" value="{{ search_q }}" placeholder="Bola ismini qidirish..." class="glass-input" style="padding: 8px 14px 8px 36px; width: 220px;">
+                    <i data-lucide="search" style="width: 16px; height: 16px; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-dim);"></i>
+                </div>
+                <button type="submit" class="btn-glass btn-primary" style="padding: 8px 16px;">
+                    Filtrlash
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Quick Stats & Legend -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 22px;">
+        <div class="glass-card" style="padding: 16px 20px; display: flex; align-items: center; gap: 14px; border-left: 3px solid #6366f1;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(99, 102, 241, 0.15); display: flex; align-items: center; justify-content: center;">
+                <i data-lucide="users" style="width: 22px; height: 22px; color: #818cf8;"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; color: var(--text-dim);">Guruhdagi Bolalar</div>
+                <div style="font-size: 22px; font-weight: 800; color: white; font-family: 'Outfit', sans-serif;">{{ matrix_rows|length }} ta</div>
+            </div>
+        </div>
+
+        <div class="glass-card" style="padding: 16px 20px; display: flex; align-items: center; gap: 14px; border-left: 3px solid #34d399;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(52, 211, 153, 0.15); display: flex; align-items: center; justify-content: center;">
+                <i data-lucide="user-check" style="width: 22px; height: 22px; color: #34d399;"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; color: var(--text-dim);">Jami Qatnashganlar (+)</div>
+                <div style="font-size: 22px; font-weight: 800; color: #34d399; font-family: 'Outfit', sans-serif;">{{ total_present_all }} kun</div>
+            </div>
+        </div>
+
+        <div class="glass-card" style="padding: 16px 20px; display: flex; align-items: center; gap: 14px; border-left: 3px solid #fbbf24;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(251, 191, 36, 0.15); display: flex; align-items: center; justify-content: center;">
+                <i data-lucide="help-circle" style="width: 22px; height: 22px; color: #fbbf24;"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; color: var(--text-dim);">Sababli Qoldirilgan (- S)</div>
+                <div style="font-size: 22px; font-weight: 800; color: #fbbf24; font-family: 'Outfit', sans-serif;">{{ total_excused_all }} kun</div>
+            </div>
+        </div>
+
+        <div class="glass-card" style="padding: 16px 20px; display: flex; align-items: center; gap: 14px; border-left: 3px solid #f43f5e;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(244, 63, 94, 0.15); display: flex; align-items: center; justify-content: center;">
+                <i data-lucide="user-x" style="width: 22px; height: 22px; color: #fb7185;"></i>
+            </div>
+            <div>
+                <div style="font-size: 11px; color: var(--text-dim);">Sababsiz Qoldirilgan (- Sb)</div>
+                <div style="font-size: 22px; font-weight: 800; color: #fb7185; font-family: 'Outfit', sans-serif;">{{ total_unexcused_all }} kun</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Instruction Help Bar -->
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; padding: 10px 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-sm); font-size: 12px;">
+        <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+            <span style="color: var(--text-dim);">💡 <b>Qanday ishlaydi:</b> Katakchani bosganingizda holat avtomatik aylanadi va saqlanadi:</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; color: #34d399; font-weight: 700;">
+                <span class="matrix-cell-badge badge-plus" style="width: 20px; height: 20px; font-size: 12px;">+</span> Keldi
+            </span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; color: #fbbf24; font-weight: 700;">
+                <span class="matrix-cell-badge badge-excused" style="width: 20px; height: 20px; font-size: 10px;">-S</span> Sababli (qayta hisoblanadi)
+            </span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; color: #fb7185; font-weight: 700;">
+                <span class="matrix-cell-badge badge-unexcused" style="width: 20px; height: 20px; font-size: 10px;">-Sb</span> Sababsiz
+            </span>
+        </div>
+        <div style="color: var(--text-dim); font-size: 11px;">
+            Guruh: <strong style="color: white;">{{ selected_group.name|default:"Tanlanmagan" }}</strong>
+        </div>
+    </div>
+
+    <!-- Matrix Table Container -->
+    <div class="glass-card" style="padding: 0; overflow: hidden;">
+        <div class="matrix-scroll-wrapper" style="overflow-x: auto; max-width: 100%;">
+            <table class="matrix-table" style="width: 100%; border-collapse: separate; border-spacing: 0; min-width: 1100px;">
+                <thead>
+                    <tr>
+                        <th class="matrix-sticky-col-1" style="width: 44px; text-align: center;">№</th>
+                        <th class="matrix-sticky-col-2" style="min-width: 200px; text-align: left;">Bola F.I.SH</th>
+                        
+                        <!-- Days of Month Header -->
+                        {% for d in days %}
+                        <th class="matrix-day-header {% if d.is_weekend %}weekend-col{% endif %} {% if d.is_today %}today-col{% endif %}" style="min-width: 34px; max-width: 38px; text-align: center; padding: 8px 2px;">
+                            <div style="font-size: 9px; color: var(--text-dim); text-transform: uppercase;">{{ d.weekday_name }}</div>
+                            <div style="font-size: 13px; font-weight: 800; font-family: 'Outfit', sans-serif; color: {% if d.is_today %}#38bdf8{% elif d.is_weekend %}#f43f5e{% else %}white{% endif %};">
+                                {{ d.day }}
+                            </div>
+                        </th>
+                        {% endfor %}
+
+                        <!-- Totals Header -->
+                        <th style="min-width: 50px; text-align: center; background: rgba(52, 211, 153, 0.08); color: #34d399; font-size: 12px;" title="Jami kelgan kunlar soni">
+                            Keldi (+)
+                        </th>
+                        <th style="min-width: 50px; text-align: center; background: rgba(251, 191, 36, 0.08); color: #fbbf24; font-size: 12px;" title="Sababli qoldirilgan kunlar">
+                            Sababli (-S)
+                        </th>
+                        <th style="min-width: 50px; text-align: center; background: rgba(244, 63, 94, 0.08); color: #fb7185; font-size: 12px;" title="Sababsiz qoldirilgan kunlar">
+                            Sababsiz (-Sb)
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in matrix_rows %}
+                    <tr class="matrix-row" id="row_child_{{ row.child.id }}">
+                        <td class="matrix-sticky-col-1" style="text-align: center; color: var(--text-dim); font-size: 12px; font-weight: 600;">
+                            {{ forloop.counter }}
+                        </td>
+                        <td class="matrix-sticky-col-2" style="padding: 10px 14px;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.3); display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                                    {% if row.child.photo %}
+                                    <img src="{{ row.child.photo.url }}" alt="" style="width: 100%; height: 100%; object-fit: cover;">
+                                    {% else %}
+                                    <span style="font-weight: 700; font-size: 12px; color: #a5b4fc;">{{ row.child.first_name|slice:":1" }}</span>
+                                    {% endif %}
+                                </div>
+                                <div style="overflow: hidden;">
+                                    <a href="{% url 'child_detail' row.child.id %}" style="font-weight: 700; color: white; text-decoration: none; font-size: 13px; display: block; white-space: nowrap; text-overflow: ellipsis;">
+                                        {{ row.child.full_name }}
+                                    </a>
+                                    <div style="font-size: 11px; color: var(--text-dim); display: flex; gap: 6px;">
+                                        <span>{{ row.child.parent_phone }}</span>
+                                        {% if row.child.medical_notes %}
+                                        <span title="{{ row.child.medical_notes }}" style="color: #fca5a5;">⚠️</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+
+                        <!-- Cells for each day of the month -->
+                        {% for cell in row.cells %}
+                        <td class="matrix-cell {% if cell.is_weekend %}weekend-cell{% endif %} {% if cell.is_today %}today-cell{% endif %}"
+                            id="cell_{{ row.child.id }}_{{ cell.day }}"
+                            onclick="toggleChildAttendance({{ row.child.id }}, '{{ cell.date_str }}', {{ cell.day }})"
+                            title="{{ cell.day }}-{{ month_name }}: {{ cell.status|default:'Belgilanmagan' }} (Bosib holatni o'zgartiring)">
+                            
+                            <span class="matrix-cell-badge {{ cell.badge_class }}" id="badge_{{ row.child.id }}_{{ cell.day }}">
+                                {{ cell.symbol }}
+                            </span>
+                        </td>
+                        {% endfor %}
+
+                        <!-- Child Row Totals -->
+                        <td style="text-align: center; font-weight: 800; font-size: 13px; color: #34d399; background: rgba(52, 211, 153, 0.04);" id="count_present_{{ row.child.id }}">
+                            {{ row.present_count }}
+                        </td>
+                        <td style="text-align: center; font-weight: 800; font-size: 13px; color: #fbbf24; background: rgba(251, 191, 36, 0.04);" id="count_excused_{{ row.child.id }}">
+                            {{ row.excused_count }}
+                        </td>
+                        <td style="text-align: center; font-weight: 800; font-size: 13px; color: #fb7185; background: rgba(244, 63, 94, 0.04);" id="count_unexcused_{{ row.child.id }}">
+                            {{ row.unexcused_count }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="40" style="text-align: center; padding: 48px; color: var(--text-dim); font-size: 14px;">
+                            <i data-lucide="info" style="width: 24px; height: 24px; display: block; margin: 0 auto 10px; color: var(--text-muted);"></i>
+                            Tanlangan guruhda faol bolalar mavjud emas yoki guruh tanlanmagan.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Matrix Table Styling */
+.matrix-table {
+    font-size: 12px;
+}
+.matrix-table th {
+    background: rgba(15, 23, 42, 0.95);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+.matrix-table td {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* Sticky first two columns */
+.matrix-sticky-col-1 {
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    background: rgba(15, 23, 42, 0.96) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+.matrix-sticky-col-2 {
+    position: sticky;
+    left: 44px;
+    z-index: 10;
+    background: rgba(15, 23, 42, 0.96) !important;
+    border-right: 2px solid rgba(99, 102, 241, 0.3) !important;
+    box-shadow: 4px 0 10px rgba(0, 0, 0, 0.3);
+}
+
+.matrix-row:hover td {
+    background: rgba(255, 255, 255, 0.03);
+}
+.matrix-row:hover .matrix-sticky-col-1,
+.matrix-row:hover .matrix-sticky-col-2 {
+    background: rgba(30, 41, 59, 0.98) !important;
+}
+
+/* Day Column Highlighting */
+.weekend-col {
+    background: rgba(244, 63, 94, 0.06) !important;
+}
+.weekend-cell {
+    background: rgba(244, 63, 94, 0.02);
+}
+.today-col {
+    background: rgba(56, 189, 248, 0.12) !important;
+    border-left: 1px solid rgba(56, 189, 248, 0.4) !important;
+    border-right: 1px solid rgba(56, 189, 248, 0.4) !important;
+}
+.today-cell {
+    background: rgba(56, 189, 248, 0.05) !important;
+    border-left: 1px solid rgba(56, 189, 248, 0.3) !important;
+    border-right: 1px solid rgba(56, 189, 248, 0.3) !important;
+}
+
+/* Interactive Cell Badges (+ and -) */
+.matrix-cell {
+    text-align: center;
+    padding: 6px 2px;
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.1s, background 0.15s;
+}
+.matrix-cell:hover {
+    background: rgba(99, 102, 241, 0.18) !important;
+    transform: scale(1.08);
+    z-index: 5;
+    position: relative;
+    border-radius: 4px;
+}
+
+.matrix-cell-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    font-family: 'Outfit', sans-serif;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.badge-plus {
+    background: rgba(16, 185, 129, 0.25);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.6);
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.25);
+}
+
+.badge-excused {
+    background: rgba(245, 158, 11, 0.22);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.6);
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.25);
+    font-size: 9px !important;
+}
+
+.badge-unexcused {
+    background: rgba(244, 63, 94, 0.22);
+    color: #fb7185;
+    border: 1px solid rgba(244, 63, 94, 0.6);
+    box-shadow: 0 0 8px rgba(244, 63, 94, 0.25);
+    font-size: 9px !important;
+}
+
+.badge-empty {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.15);
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+    font-size: 14px;
+}
+.badge-empty:hover {
+    color: #34d399;
+    border-color: rgba(52, 211, 153, 0.4);
+}
+
+.cell-updating {
+    animation: pulseCell 0.5s infinite;
+}
+
+@keyframes pulseCell {
+    0% { opacity: 0.5; transform: scale(0.9); }
+    50% { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 0.5; transform: scale(0.9); }
+}
+</style>
+
+<script>
+// Toggle child attendance via AJAX on single cell click
+async function toggleChildAttendance(childId, dateStr, dayNum) {
+    const badge = document.getElementById(`badge_${childId}_${dayNum}`);
+    if (!badge) return;
+
+    badge.classList.add('cell-updating');
+
+    try {
+        const response = await fetch("{% url 'child_attendance_toggle_ajax' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                child_id: childId,
+                date: dateStr
+            })
+        });
+
+        const data = await response.json();
+        badge.classList.remove('cell-updating');
+
+        if (data.success) {
+            // Update badge appearance
+            badge.className = `matrix-cell-badge ${data.badge_class}`;
+            badge.innerText = data.symbol;
+
+            // Recalculate row totals dynamically
+            recalcChildRow(childId);
+        } else {
+            alert("Xatolik: " + (data.error || "Saqlashda xatolik"));
+        }
+    } catch (err) {
+        badge.classList.remove('cell-updating');
+        console.error("Attendance toggle error:", err);
+    }
+}
+
+// Recalculate counts in child row
+function recalcChildRow(childId) {
+    const row = document.getElementById(`row_child_${childId}`);
+    if (!row) return;
+
+    const badges = row.querySelectorAll('.matrix-cell-badge');
+    let present = 0;
+    let excused = 0;
+    let unexcused = 0;
+
+    badges.forEach(b => {
+        if (b.classList.contains('badge-plus')) present++;
+        else if (b.classList.contains('badge-excused')) excused++;
+        else if (b.classList.contains('badge-unexcused')) unexcused++;
+    });
+
+    const elP = document.getElementById(`count_present_${childId}`);
+    const elE = document.getElementById(`count_excused_${childId}`);
+    const elU = document.getElementById(`count_unexcused_${childId}`);
+
+    if (elP) elP.innerText = present;
+    if (elE) elE.innerText = excused;
+    if (elU) elU.innerText = unexcused;
+}
+</script>
+{% endblock %}

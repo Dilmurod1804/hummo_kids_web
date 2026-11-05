@@ -1,0 +1,182 @@
+{% extends 'base.html' %}
+
+{% block title %}Tizim Tarixi (Audit Log) — Humo Kids{% endblock %}
+
+{% block content %}
+<div style="max-width: 1200px; margin: 0 auto;">
+    
+    <!-- Top Header -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <h2 style="font-family: 'Outfit', sans-serif; font-size: 26px; font-weight: 800; color: white; margin: 0;">
+                    Tizim Tarixi (Audit Log / History)
+                </h2>
+                <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); font-size: 12px; font-weight: 800;">
+                    To'liq Audit Jurnali
+                </span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+                Face ID keldi-ketdi vaqtlari, bolalar davomati, ushlab qolingan shtraflar, berilgan bonuslar va qabul qilingan to'lovlar tarixi
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <button onclick="window.location.reload()" class="btn-glass btn-secondary">
+                <i data-lucide="refresh-cw" style="width: 16px; height: 16px;"></i>
+                <span>Yangilash</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="glass-card" style="padding: 18px 20px; margin-bottom: 24px;">
+        <form method="GET" style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+            <!-- Category Filter -->
+            <div style="min-width: 200px;">
+                <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Harakat Kategoriyasi:</label>
+                <select name="category" class="glass-select" onchange="this.form.submit()" style="padding: 8px 12px;">
+                    <option value="all" {% if category_filter == 'all' %}selected{% endif %}>Barcha Harakatlar</option>
+                    <option value="FACE_ID" {% if category_filter == 'FACE_ID' %}selected{% endif %}>Face ID Keldi-Ketdi</option>
+                    <option value="CHILD_ATTENDANCE" {% if category_filter == 'CHILD_ATTENDANCE' %}selected{% endif %}>Bolalar Davomati</option>
+                    <option value="PENALTY" {% if category_filter == 'PENALTY' %}selected{% endif %}>Ushlab qolingan Shtraf</option>
+                    <option value="BONUS" {% if category_filter == 'BONUS' %}selected{% endif %}>Berilgan Bonus</option>
+                    <option value="PAYMENT" {% if category_filter == 'PAYMENT' %}selected{% endif %}>Qabul qilingan To'lov</option>
+                    <option value="SYSTEM" {% if category_filter == 'SYSTEM' %}selected{% endif %}>Tizim Boshqaruvi</option>
+                </select>
+            </div>
+
+            <!-- Date Filter -->
+            <div style="min-width: 160px;">
+                <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Sana:</label>
+                <input type="date" name="date" value="{{ date_filter }}" class="glass-input" onchange="this.form.submit()" style="padding: 8px 12px;">
+            </div>
+
+            <!-- Search Filter -->
+            <div style="flex: 1; min-width: 220px;">
+                <label class="form-label" style="font-size: 11px; margin-bottom: 4px;">Qidiruv (Xodim, Bola, Izoh):</label>
+                <input type="text" name="q" value="{{ query }}" placeholder="Ism yoki kalit so'z bo'yicha qidirish..." class="glass-input" style="padding: 8px 12px;">
+            </div>
+
+            <div style="margin-top: 18px; display: flex; gap: 8px;">
+                <button type="submit" class="btn-glass btn-primary" style="padding: 8px 16px; font-size: 13px;">
+                    Filtrlash
+                </button>
+                {% if category_filter != 'all' or date_filter or query %}
+                <a href="{% url 'audit_logs' %}" class="btn-glass btn-secondary" style="padding: 8px 14px; font-size: 13px;">
+                    Tozalash
+                </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <!-- Category Badges Bar -->
+    <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+        <a href="?category=all" class="btn-glass {% if category_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %}" style="padding: 6px 14px; font-size: 12px;">
+            Barchasi
+        </a>
+        <a href="?category=FACE_ID" class="btn-glass {% if category_filter == 'FACE_ID' %}btn-primary{% else %}btn-secondary{% endif %}" style="padding: 6px 14px; font-size: 12px;">
+            <i data-lucide="scan-face" style="width: 14px; height: 14px; display: inline-block;"></i> Face ID
+        </a>
+        <a href="?category=CHILD_ATTENDANCE" class="btn-glass {% if category_filter == 'CHILD_ATTENDANCE' %}btn-primary{% else %}btn-secondary{% endif %}" style="padding: 6px 14px; font-size: 12px;">
+            <i data-lucide="calendar-check" style="width: 14px; height: 14px; display: inline-block;"></i> Bolalar Davomati
+        </a>
+        <a href="?category=PENALTY" class="btn-glass {% if category_filter == 'PENALTY' %}btn-rose{% else %}btn-secondary{% endif %}" style="padding: 6px 14px; font-size: 12px;">
+            <i data-lucide="clock-alert" style="width: 14px; height: 14px; display: inline-block;"></i> Shtraflar
+        </a>
+        <a href="?category=BONUS" class="btn-glass {% if category_filter == 'BONUS' %}btn-emerald{% else %}btn-secondary{% endif %}" style="padding: 6px 14px; font-size: 12px;">
+            <i data-lucide="award" style="width: 14px; height: 14px; display: inline-block;"></i> Bonuslar
+        </a>
+        <a href="?category=PAYMENT" class="btn-glass {% if category_filter == 'PAYMENT' %}btn-primary{% else %}btn-secondary{% endif %}" style="padding: 6px 14px; font-size: 12px;">
+            <i data-lucide="credit-card" style="width: 14px; height: 14px; display: inline-block;"></i> To'lovlar
+        </a>
+    </div>
+
+    <!-- Logs Table -->
+    <div class="glass-card">
+        <div class="glass-card-header">
+            <h3 class="glass-card-title">
+                <i data-lucide="history" style="color: #f59e0b; width: 20px; height: 20px;"></i>
+                <span>Tizim Harakatlari Tarixi (So'nggi {{ logs.count }} ta qayd)</span>
+            </h3>
+        </div>
+
+        <div class="glass-table-wrapper">
+            <table class="glass-table">
+                <thead>
+                    <tr>
+                        <th style="width: 160px;">Vaqt (Sana va Soat)</th>
+                        <th>Kategoriya</th>
+                        <th>Bajaruvchi / Xodim</th>
+                        <th>Harakat</th>
+                        <th>Batafsil Tafsilotlar</th>
+                        <th style="width: 120px;">IP Manzil</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td>
+                            <strong style="color: white; font-size: 13px;">{{ log.created_at|date:"d.m.Y" }}</strong>
+                            <div style="font-size: 12px; color: #38bdf8;">{{ log.created_at|time:"H:i:s" }}</div>
+                        </td>
+                        <td>
+                            {% if log.category == 'FACE_ID' %}
+                                <span class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4);">
+                                    Face ID
+                                </span>
+                            {% elif log.category == 'CHILD_ATTENDANCE' %}
+                                <span class="badge" style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4);">
+                                    Davomat
+                                </span>
+                            {% elif log.category == 'PENALTY' %}
+                                <span class="badge" style="background: rgba(251, 113, 133, 0.2); color: #fb7185; border: 1px solid rgba(251, 113, 133, 0.4);">
+                                    Shtraf
+                                </span>
+                            {% elif log.category == 'BONUS' %}
+                                <span class="badge" style="background: rgba(52, 211, 153, 0.2); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.4);">
+                                    Bonus
+                                </span>
+                            {% elif log.category == 'PAYMENT' %}
+                                <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4);">
+                                    To'lov
+                                </span>
+                            {% else %}
+                                <span class="badge" style="background: rgba(255, 255, 255, 0.1); color: #cbd5e1;">
+                                    Tizim
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.user %}
+                                <strong style="color: white; font-size: 13px;">{{ log.user.get_full_name|default:log.user.username }}</strong>
+                                <div style="font-size: 11px; color: var(--text-dim);">{{ log.user.position_display }}</div>
+                            {% else %}
+                                <span style="color: var(--text-dim);">Tizim (Avtomatik)</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <strong style="color: #cbd5e1;">{{ log.action }}</strong>
+                        </td>
+                        <td>
+                            <span style="font-size: 13px; color: #e2e8f0; line-height: 1.4;">{{ log.description }}</span>
+                        </td>
+                        <td>
+                            <span style="font-size: 11px; color: var(--text-dim); font-family: monospace;">{{ log.ip_address|default:"127.0.0.1" }}</span>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--text-dim); padding: 40px;">
+                            Hozircha audit yozuvlari topilmadi.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
