@@ -406,6 +406,35 @@ class Child(models.Model):
         return f"{self.first_name} {self.last_name}"
 
     @property
+    def active_annual_payment(self):
+        """Bolaning so'nggi 365 kun ichida amalga oshirilgan yillik to'lovi"""
+        from datetime import timedelta
+        cutoff = timezone.now() - timedelta(days=365)
+        from django.apps import apps
+        from django.db.models import Q
+        Payment = apps.get_model('kindergarten', 'Payment')
+        return Payment.objects.filter(
+            invoice__child=self,
+            paid_at__gte=cutoff
+        ).filter(
+            Q(payment_method='ANNUAL') | Q(reason__icontains="[YILLIK TO'LOV]") | Q(notes__icontains="[YILLIK TO'LOV]")
+        ).order_by('-paid_at').first()
+
+    @property
+    def is_annual_paid(self):
+        """Bola uchun 1 yillik to'lov amal qilyaptimi"""
+        return self.active_annual_payment is not None
+
+    @property
+    def annual_payment_valid_until(self):
+        """Yillik to'lovning amal qilish tugash sanasi"""
+        from datetime import timedelta
+        ap = self.active_annual_payment
+        if ap and ap.paid_at:
+            return (ap.paid_at + timedelta(days=365)).date()
+        return None
+
+    @property
     def age(self):
         today = timezone.now().date()
         return today.year - self.birth_date.year - ((today.month, today.day) < (self.birth_date.month, self.birth_date.day))
@@ -551,13 +580,13 @@ class MonthlyInvoice(models.Model):
     child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='invoices')
     month = models.PositiveSmallIntegerField(help_text="1 to 12")
     year = models.PositiveIntegerField(default=2026)
-    base_fee = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('2500000.00'))
-    discount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), help_text="Chegirma (skidka) summasi")
-    meal_rate = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('25000.00'))
+    base_fee = models.DecimalField(max_digits=20, decimal_places=2, default=Decimal('2500000.00'))
+    discount = models.DecimalField(max_digits=20, decimal_places=2, default=Decimal('0.00'), help_text="Chegirma (skidka) summasi")
+    meal_rate = models.DecimalField(max_digits=20, decimal_places=2, default=Decimal('25000.00'))
     excused_days_count = models.PositiveIntegerField(default=0, help_text="Excused absences from previous month")
-    recalculation_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'), help_text="excused_days * meal_rate deducted")
-    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('2500000.00'))
-    paid_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+    recalculation_amount = models.DecimalField(max_digits=20, decimal_places=2, default=Decimal('0.00'), help_text="excused_days * meal_rate deducted")
+    total_amount = models.DecimalField(max_digits=20, decimal_places=2, default=Decimal('2500000.00'))
+    paid_amount = models.DecimalField(max_digits=20, decimal_places=2, default=Decimal('0.00'))
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='UNPAID')
     due_date = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True, null=True)
@@ -607,10 +636,11 @@ class Payment(models.Model):
         ('CASH', 'Naqd pul'),
         ('MARTA', 'Marta orqali'),
         ('BANK_TRANSFER', 'Bank o‘tkazmasi'),
+        ('ANNUAL', 'Yillik to‘lov'),
     )
     invoice = models.ForeignKey(MonthlyInvoice, on_delete=models.CASCADE, related_name='payments', null=True, blank=True)
     temporary_child = models.ForeignKey('TemporaryChild', on_delete=models.SET_NULL, null=True, blank=True, related_name='payments', verbose_name="Vaqtinchalik bola")
-    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount = models.DecimalField(max_digits=20, decimal_places=2)
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='CARD')
     transaction_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="Chek / Kvitansiya raqami")
     paid_at = models.DateTimeField(default=timezone.now)

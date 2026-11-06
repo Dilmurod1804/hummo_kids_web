@@ -477,6 +477,8 @@
                         <td style="padding: 7px 6px; text-align: center; white-space: nowrap;">
                             {% if inv.child.is_mahalla %}
                             <span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.4); font-size: 10px; padding: 2px 5px; font-weight: 700;">🏛️ Mahalla</span>
+                            {% elif inv.child.is_annual_paid %}
+                            <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); font-size: 10px; padding: 2px 5px; font-weight: 700;" title="Yillik to'lov: {{ inv.child.annual_payment_valid_until|date:'d.m.Y' }} gacha amal qiladi">📅 Yillik</span>
                             {% elif inv.status == 'PAID' %}
                             <span class="badge badge-paid" style="font-size: 10px; padding: 2px 5px;">To'langan</span>
                             {% elif inv.status == 'PARTIAL' %}
@@ -617,6 +619,26 @@
             <div id="liveRemainingBox" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 14px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
                 <span style="color: var(--text-dim);">To'lovdan keyingi qoldiq:</span>
                 <strong id="liveRemainingVal" style="font-size: 14px; color: #e2e8f0;">0 UZS</strong>
+            </div>
+
+            <!-- To'lov Davri / Tarif Turi (Oylik yoki Yillik) -->
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>To'lov Davri (Turi) *</span>
+                    <span id="periodBadgeInfo" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 11px;">Joriy oy badali</span>
+                </label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <button type="button" id="btnPeriodMonthly" onclick="selectPayPeriod('MONTHLY')" class="btn-glass" style="padding: 10px 14px; justify-content: center; font-size: 13px; font-weight: 700; background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #38bdf8; border-radius: 8px;">
+                        📅 Oylik to'lov
+                    </button>
+                    <button type="button" id="btnPeriodAnnual" onclick="selectPayPeriod('ANNUAL')" class="btn-glass" style="padding: 10px 14px; justify-content: center; font-size: 13px; font-weight: 700; background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.12); color: var(--text-dim); border-radius: 8px;">
+                        🌟 Yillik to'lov (1 yilga)
+                    </button>
+                </div>
+                <input type="hidden" id="payPeriodType" value="MONTHLY">
+                <p id="annualHelpText" style="font-size: 11px; color: #fbbf24; margin-top: 6px; display: none;">
+                    ℹ️ Yillik to'lov tanlanganda, bola uchun 1 yil davomida yangi oylik to'lovlar talab qilinmaydi va badali to'liq yopiladi.
+                </p>
             </div>
 
             <!-- Payment Method Selection -->
@@ -893,8 +915,64 @@
         document.getElementById('payChildName').innerText = childName;
         document.getElementById('payCurrentDebt').innerText = currentModalDebt.toLocaleString() + ' UZS';
         document.getElementById('payAmount').value = currentModalDebt > 0 ? currentModalDebt : '';
+        selectPayPeriod('MONTHLY');
         updateLiveDebtPreview();
         document.getElementById('modalPayment').style.display = 'flex';
+    }
+
+    function selectPayPeriod(type) {
+        const input = document.getElementById('payPeriodType');
+        const btnM = document.getElementById('btnPeriodMonthly');
+        const btnA = document.getElementById('btnPeriodAnnual');
+        const badge = document.getElementById('periodBadgeInfo');
+        const help = document.getElementById('annualHelpText');
+
+        if (!input || !btnM || !btnA) return;
+        input.value = type;
+
+        if (type === 'ANNUAL') {
+            btnA.style.background = 'rgba(245, 158, 11, 0.2)';
+            btnA.style.borderColor = '#f59e0b';
+            btnA.style.color = '#fbbf24';
+
+            btnM.style.background = 'rgba(255, 255, 255, 0.04)';
+            btnM.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+            btnM.style.color = 'var(--text-dim)';
+
+            if (badge) {
+                badge.textContent = "1 yillik to'liq badal";
+                badge.style.background = 'rgba(245, 158, 11, 0.2)';
+                badge.style.color = '#fbbf24';
+            }
+            if (help) help.style.display = 'block';
+
+            const amtInput = document.getElementById('payAmount');
+            if (amtInput && currentModalDebt > 0) {
+                amtInput.value = currentModalDebt * 12;
+                updateLiveDebtPreview();
+            }
+        } else {
+            btnM.style.background = 'rgba(56, 189, 248, 0.2)';
+            btnM.style.borderColor = '#38bdf8';
+            btnM.style.color = '#38bdf8';
+
+            btnA.style.background = 'rgba(255, 255, 255, 0.04)';
+            btnA.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+            btnA.style.color = 'var(--text-dim)';
+
+            if (badge) {
+                badge.textContent = "Joriy oy badali";
+                badge.style.background = 'rgba(56, 189, 248, 0.15)';
+                badge.style.color = '#38bdf8';
+            }
+            if (help) help.style.display = 'none';
+
+            const amtInput = document.getElementById('payAmount');
+            if (amtInput) {
+                amtInput.value = currentModalDebt > 0 ? currentModalDebt : '';
+                updateLiveDebtPreview();
+            }
+        }
     }
 
     function setQuickAmount(factor) {
@@ -936,6 +1014,7 @@
         const invoiceId = document.getElementById('payInvoiceId').value;
         const amount = document.getElementById('payAmount').value;
         const paymentMethod = document.getElementById('payMethod').value;
+        const periodType = document.getElementById('payPeriodType')?.value || 'MONTHLY';
         const notes = document.getElementById('payNotes').value;
         const reason = document.getElementById('payReason')?.value || '';
         const btn = document.getElementById('btnSubmitPay');
@@ -949,7 +1028,7 @@
         btn.innerText = "Saqlanmoqda...";
 
         try {
-            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
             const res = await fetch("{% url 'record_payment_api' %}", {
                 method: "POST",
                 headers: {
@@ -957,21 +1036,35 @@
                     "X-CSRFToken": csrfToken
                 },
                 body: JSON.stringify({
-                    invoice_id: invoiceId,
+                    invoice: invoiceId,
                     amount: amount,
                     payment_method: paymentMethod,
+                    payment_period: periodType,
+                    is_annual: (periodType === 'ANNUAL'),
                     notes: notes,
                     reason: reason
                 })
             });
-            const data = await res.json();
-            if (data.success) {
+
+            const data = await res.json().catch(() => null);
+
+            if (!res.ok) {
+                const errMsg = (data && data.message) ? data.message : `Server xatoligi (${res.status}: ${res.statusText})`;
+                console.error("To'lovni qayd etishda xatolik:", res.status, data);
+                alert("Xatolik (" + res.status + "): " + errMsg);
+                return;
+            }
+
+            if (data && data.success) {
                 alert("✓ " + data.message);
                 window.location.reload();
             } else {
-                alert("Xatolik: " + data.message);
+                const msg = (data && data.message) ? data.message : "Noma'lum xatolik yuz berdi.";
+                console.warn("To'lov qabul qilinmadi:", data);
+                alert("Xatolik: " + msg);
             }
         } catch (err) {
+            console.error("To'lov so'rovida aloqa xatoligi:", err);
             alert("Aloqa xatosi: " + err.message);
         } finally {
             btn.disabled = false;

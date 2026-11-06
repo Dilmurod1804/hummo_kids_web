@@ -147,13 +147,8 @@
                     <span style="color: #f43f5e;">Chiqim: -{{ total_expenses|floatformat:0 }}</span>
                 </div>
             </div>
-            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
-                <div class="stat-icon-wrapper icon-blue" style="box-shadow: 0 0 15px rgba(96, 165, 250, 0.25);">
-                    <i data-lucide="credit-card" style="width: 22px; height: 22px;"></i>
-                </div>
-                <span class="badge" style="background: rgba(96, 165, 250, 0.15); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.35); font-size: 10px; padding: 2px 7px;">
-                    Oylik Sof Kassa
-                </span>
+            <div class="stat-icon-wrapper icon-blue" style="box-shadow: 0 0 15px rgba(96, 165, 250, 0.25);">
+                <i data-lucide="credit-card" style="width: 22px; height: 22px;"></i>
             </div>
         </div>
 
@@ -618,6 +613,8 @@
                     <td>
                         {% if inv.child.is_mahalla %}
                         <span class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.4); font-weight: 700;">🏛️ Mahalla (Ozod)</span>
+                        {% elif inv.child.is_annual_paid %}
+                        <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); font-weight: 700;" title="Yillik to'lov: {{ inv.child.annual_payment_valid_until|date:'d.m.Y' }} gacha amal qiladi">📅 Yillik to'lov</span>
                         {% elif inv.status == 'PAID' %}
                         <span class="badge badge-paid">To'langan</span>
                         {% elif inv.status == 'PARTIAL' %}
@@ -915,7 +912,27 @@
                 <strong id="liveRemainingVal" style="font-size: 14px; color: #e2e8f0;">0 UZS</strong>
             </div>
 
-            <!-- To'lov usullari tanlash -->
+            <!-- To'lov Davri / Tarif Turi (Oylik yoki Yillik) -->
+            <div class="form-group" style="margin-bottom: 16px;">
+                <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>To'lov Davri (Turi) *</span>
+                    <span id="periodBadgeInfo" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 11px;">Joriy oy badali</span>
+                </label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <button type="button" id="btnPeriodMonthly" onclick="selectPayPeriod('MONTHLY')" class="btn-glass" style="padding: 10px 14px; justify-content: center; font-size: 13px; font-weight: 700; background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #38bdf8; border-radius: 8px;">
+                        📅 Oylik to'lov
+                    </button>
+                    <button type="button" id="btnPeriodAnnual" onclick="selectPayPeriod('ANNUAL')" class="btn-glass" style="padding: 10px 14px; justify-content: center; font-size: 13px; font-weight: 700; background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.12); color: var(--text-dim); border-radius: 8px;">
+                        🌟 Yillik to'lov (1 yilga)
+                    </button>
+                </div>
+                <input type="hidden" id="payPeriodType" value="MONTHLY">
+                <p id="annualHelpText" style="font-size: 11px; color: #fbbf24; margin-top: 6px; display: none;">
+                    ℹ️ Yillik to'lov tanlanganda, bola uchun 1 yil davomida yangi oylik to'lovlar talab qilinmaydi va oylik badallari to'liq yopiladi.
+                </p>
+            </div>
+
+            <!-- To'lov usullari tanlash (Faqat to'lov shakli) -->
             <div class="form-group" style="margin-bottom: 16px;">
                 <label class="form-label">To'lov Usuli *</label>
                 <select id="payMethod" class="glass-select" style="width: 100%;" onchange="toggleReasonField()">
@@ -1325,8 +1342,64 @@ function openPaymentModal(invoiceId, childName, remainingDebt) {
     document.getElementById('payChildName').innerText = childName;
     document.getElementById('payRemainingDebt').innerText = currentModalDebt.toLocaleString() + " UZS";
     document.getElementById('payAmount').value = currentModalDebt > 0 ? currentModalDebt : '';
+    selectPayPeriod('MONTHLY');
     updateLiveDebtPreview();
     document.getElementById('modalPayment').style.display = 'flex';
+}
+
+function selectPayPeriod(type) {
+    const input = document.getElementById('payPeriodType');
+    const btnM = document.getElementById('btnPeriodMonthly');
+    const btnA = document.getElementById('btnPeriodAnnual');
+    const badge = document.getElementById('periodBadgeInfo');
+    const help = document.getElementById('annualHelpText');
+
+    if (!input || !btnM || !btnA) return;
+    input.value = type;
+
+    if (type === 'ANNUAL') {
+        btnA.style.background = 'rgba(245, 158, 11, 0.2)';
+        btnA.style.borderColor = '#f59e0b';
+        btnA.style.color = '#fbbf24';
+
+        btnM.style.background = 'rgba(255, 255, 255, 0.04)';
+        btnM.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+        btnM.style.color = 'var(--text-dim)';
+
+        if (badge) {
+            badge.textContent = "1 yillik to'liq badal";
+            badge.style.background = 'rgba(245, 158, 11, 0.2)';
+            badge.style.color = '#fbbf24';
+        }
+        if (help) help.style.display = 'block';
+
+        const amtInput = document.getElementById('payAmount');
+        if (amtInput && currentModalDebt > 0) {
+            amtInput.value = currentModalDebt * 12;
+            updateLiveDebtPreview();
+        }
+    } else {
+        btnM.style.background = 'rgba(56, 189, 248, 0.2)';
+        btnM.style.borderColor = '#38bdf8';
+        btnM.style.color = '#38bdf8';
+
+        btnA.style.background = 'rgba(255, 255, 255, 0.04)';
+        btnA.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+        btnA.style.color = 'var(--text-dim)';
+
+        if (badge) {
+            badge.textContent = "Joriy oy badali";
+            badge.style.background = 'rgba(56, 189, 248, 0.15)';
+            badge.style.color = '#38bdf8';
+        }
+        if (help) help.style.display = 'none';
+
+        const amtInput = document.getElementById('payAmount');
+        if (amtInput) {
+            amtInput.value = currentModalDebt > 0 ? currentModalDebt : '';
+            updateLiveDebtPreview();
+        }
+    }
 }
 
 function setQuickAmount(factor) {
@@ -1369,35 +1442,58 @@ async function submitPayment(e) {
     const invoiceId = document.getElementById('payInvoiceId').value;
     const amount = document.getElementById('payAmount').value;
     const method = document.getElementById('payMethod').value;
-    const transId = document.getElementById('payTransId').value;
-    const notes = document.getElementById('payNotes').value;
+    const periodType = document.getElementById('payPeriodType')?.value || 'MONTHLY';
+    const transId = document.getElementById('payTransId')?.value || '';
+    const notes = document.getElementById('payNotes')?.value || '';
     const reason = document.getElementById('payReason')?.value || '';
-    const csrfToken = document.querySelector('#formPayment [name=csrfmiddlewaretoken]')?.value || '';
+    const csrfToken = document.querySelector('#formPayment [name=csrfmiddlewaretoken]')?.value || 
+                      document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+
+    if (!amount || parseFloat(amount) <= 0) {
+        alert("Iltimos, to'g'ri to'lov summasini kiriting!");
+        return;
+    }
 
     try {
+        const payload = {
+            invoice: invoiceId,
+            amount: amount,
+            payment_method: method,
+            payment_period: periodType,
+            is_annual: (periodType === 'ANNUAL'),
+            transaction_id: transId,
+            notes: notes,
+            reason: reason
+        };
+
         const res = await fetch("{% url 'record_payment_api' %}", {
             method: "POST",
             headers: { 
                 "Content-Type": "application/json",
                 "X-CSRFToken": csrfToken
             },
-            body: JSON.stringify({
-                invoice_id: invoiceId,
-                amount: amount,
-                payment_method: method,
-                transaction_id: transId,
-                notes: notes,
-                reason: reason
-            })
+            body: JSON.stringify(payload)
         });
-        const data = await res.json();
-        if (data.success) {
-            alert("\u2713 " + data.message);
+
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok) {
+            const errMsg = (data && data.message) ? data.message : `Server xatoligi (${res.status}: ${res.statusText})`;
+            console.error("To'lovni qayd etishda xatolik:", res.status, data);
+            alert("Xatolik (" + res.status + "): " + errMsg);
+            return;
+        }
+
+        if (data && data.success) {
+            alert("✓ " + data.message);
             window.location.reload();
         } else {
-            alert("Xatolik: " + data.message);
+            const msg = (data && data.message) ? data.message : "Noma'lum xatolik yuz berdi.";
+            console.warn("To'lov qabul qilinmadi:", data);
+            alert("Xatolik: " + msg);
         }
     } catch (err) {
+        console.error("To'lov so'rovida aloqa xatoligi:", err);
         alert("Aloqa xatoligi: " + err.message);
     }
 }
@@ -1771,6 +1867,7 @@ const METHOD_LABELS = {
     'CLICK_PAYME':   { label: 'Payme / Click Online',   emoji: '⚡', color: '#c084fc' },
     'BANK_TRANSFER': { label: "Bank O'tkazmasi",        emoji: '🏦', color: '#38bdf8' },
     'MARTA':         { label: 'Marta orqali',           emoji: '🚇', color: '#ec4899' },
+    'ANNUAL':        { label: "Yillik to'lov",          emoji: '📅', color: '#fbbf24' },
 };
 
 const PERIOD_LABELS = {
