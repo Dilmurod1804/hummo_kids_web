@@ -340,6 +340,11 @@
                 <div style="background: rgba(192, 132, 252, 0.12); border: 1px solid rgba(192, 132, 252, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #c084fc;">
                     ⚡ Payme: <b>{{ active_group_stats.paid_payme|floatformat:0 }}</b>
                 </div>
+                {% if active_group_stats.paid_marta > 0 %}
+                <div style="background: rgba(236, 72, 153, 0.12); border: 1px solid rgba(236, 72, 153, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #ec4899;">
+                    🚇 Marta: <b>{{ active_group_stats.paid_marta|floatformat:0 }}</b>
+                </div>
+                {% endif %}
                 <div style="background: rgba(251, 113, 133, 0.12); border: 1px solid rgba(251, 113, 133, 0.35); border-radius: 8px; padding: 4px 8px; font-size: 11px; color: #fb7185;">
                     Qarzdorlik: <b>{{ active_group_stats.total_debt|floatformat:0 }}</b>
                 </div>

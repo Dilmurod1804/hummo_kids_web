@@ -4010,6 +4010,7 @@ def groups_finance_view(request):
         'paid_card': Decimal('0.00'),
         'paid_terminal': Decimal('0.00'),
         'paid_payme': Decimal('0.00'),
+        'paid_marta': Decimal('0.00'),
     }
     if active_group:
         kg_settings = KindergartenSettings.get_settings()
@@ -4034,6 +4035,7 @@ def groups_finance_view(request):
         g_card = Decimal('0.00')
         g_term = Decimal('0.00')
         g_payme = Decimal('0.00')
+        g_marta = Decimal('0.00')
 
         for child in group_children:
             inv = existing_invoices.get(child.id)
