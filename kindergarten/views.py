@@ -2621,11 +2621,20 @@ def finance_dashboard(request):
     daily_marta = daily_stats['method_totals']['MARTA']
     daily_card_bank_total = daily_total - daily_cash
 
+    # --- Guruhlar bo'yicha Umumiy To'lovlar Hisoboti & Grafik Ma'lumotlari ---
+    # Naqd to'lovlar va guruhlar bo'yicha yagona matematik mantiqni ta'minlash uchun oldin hisoblaymiz
+    groups_fin_data = compute_groups_finance_summary(month, year)
+    grand_totals = groups_fin_data['grand_totals']
+
     # --- 2. Oylik Tushum (Tanlangan oy) ---
     monthly_payments = Payment.objects.filter(paid_at__year=year, paid_at__month=month)
     monthly_stats = compute_payments_breakdown(monthly_payments)
+    # Jadvaldagi 'Naqd' ustuni jami bilan bir xil mantiqda bo'lishi uchun naqd to'lovlar summasini sinxronlaymiz
+    monthly_cash = grand_totals['paid_cash']
+    monthly_stats['method_totals']['CASH'] = monthly_cash
+    if 'json_data' in monthly_stats and 'method_totals' in monthly_stats['json_data']:
+        monthly_stats['json_data']['method_totals']['CASH'] = float(monthly_cash)
     monthly_total = monthly_stats['total_sum']
-    monthly_cash = monthly_stats['method_totals']['CASH']
     monthly_card = monthly_stats['method_totals']['CARD']
     monthly_terminal = monthly_stats['method_totals']['TERMINAL']
     monthly_payme = monthly_stats['method_totals']['CLICK_PAYME']
@@ -2637,7 +2646,11 @@ def finance_dashboard(request):
     kassa_payments = Payment.objects.filter(paid_at__year=year, paid_at__month=month)
     kassa_stats = compute_payments_breakdown(kassa_payments)
     total_kassa = kassa_stats['total_sum']
-    cash_total = kassa_stats['method_totals']['CASH']
+    # Jadvaldagi 'Naqd' ustuni jami bilan bir xil mantiqda (faqat naqd to'lovlar yig'indisiga tayanib)
+    cash_total = grand_totals['paid_cash']
+    kassa_stats['method_totals']['CASH'] = cash_total
+    if 'json_data' in kassa_stats and 'method_totals' in kassa_stats['json_data']:
+        kassa_stats['json_data']['method_totals']['CASH'] = float(cash_total)
     card_total = kassa_stats['method_totals']['CARD']
     terminal_total = kassa_stats['method_totals']['TERMINAL']
     payme_total = kassa_stats['method_totals']['CLICK_PAYME']
@@ -2664,7 +2677,8 @@ def finance_dashboard(request):
     monthly_exp_card = monthly_expenses.filter(payment_method='CARD').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
     monthly_exp_other = monthly_expenses.filter(payment_method='OTHER').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
     monthly_net_balance = monthly_total - monthly_exp_total
-    monthly_net_cash = monthly_cash - monthly_exp_cash
+    # Foydalanuvchi talabi: Sof naqd faqat naqd to'lovlar yig'indisiga tayanadi (jadvaldagi 'Naqd' ustuni jami bilan 100% bir xil)
+    monthly_net_cash = grand_totals['paid_cash']
     monthly_net_card = monthly_card_bank_total - monthly_exp_card
 
     # Tanlangan oy bo'yicha kassa chiqimlari (o'tgan oylar aralashmaydi, yangi oy 0 dan boshlanadi)
@@ -2676,7 +2690,8 @@ def finance_dashboard(request):
 
     # SOF KASSA BALANSI (Tanlangan oy: Tushumlar - Chiqimlar)
     net_total_kassa = total_kassa - total_expenses
-    net_cash_total = cash_total - exp_cash_total
+    # Foydalanuvchi talabi: "Sof Naqd" kassa balansi va jadvaldagi "Naqd" ustunining jami yig'indisi bir xil matematik mantiqda (faqat naqd to'lovlar yig'indisiga tayanib)
+    net_cash_total = grand_totals['paid_cash']
     net_card_total = card_bank_total - exp_card_total
 
     # Oxirgi chiqimlar (Tanlangan oy bo'yicha)
@@ -2691,9 +2706,6 @@ def finance_dashboard(request):
     recent_payments = Payment.objects.filter(paid_at__year=year, paid_at__month=month).select_related('invoice__child', 'temporary_child', 'recorded_by').order_by('-paid_at')[:25]
 
     payment_form = PaymentForm()
-
-    # --- 7. Guruhlar bo'yicha Umumiy To'lovlar Hisoboti & Grafik Ma'lumotlari ---
-    groups_fin_data = compute_groups_finance_summary(month, year)
 
     return render(request, 'finance/finance_dashboard.html', {
         'invoices': invoices,
