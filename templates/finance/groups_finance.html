@@ -429,9 +429,9 @@
                             <span style="color: var(--text-dim);">0</span>
                             {% endif %}
                         </td>
-                        <!-- Jami To'langan Summa -->
+                        <!-- Jami To'langan Summa (Tanlangan oy bo'yicha) -->
                         <td style="padding: 7px 8px; text-align: right; white-space: nowrap;">
-                            <strong style="color: #34d399; font-size: 12.5px;">{{ inv.paid_amount|floatformat:0 }}</strong>
+                            <strong style="color: #34d399; font-size: 12.5px;">{{ inv.month_paid_amount|default:inv.paid_amount|floatformat:0 }}</strong>
                         </td>
                         <!-- 1. Naqd To'lov -->
                         <td style="padding: 7px 6px; text-align: right; white-space: nowrap; background: rgba(245, 158, 11, 0.04); border-left: 1px solid rgba(255,255,255,0.06); border-right: 1px solid rgba(255,255,255,0.06);">
@@ -465,12 +465,20 @@
                             <span style="color: var(--text-dim); font-size: 11px;">—</span>
                             {% endif %}
                         </td>
-                        <!-- Qarzdorlik (Qoldiq) -->
+                        <!-- Qarzdorlik (Qoldiq - Tanlangan oy bo'yicha) -->
                         <td style="padding: 7px 8px; text-align: right; white-space: nowrap;">
-                            {% if inv.remaining_debt > 0 %}
-                            <strong style="color: #fb7185; font-size: 12.5px;">{{ inv.remaining_debt|floatformat:0 }}</strong>
+                            {% if inv.month_debt is not None %}
+                                {% if inv.month_debt > 0 %}
+                                <strong style="color: #fb7185; font-size: 12.5px;">{{ inv.month_debt|floatformat:0 }}</strong>
+                                {% else %}
+                                <span style="color: #34d399; font-weight: 700; font-size: 11px;">0 (Qarz yo'q)</span>
+                                {% endif %}
                             {% else %}
-                            <span style="color: #34d399; font-weight: 700; font-size: 11px;">0 (Qarz yo'q)</span>
+                                {% if inv.remaining_debt > 0 %}
+                                <strong style="color: #fb7185; font-size: 12.5px;">{{ inv.remaining_debt|floatformat:0 }}</strong>
+                                {% else %}
+                                <span style="color: #34d399; font-weight: 700; font-size: 11px;">0 (Qarz yo'q)</span>
+                                {% endif %}
                             {% endif %}
                         </td>
                         <!-- Holati -->

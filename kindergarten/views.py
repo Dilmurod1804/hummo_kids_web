@@ -2470,18 +2470,27 @@ def compute_groups_finance_summary(month, year):
         paying_invs = invs.exclude(child__is_mahalla=True)
         total_exp = paying_invs.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
         total_disc = paying_invs.aggregate(s=Sum('discount'))['s'] or Decimal('0.00')
-        total_pd = invs.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
         total_recalc = paying_invs.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
-        total_dbt = max(Decimal('0.00'), total_exp - total_pd)
-        paid_pct = round((float(total_pd) / float(total_exp) * 100), 1) if total_exp > 0 else 0
 
-        # To'lov turlari bo'yicha guruh to'lovlari (shu guruhning faol bolalari bo'yicha)
-        g_payments = Payment.objects.filter(invoice__child_id__in=active_children_ids, invoice__child__is_archived=False, invoice__month=month, invoice__year=year)
+        # To'lov turlari bo'yicha guruh to'lovlari (shu guruhning faol bolalari bo'yicha, qat'iy joriy oy va yil bo'yicha)
+        g_payments = Payment.objects.filter(
+            invoice__child_id__in=active_children_ids,
+            invoice__child__is_archived=False,
+            invoice__month=month,
+            invoice__year=year,
+            paid_at__year=year,
+            paid_at__month=month
+        )
         paid_card = g_payments.filter(payment_method__in=['CARD', 'BANK_TRANSFER', 'ANNUAL']).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
         paid_terminal = g_payments.filter(payment_method='TERMINAL').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
         paid_payme = g_payments.filter(payment_method__in=['CLICK_PAYME', 'PAYME']).aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
         paid_cash = g_payments.filter(payment_method='CASH').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
         paid_marta = g_payments.filter(payment_method='MARTA').aggregate(s=Sum('amount'))['s'] or Decimal('0.00')
+
+        # Oylik jami to'langan summa: to'lov turlari yig'indisiga qat'iy teng (eski oylar aralashmaydi)
+        total_pd = paid_card + paid_terminal + paid_payme + paid_cash + paid_marta
+        total_dbt = max(Decimal('0.00'), total_exp - total_pd)
+        paid_pct = round((float(total_pd) / float(total_exp) * 100), 1) if total_exp > 0 else 0
 
         # Jami hisob-kitoblar
         grand_totals['children_count'] += children_cnt
@@ -2598,16 +2607,22 @@ def finance_dashboard(request):
     elif payment_type_filter == 'card':
         invoices = invoices.filter(payments__payment_method__in=['CARD', 'BANK_TRANSFER', 'CLICK_PAYME']).distinct()
 
+    # --- Guruhlar bo'yicha Umumiy To'lovlar Hisoboti & Grafik Ma'lumotlari ---
+    # Naqd to'lovlar va guruhlar bo'yicha yagona matematik mantiqni ta'minlash uchun oldin hisoblaymiz
+    groups_fin_data = compute_groups_finance_summary(month, year)
+    grand_totals = groups_fin_data['grand_totals']
+
     paying_invoices = invoices.exclude(child__is_mahalla=True)
     total_expected = paying_invoices.aggregate(s=Sum('total_amount'))['s'] or Decimal('0.00')
-    total_paid = invoices.aggregate(s=Sum('paid_amount'))['s'] or Decimal('0.00')
+    total_paid = grand_totals['total_paid']
     total_recalc = paying_invoices.aggregate(s=Sum('recalculation_amount'))['s'] or Decimal('0.00')
     total_debt = max(Decimal('0.00'), total_expected - total_paid)
 
-    # Invoyslar bo'yicha naqd va karta to'lovlarini hisoblash
+    # Invoyslar bo'yicha naqd va karta to'lovlarini hisoblash (qat'iy joriy oy bo'yicha)
     for inv in invoices:
-        inv.cash_paid = sum(p.amount for p in inv.payments.all() if p.payment_method == 'CASH')
-        inv.card_paid = sum(p.amount for p in inv.payments.all() if p.payment_method in ['CARD', 'BANK_TRANSFER', 'CLICK_PAYME'])
+        m_payments = [p for p in inv.payments.all() if p.paid_at.year == year and p.paid_at.month == month]
+        inv.cash_paid = sum(p.amount for p in m_payments if p.payment_method == 'CASH')
+        inv.card_paid = sum(p.amount for p in m_payments if p.payment_method in ['CARD', 'BANK_TRANSFER', 'CLICK_PAYME', 'TERMINAL', 'MARTA', 'ANNUAL'])
 
     # --- 1. Kunlik Tushum (Bugun) ---
     today_payments = Payment.objects.filter(paid_at__date=today)
@@ -2620,11 +2635,6 @@ def finance_dashboard(request):
     daily_bank = daily_stats['method_totals']['BANK_TRANSFER']
     daily_marta = daily_stats['method_totals']['MARTA']
     daily_card_bank_total = daily_total - daily_cash
-
-    # --- Guruhlar bo'yicha Umumiy To'lovlar Hisoboti & Grafik Ma'lumotlari ---
-    # Naqd to'lovlar va guruhlar bo'yicha yagona matematik mantiqni ta'minlash uchun oldin hisoblaymiz
-    groups_fin_data = compute_groups_finance_summary(month, year)
-    grand_totals = groups_fin_data['grand_totals']
 
     # --- 2. Oylik Tushum (Tanlangan oy) ---
     monthly_payments = Payment.objects.filter(paid_at__year=year, paid_at__month=month)
@@ -4076,35 +4086,47 @@ def groups_finance_view(request):
                     inv.notes = f"Yillik to'lov amal qilmoqda ({valid_str} gacha)"
                     inv.save()
 
-            # 2. To'lov turlarini hisoblash: Naqd, Karta, Terminal, Payme
+            # 2. To'lov turlarini hisoblash: Naqd, Karta, Terminal, Payme, Marta (qat'iy tanlangan oy va yil bo'yicha)
             c_cash = Decimal('0.00')
             c_card = Decimal('0.00')
             c_term = Decimal('0.00')
             c_payme = Decimal('0.00')
+            c_marta = Decimal('0.00')
 
-            for p in inv.payments.all():
+            m_payments = [
+                p for p in inv.payments.all()
+                if p.paid_at.year == year and p.paid_at.month == month
+            ]
+            for p in m_payments:
                 if p.payment_method == 'CASH':
                     c_cash += p.amount
-                elif p.payment_method in ['CARD', 'BANK_TRANSFER', 'MARTA']:
+                elif p.payment_method in ['CARD', 'BANK_TRANSFER', 'ANNUAL']:
                     c_card += p.amount
                 elif p.payment_method == 'TERMINAL':
                     c_term += p.amount
                 elif p.payment_method in ['CLICK_PAYME', 'PAYME']:
                     c_payme += p.amount
+                elif p.payment_method == 'MARTA':
+                    c_marta += p.amount
 
+            c_total = c_cash + c_card + c_term + c_payme + c_marta
             inv.cash_amount = c_cash
             inv.card_amount = c_card
             inv.terminal_amount = c_term
             inv.payme_amount = c_payme
+            inv.marta_amount = c_marta
+            inv.month_paid_amount = c_total
+            inv.month_debt = max(Decimal('0.00'), inv.total_amount - c_total) if not child.is_mahalla else Decimal('0.00')
 
             if not child.is_mahalla:
                 total_exp += inv.total_amount
                 total_disc += inv.discount
-            total_pd += inv.paid_amount
+            total_pd += c_total
             g_cash += c_cash
             g_card += c_card
             g_term += c_term
             g_payme += c_payme
+            g_marta += c_marta
 
             group_invoices.append(inv)
 
@@ -4117,6 +4139,7 @@ def groups_finance_view(request):
             'paid_card': g_card,
             'paid_terminal': g_term,
             'paid_payme': g_payme,
+            'paid_marta': g_marta,
         }
 
     return render(request, 'finance/groups_finance.html', {

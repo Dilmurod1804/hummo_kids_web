@@ -296,8 +296,12 @@ def generate_finance_excel(month=None, year=None):
     total_paid = 0
 
     for idx, inv in enumerate(invoices, 1):
-        inv_cash = float(sum(p.amount for p in inv.payments.all() if p.payment_method == 'CASH'))
-        inv_card = float(sum(p.amount for p in inv.payments.all() if p.payment_method in ['CARD', 'BANK_TRANSFER', 'CLICK_PAYME']))
+        m_payments = [
+            p for p in inv.payments.all()
+            if (not month or p.paid_at.month == int(month)) and (not year or p.paid_at.year == int(year))
+        ]
+        inv_cash = float(sum(p.amount for p in m_payments if p.payment_method == 'CASH'))
+        inv_card = float(sum(p.amount for p in m_payments if p.payment_method in ['CARD', 'BANK_TRANSFER', 'CLICK_PAYME', 'TERMINAL', 'MARTA', 'ANNUAL']))
 
         ws.row_dimensions[row_idx].height = 22
         ws.cell(row=row_idx, column=1, value=idx).alignment = Alignment(horizontal="center")
