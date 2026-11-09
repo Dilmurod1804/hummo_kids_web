@@ -634,23 +634,27 @@
                 <strong id="liveRemainingVal" style="font-size: 14px; color: #e2e8f0;">0 UZS</strong>
             </div>
 
-            <!-- To'lov Davri / Tarif Turi (Oylik yoki Yillik) -->
+            <!-- To'lov Davri (Necha oylik to'lov?) -->
             <div class="form-group" style="margin-bottom: 16px;">
                 <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
-                    <span>To'lov Davri (Turi) *</span>
-                    <span id="periodBadgeInfo" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 11px;">Joriy oy badali</span>
+                    <span>Necha oylik to'lov? *</span>
+                    <span id="periodBadgeInfo" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 11px;">1 oy uchun</span>
                 </label>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <button type="button" id="btnPeriodMonthly" onclick="selectPayPeriod('MONTHLY')" class="btn-glass" style="padding: 10px 14px; justify-content: center; font-size: 13px; font-weight: 700; background: rgba(56, 189, 248, 0.2); border-color: #38bdf8; color: #38bdf8; border-radius: 8px;">
-                        📅 Oylik to'lov
-                    </button>
-                    <button type="button" id="btnPeriodAnnual" onclick="selectPayPeriod('ANNUAL')" class="btn-glass" style="padding: 10px 14px; justify-content: center; font-size: 13px; font-weight: 700; background: rgba(255, 255, 255, 0.04); border-color: rgba(255, 255, 255, 0.12); color: var(--text-dim); border-radius: 8px;">
-                        🌟 Yillik to'lov (1 yilga)
-                    </button>
+                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+                    <button type="button" class="btn-glass" onclick="adjustDurationMonths(-1)" style="padding: 8px 14px; font-weight: 700; font-size: 16px; border-radius: 8px; line-height: 1;">−</button>
+                    <input type="number" id="payDurationMonths" class="glass-input" min="1" max="60" value="1" style="text-align: center; font-size: 15px; font-weight: 700; width: 85px;" oninput="onDurationMonthsChange()" onchange="onDurationMonthsChange()">
+                    <button type="button" class="btn-glass" onclick="adjustDurationMonths(1)" style="padding: 8px 14px; font-weight: 700; font-size: 16px; border-radius: 8px; line-height: 1;">+</button>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto;">
+                        <button type="button" class="btn-glass" onclick="setDurationMonths(1)" style="padding: 6px 10px; font-size: 11px; border-radius: 6px;">1 oy</button>
+                        <button type="button" class="btn-glass" onclick="setDurationMonths(2)" style="padding: 6px 10px; font-size: 11px; border-radius: 6px;">2 oy</button>
+                        <button type="button" class="btn-glass" onclick="setDurationMonths(3)" style="padding: 6px 10px; font-size: 11px; border-radius: 6px;">3 oy</button>
+                        <button type="button" class="btn-glass" onclick="setDurationMonths(6)" style="padding: 6px 10px; font-size: 11px; border-radius: 6px;">6 oy</button>
+                        <button type="button" class="btn-glass" onclick="setDurationMonths(12)" style="padding: 6px 10px; font-size: 11px; border-radius: 6px;">12 oy (1 yil)</button>
+                    </div>
                 </div>
                 <input type="hidden" id="payPeriodType" value="MONTHLY">
-                <p id="annualHelpText" style="font-size: 11px; color: #fbbf24; margin-top: 6px; display: none;">
-                    ℹ️ Yillik to'lov tanlanganda, bola uchun 1 yil davomida yangi oylik to'lovlar talab qilinmaydi va badali to'liq yopiladi.
+                <p id="advanceHelpText" style="font-size: 11px; color: #38bdf8; margin-top: 6px; display: none;">
+                    ℹ️ Tanlangan muddat davomida bola qarzdorlar ro'yxatiga qo'shilmaydi va keyingi oylik badallari avtomatik qoplanadi.
                 </p>
             </div>
 
@@ -928,63 +932,80 @@
         document.getElementById('payChildName').innerText = childName;
         document.getElementById('payCurrentDebt').innerText = currentModalDebt.toLocaleString() + ' UZS';
         document.getElementById('payAmount').value = currentModalDebt > 0 ? currentModalDebt : '';
-        selectPayPeriod('MONTHLY');
+        setDurationMonths(1);
         updateLiveDebtPreview();
         document.getElementById('modalPayment').style.display = 'flex';
     }
 
-    function selectPayPeriod(type) {
-        const input = document.getElementById('payPeriodType');
-        const btnM = document.getElementById('btnPeriodMonthly');
-        const btnA = document.getElementById('btnPeriodAnnual');
+    function setDurationMonths(months) {
+        const input = document.getElementById('payDurationMonths');
+        if (!input) return;
+        input.value = Math.max(1, parseInt(months) || 1);
+        onDurationMonthsChange();
+    }
+
+    function adjustDurationMonths(delta) {
+        const input = document.getElementById('payDurationMonths');
+        if (!input) return;
+        const cur = parseInt(input.value) || 1;
+        input.value = Math.max(1, cur + delta);
+        onDurationMonthsChange();
+    }
+
+    function onDurationMonthsChange() {
+        const input = document.getElementById('payDurationMonths');
+        const typeInput = document.getElementById('payPeriodType');
         const badge = document.getElementById('periodBadgeInfo');
-        const help = document.getElementById('annualHelpText');
+        const help = document.getElementById('advanceHelpText');
+        const amtInput = document.getElementById('payAmount');
+        if (!input) return;
 
-        if (!input || !btnM || !btnA) return;
-        input.value = type;
+        let months = parseInt(input.value) || 1;
+        if (months < 1) {
+            months = 1;
+            input.value = 1;
+        }
 
-        if (type === 'ANNUAL') {
-            btnA.style.background = 'rgba(245, 158, 11, 0.2)';
-            btnA.style.borderColor = '#f59e0b';
-            btnA.style.color = '#fbbf24';
+        if (typeInput) {
+            typeInput.value = months >= 12 ? 'ANNUAL' : (months > 1 ? 'ADVANCE' : 'MONTHLY');
+        }
 
-            btnM.style.background = 'rgba(255, 255, 255, 0.04)';
-            btnM.style.borderColor = 'rgba(255, 255, 255, 0.12)';
-            btnM.style.color = 'var(--text-dim)';
-
-            if (badge) {
-                badge.textContent = "1 yillik to'liq badal";
-                badge.style.background = 'rgba(245, 158, 11, 0.2)';
-                badge.style.color = '#fbbf24';
-            }
-            if (help) help.style.display = 'block';
-
-            const amtInput = document.getElementById('payAmount');
-            if (amtInput && currentModalDebt > 0) {
-                amtInput.value = currentModalDebt * 12;
-                updateLiveDebtPreview();
-            }
-        } else {
-            btnM.style.background = 'rgba(56, 189, 248, 0.2)';
-            btnM.style.borderColor = '#38bdf8';
-            btnM.style.color = '#38bdf8';
-
-            btnA.style.background = 'rgba(255, 255, 255, 0.04)';
-            btnA.style.borderColor = 'rgba(255, 255, 255, 0.12)';
-            btnA.style.color = 'var(--text-dim)';
-
-            if (badge) {
-                badge.textContent = "Joriy oy badali";
+        if (badge) {
+            if (months === 1) {
+                badge.textContent = "1 oy uchun";
                 badge.style.background = 'rgba(56, 189, 248, 0.15)';
                 badge.style.color = '#38bdf8';
+            } else if (months >= 12 && months % 12 === 0) {
+                badge.textContent = (months / 12) + " yillik to'lov";
+                badge.style.background = 'rgba(245, 158, 11, 0.2)';
+                badge.style.color = '#fbbf24';
+            } else {
+                badge.textContent = months + " oylik to'lov";
+                badge.style.background = 'rgba(16, 185, 129, 0.2)';
+                badge.style.color = '#34d399';
             }
-            if (help) help.style.display = 'none';
+        }
 
-            const amtInput = document.getElementById('payAmount');
-            if (amtInput) {
-                amtInput.value = currentModalDebt > 0 ? currentModalDebt : '';
-                updateLiveDebtPreview();
+        if (help) {
+            if (months > 1) {
+                help.style.display = 'block';
+                help.textContent = `ℹ️ ${months} oylik to'lov: Bola ${months} oy davomida (shu oydan boshlab) qarzdorlar ro'yxatiga qo'shilmaydi va keyingi oylik badallari avtomatik qoplanadi.`;
+            } else {
+                help.style.display = 'none';
             }
+        }
+
+        if (amtInput && currentModalDebt > 0) {
+            amtInput.value = currentModalDebt * months;
+            updateLiveDebtPreview();
+        }
+    }
+
+    function selectPayPeriod(type) {
+        if (type === 'ANNUAL') {
+            setDurationMonths(12);
+        } else {
+            setDurationMonths(1);
         }
     }
 
@@ -1027,7 +1048,8 @@
         const invoiceId = document.getElementById('payInvoiceId').value;
         const amount = document.getElementById('payAmount').value;
         const paymentMethod = document.getElementById('payMethod').value;
-        const periodType = document.getElementById('payPeriodType')?.value || 'MONTHLY';
+        const durationMonths = parseInt(document.getElementById('payDurationMonths')?.value) || 1;
+        const periodType = document.getElementById('payPeriodType')?.value || (durationMonths >= 12 ? 'ANNUAL' : (durationMonths > 1 ? 'ADVANCE' : 'MONTHLY'));
         const notes = document.getElementById('payNotes').value;
         const reason = document.getElementById('payReason')?.value || '';
         const btn = document.getElementById('btnSubmitPay');
@@ -1053,7 +1075,9 @@
                     amount: amount,
                     payment_method: paymentMethod,
                     payment_period: periodType,
-                    is_annual: (periodType === 'ANNUAL'),
+                    duration_months: durationMonths,
+                    months_paid: durationMonths,
+                    is_annual: (durationMonths >= 12 || periodType === 'ANNUAL'),
                     notes: notes,
                     reason: reason
                 })

@@ -2838,11 +2838,12 @@ def recalculate_invoices_api(request):
             recalculated_count = 0
 
             for child in children:
-                if child.is_annual_paid:
-                    # Yillik to'lov amal qilayotgan bola uchun yangi oylik to'lov talab qilinmaydi
+                adv_info = child.get_advance_payment_info(month, year)
+                if adv_info or child.is_annual_paid:
+                    # Oldindan to'lov amal qilayotgan bola uchun yangi oylik to'lov talab qilinmaydi
+                    valid_str = adv_info['valid_until_str'] if adv_info else (child.annual_payment_valid_until.strftime('%d.%m.%Y') if child.annual_payment_valid_until else '1 yil')
+                    annual_note = f"Oldindan to'langan ({valid_str} gacha amal qiladi)"
                     inv = MonthlyInvoice.objects.filter(child=child, month=month, year=year).first()
-                    valid_str = child.annual_payment_valid_until.strftime('%d.%m.%Y') if child.annual_payment_valid_until else '1 yil'
-                    annual_note = f"Yillik to'lov amal qilmoqda ({valid_str} gacha)"
                     if not inv:
                         MonthlyInvoice.objects.create(
                             child=child,
@@ -2945,15 +2946,24 @@ def record_payment_api(request):
             invoice = get_object_or_404(MonthlyInvoice, id=invoice_id)
             child = invoice.child
 
-            is_annual = bool(data.get('is_annual')) or (data.get('payment_period') == 'ANNUAL') or (payment_method == 'ANNUAL')
+            raw_duration = data.get('duration_months') or data.get('months_paid') or 1
+            try:
+                duration_months = int(raw_duration)
+            except (ValueError, TypeError):
+                duration_months = 1
+            if duration_months < 1:
+                duration_months = 1
 
-            # Validatsiya: Agar bolada allaqachon faol yillik to'lov mavjud bo'lsa
-            if child.is_annual_paid:
-                valid_until = child.annual_payment_valid_until
-                valid_str = valid_until.strftime('%d.%m.%Y') if valid_until else '1 yil'
+            is_annual = bool(data.get('is_annual')) or (data.get('payment_period') == 'ANNUAL') or (payment_method == 'ANNUAL')
+            if is_annual and duration_months < 12:
+                duration_months = 12
+
+            # Validatsiya: Agar bolada ayni shu oy uchun allaqachon oldindan to'lov amal qilayotgan bo'lsa
+            adv_info = child.get_advance_payment_info(invoice.month, invoice.year)
+            if adv_info:
                 return JsonResponse({
                     'success': False,
-                    'message': f"Bu bola ({child.full_name}) uchun allaqachon yillik to'lov amalga oshirilgan! (Amal qilish muddati: {valid_str} gacha)."
+                    'message': f"Bu bola ({child.full_name}) uchun {adv_info['valid_until_str']} gacha oldindan to'lov amal qilmoqda!"
                 }, status=400)
 
             # Validatsiya: to'lov usuli
@@ -2961,13 +2971,15 @@ def record_payment_api(request):
             if payment_method not in valid_methods or payment_method == 'ANNUAL':
                 payment_method = 'CARD'
 
-            reason_str = (reason + (" [YILLIK TO'LOV]" if is_annual and "[YILLIK TO'LOV]" not in reason else "")).strip()
-            notes_str = (notes or reason or "") + (" [YILLIK TO'LOV]" if is_annual and "[YILLIK TO'LOV]" not in (notes or reason or "") else "")
+            tag = f"[{duration_months} OYLIK TO'LOV]" if duration_months > 1 else ""
+            reason_str = (reason + (" " + tag if tag and tag not in reason else "")).strip()
+            notes_str = (notes or reason or "") + (" " + tag if tag and tag not in (notes or reason or "") else "")
 
             payment = Payment.objects.create(
                 invoice=invoice,
                 amount=amount,
                 payment_method=payment_method,
+                duration_months=duration_months,
                 transaction_id=transaction_id,
                 reason=reason_str,
                 notes=notes_str,
@@ -2977,37 +2989,59 @@ def record_payment_api(request):
             # Invoys ma'lumotlarini yangilash
             invoice.refresh_from_db()
 
-            if is_annual:
+            start_m = invoice.month
+            start_y = invoice.year
+            start_idx = start_y * 12 + (start_m - 1)
+            end_idx = start_idx + duration_months - 1
+            end_m = (end_idx % 12) + 1
+            end_y = end_idx // 12
+            period_label = f"{duration_months} oylik to'lov ({start_m:02d}.{start_y} - {end_m:02d}.{end_y})"
+
+            if duration_months > 1:
                 invoice.status = 'PAID'
-                invoice.notes = ((invoice.notes + " | ") if invoice.notes else "") + "Yillik to'lov amal qilmoqda"
+                invoice.notes = ((invoice.notes + " | ") if invoice.notes else "") + f"{period_label} amal qilmoqda"
                 invoice.save()
 
-                # Kelgusi oylarning mavjud hisob-fakturalarini ham yillik to'lov bilan qoplash
-                future_invoices = MonthlyInvoice.objects.filter(
-                    child=child,
-                    year__gte=invoice.year
-                ).exclude(id=invoice.id)
-                for f_inv in future_invoices:
-                    if (f_inv.year == invoice.year and f_inv.month > invoice.month) or \
-                       (f_inv.year == invoice.year + 1 and f_inv.month <= invoice.month):
-                        f_inv.base_fee = Decimal('0.00')
-                        f_inv.total_amount = Decimal('0.00')
-                        f_inv.status = 'PAID'
-                        f_inv.notes = f"Yillik to'lov hisobiga to'langan ({payment.paid_at.strftime('%d.%m.%Y')})"
-                        f_inv.save()
+                # Kelgusi oylarning hisob-fakturalarini ham oldindan to'lov bilan to'liq qoplash
+                for k in range(1, duration_months):
+                    f_idx = start_idx + k
+                    f_m = (f_idx % 12) + 1
+                    f_y = f_idx // 12
+                    f_inv, _ = MonthlyInvoice.objects.get_or_create(
+                        child=child,
+                        month=f_m,
+                        year=f_y,
+                        defaults={
+                            'base_fee': Decimal('0.00'),
+                            'discount': Decimal('0.00'),
+                            'meal_rate': Decimal('0.00'),
+                            'total_amount': Decimal('0.00'),
+                            'paid_amount': Decimal('0.00'),
+                            'status': 'PAID',
+                            'notes': f"Oldindan to'langan ({period_label} hisobiga)"
+                        }
+                    )
+                    f_inv.base_fee = Decimal('0.00')
+                    f_inv.total_amount = Decimal('0.00')
+                    f_inv.status = 'PAID'
+                    f_inv.notes = f"Oldindan to'langan ({period_label} hisobiga)"
+                    f_inv.save()
 
             staff_name = request.user.get_full_name() or request.user.username
             reason_info = f" Sabab: {reason_str}." if reason_str else ""
-            action_title = "Bog'cha yillik badal to'lovi qabul qilindi (1 yilga)" if is_annual else "Bog'cha badal to'lovi qabul qilindi"
+            action_title = f"Bog'cha badal to'lovi ({duration_months} oylik) qabul qilindi" if duration_months > 1 else "Bog'cha badal to'lovi qabul qilindi"
             log_audit(
                 category='PAYMENT',
                 action=action_title,
-                description=f"Bola: {invoice.child.full_name} ({invoice.child.group.name if invoice.child.group else 'Guruhsiz'}). Summa: {amount:,.0f} UZS. To'lov turi: {payment.get_payment_method_display()}. Chek: {transaction_id or '—'}.{reason_info} Qabul qiluvchi: {staff_name}. Qoldiq qarz: {invoice.remaining_debt:,.0f} UZS.",
+                description=f"Bola: {invoice.child.full_name} ({invoice.child.group.name if invoice.child.group else 'Guruhsiz'}). Summa: {amount:,.0f} UZS. Davr: {duration_months} oy. To'lov turi: {payment.get_payment_method_display()}. Chek: {transaction_id or '—'}.{reason_info} Qabul qiluvchi: {staff_name}. Qoldiq qarz: {invoice.remaining_debt:,.0f} UZS.",
                 user=request.user,
                 request=request
             )
 
-            msg = f"{amount:,.0f} UZS yillik to'lov ({payment.get_payment_method_display()}) muvaffaqiyatli qabul qilindi! Bolaning 1 yillik badali to'liq qoplandi." if is_annual else f"{amount:,.0f} UZS to'lov ({payment.get_payment_method_display()}) muvaffaqiyatli qabul qilindi!"
+            if duration_months > 1:
+                msg = f"{amount:,.0f} UZS ({duration_months} oylik to'lov) muvaffaqiyatli qabul qilindi! Bolaning {end_m:02d}.{end_y} gacha bo'lgan barcha oylik badallari to'liq yopildi."
+            else:
+                msg = f"{amount:,.0f} UZS to'lov ({payment.get_payment_method_display()}) muvaffaqiyatli qabul qilindi!"
 
             return JsonResponse({
                 'success': True,
@@ -4039,10 +4073,11 @@ def groups_finance_view(request):
 
         for child in group_children:
             inv = existing_invoices.get(child.id)
+            adv_info = child.get_advance_payment_info(month, year)
             if not inv:
                 # Agar bola uchun joriy oyda invoice mavjud bo'lmasa, uni yaratamiz
-                if child.is_annual_paid:
-                    valid_str = child.annual_payment_valid_until.strftime('%d.%m.%Y') if child.annual_payment_valid_until else '1 yil'
+                if adv_info or child.is_annual_paid:
+                    valid_str = adv_info['valid_until_str'] if adv_info else (child.annual_payment_valid_until.strftime('%d.%m.%Y') if child.annual_payment_valid_until else '1 yil')
                     inv = MonthlyInvoice.objects.create(
                         child=child,
                         month=month,
@@ -4053,7 +4088,7 @@ def groups_finance_view(request):
                         total_amount=Decimal('0.00'),
                         paid_amount=Decimal('0.00'),
                         status='PAID',
-                        notes=f"Yillik to'lov amal qilmoqda ({valid_str} gacha)",
+                        notes=f"Oldindan to'langan ({valid_str} gacha)",
                     )
                 elif child.is_mahalla:
                     inv = MonthlyInvoice.objects.create(
@@ -4080,12 +4115,12 @@ def groups_finance_view(request):
                         status='UNPAID',
                     )
             else:
-                if child.is_annual_paid and inv.status != 'PAID':
-                    valid_str = child.annual_payment_valid_until.strftime('%d.%m.%Y') if child.annual_payment_valid_until else '1 yil'
+                if (adv_info or child.is_annual_paid) and inv.status != 'PAID':
+                    valid_str = adv_info['valid_until_str'] if adv_info else (child.annual_payment_valid_until.strftime('%d.%m.%Y') if child.annual_payment_valid_until else '1 yil')
                     inv.base_fee = Decimal('0.00')
                     inv.total_amount = Decimal('0.00')
                     inv.status = 'PAID'
-                    inv.notes = f"Yillik to'lov amal qilmoqda ({valid_str} gacha)"
+                    inv.notes = f"Oldindan to'langan ({valid_str} gacha)"
                     inv.save()
 
             # 2. To'lov turlarini hisoblash: Naqd, Karta, Terminal, Payme, Marta (qat'iy tanlangan oy va yil bo'yicha)

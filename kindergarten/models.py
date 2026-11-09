@@ -417,7 +417,7 @@ class Child(models.Model):
             invoice__child=self,
             paid_at__gte=cutoff
         ).filter(
-            Q(payment_method='ANNUAL') | Q(reason__icontains="[YILLIK TO'LOV]") | Q(notes__icontains="[YILLIK TO'LOV]")
+            Q(payment_method='ANNUAL') | Q(reason__icontains="[YILLIK TO'LOV]") | Q(notes__icontains="[YILLIK TO'LOV]") | Q(duration_months__gte=12)
         ).order_by('-paid_at').first()
 
     @property
@@ -433,6 +433,73 @@ class Child(models.Model):
         if ap and ap.paid_at:
             return (ap.paid_at + timedelta(days=365)).date()
         return None
+
+    def get_advance_payment_info(self, month=None, year=None):
+        """
+        Bolaning oldindan to'langan oylari (duration_months > 1 yoki yillik to'lov) haqida ma'lumot beradi.
+        Agar month va year berilgan bo'lsa, aynan shu oy oldindan to'lov bilan qoplanganligini tekshiradi.
+        """
+        from django.apps import apps
+        Payment = apps.get_model('kindergarten', 'Payment')
+
+        adv_payments = Payment.objects.filter(
+            invoice__child=self
+        ).filter(duration_months__gt=1).order_by('-paid_at')
+
+        target_idx = (year * 12 + (month - 1)) if (month and year) else None
+
+        for p in adv_payments:
+            if not p.invoice:
+                continue
+            dur = p.duration_months or 1
+            start_m = p.invoice.month
+            start_y = p.invoice.year
+            start_idx = start_y * 12 + (start_m - 1)
+            end_idx = start_idx + dur - 1
+
+            if target_idx is not None:
+                if start_idx <= target_idx <= end_idx:
+                    end_m = (end_idx % 12) + 1
+                    end_y = end_idx // 12
+                    return {
+                        'payment': p,
+                        'duration_months': dur,
+                        'start_month': start_m,
+                        'start_year': start_y,
+                        'end_month': end_m,
+                        'end_year': end_y,
+                        'valid_until_str': f"{end_m:02d}.{end_y}"
+                    }
+            else:
+                now = timezone.now().date()
+                curr_idx = now.year * 12 + (now.month - 1)
+                if start_idx <= curr_idx <= end_idx:
+                    end_m = (end_idx % 12) + 1
+                    end_y = end_idx // 12
+                    return {
+                        'payment': p,
+                        'duration_months': dur,
+                        'start_month': start_m,
+                        'start_year': start_y,
+                        'end_month': end_m,
+                        'end_year': end_y,
+                        'valid_until_str': f"{end_m:02d}.{end_y}"
+                    }
+
+        if self.is_annual_paid:
+            return {
+                'payment': self.active_annual_payment,
+                'duration_months': 12,
+                'valid_until_str': self.annual_payment_valid_until.strftime('%d.%m.%Y') if self.annual_payment_valid_until else '1 yil'
+            }
+
+        return None
+
+    def is_exempt_from_billing(self, month, year):
+        """Ushbu oy va yil uchun bolaga to'lov talab qilinmaydimi (oldindan to'langanmi yoki mahalla)"""
+        if getattr(self, 'is_mahalla', False):
+            return True
+        return self.get_advance_payment_info(month, year) is not None
 
     @property
     def age(self):
@@ -642,6 +709,7 @@ class Payment(models.Model):
     temporary_child = models.ForeignKey('TemporaryChild', on_delete=models.SET_NULL, null=True, blank=True, related_name='payments', verbose_name="Vaqtinchalik bola")
     amount = models.DecimalField(max_digits=20, decimal_places=2)
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default='CARD')
+    duration_months = models.PositiveIntegerField(default=1, verbose_name="To'lov qamrab olgan oylar soni")
     transaction_id = models.CharField(max_length=100, blank=True, null=True, verbose_name="Chek / Kvitansiya raqami")
     paid_at = models.DateTimeField(default=timezone.now)
     recorded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
