@@ -4,7 +4,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from decimal import Decimal
 from django.utils import timezone
-from .models import Child, Group, ChildAttendance, StaffAttendance, MonthlyInvoice, KindergartenSettings
+from .models import Child, Group, ChildAttendance, StaffAttendance, MonthlyInvoice, KindergartenSettings, get_extra_course_q
 
 def apply_header_style(cell, text, bg_color="1E1B4B", fg_color="FFFFFF"):
     cell.value = text
@@ -258,17 +258,250 @@ def generate_staff_attendance_excel(month=None, year=None, staff_id=None, date_v
     return buf
 
 
+def build_extra_courses_sheet(ws, invoices, month=None, year=None, settings=None):
+    """
+    Qo'shimcha kurslar (Taekvondo, Gimnastika, Mental arifmetika) uchun
+    alohida jadval va jamlanma hisobotini shakllantirish.
+    """
+    if settings is None:
+        settings = KindergartenSettings.get_settings()
+
+    period_str = f"{int(month):02d}/{year}" if month and year else "Barcha Davrlar"
+    apply_title_banner(ws, f"{settings.name} — Qo'shimcha Kurslar va To'garaklar Moliyaviy Hisoboti", 11, row=1)
+
+    ws.cell(row=2, column=1, value=f"Hisobot Davri: {period_str} | Taekvondo, Gimnastika, Mental arifmetika to'lovlari | Eksport: {timezone.now().strftime('%d.%m.%Y %H:%M')}")
+    ws.cell(row=2, column=1).font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
+
+    # --- 1-BO'LIM: KURSLAR KESIMIDA UMUMIY JAMLANMA ---
+    ws.merge_cells(start_row=4, start_column=1, end_row=4, end_column=10)
+    sec1 = ws.cell(row=4, column=1, value="1. KURSLAR KESIMIDA UMUMIY JAMLANMA (O'quvchilar soni va tushumlar)")
+    sec1.font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+    sec1.fill = PatternFill(start_color="0F766E", end_color="0F766E", fill_type="solid")
+    sec1.alignment = Alignment(horizontal="left", vertical="center")
+    ws.row_dimensions[4].height = 24
+
+    headers_summary = [
+        "№", "Kurs / To'garak Nomi", "O'quvchilar Soni", "Oylik Narxi (UZS)", 
+        "Kutilgan Jami (UZS)", "Naqd To'lov (UZS)", "Karta / Bank (UZS)", 
+        "Jami To'langan (UZS)", "Qarzdorlik (UZS)", "To'lov Foizi (%)"
+    ]
+    ws.row_dimensions[5].height = 24
+    for c_num, h_text in enumerate(headers_summary, 1):
+        cell = ws.cell(row=5, column=c_num)
+        apply_header_style(cell, h_text, bg_color="115E59")
+
+    # Kurslar ro'yxati
+    extra_groups = list(Group.objects.filter(get_extra_course_q()).order_by('name'))
+    inv_group_ids = set(inv.child.group_id for inv in invoices if inv.child and inv.child.group_id)
+    known_group_ids = set(g.id for g in extra_groups)
+    missing_group_ids = inv_group_ids - known_group_ids
+    if missing_group_ids:
+        extra_groups.extend(list(Group.objects.filter(id__in=missing_group_ids).order_by('name')))
+
+    row_idx = 6
+    tot_sum_students = 0
+    tot_sum_exp = 0.0
+    tot_sum_cash = 0.0
+    tot_sum_card = 0.0
+    tot_sum_paid = 0.0
+    tot_sum_debt = 0.0
+
+    for idx, grp in enumerate(extra_groups, 1):
+        grp_invs = [inv for inv in invoices if inv.child and inv.child.group_id == grp.id]
+        std_count = len(set(inv.child_id for inv in grp_invs)) if grp_invs else grp.children_count
+        exp_amt = float(sum(inv.total_amount for inv in grp_invs)) if grp_invs else float(grp.monthly_fee * std_count)
+
+        grp_cash = 0.0
+        grp_card = 0.0
+        for inv in grp_invs:
+            m_payments = [
+                p for p in inv.payments.all()
+                if (not month or p.paid_at.month == int(month)) and (not year or p.paid_at.year == int(year))
+            ]
+            grp_cash += float(sum(p.amount for p in m_payments if p.payment_method == 'CASH'))
+            grp_card += float(sum(p.amount for p in m_payments if p.payment_method in ['CARD', 'BANK_TRANSFER', 'CLICK_PAYME', 'TERMINAL', 'MARTA', 'ANNUAL']))
+
+        grp_paid = grp_cash + grp_card
+        grp_debt = max(0.0, exp_amt - grp_paid)
+        grp_pct = round((grp_paid / exp_amt * 100), 1) if exp_amt > 0 else 0
+
+        ws.row_dimensions[row_idx].height = 20
+        ws.cell(row=row_idx, column=1, value=idx).alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=2, value=grp.name).font = Font(name="Segoe UI", bold=True)
+        ws.cell(row=row_idx, column=3, value=f"{std_count} nafar").alignment = Alignment(horizontal="center")
+
+        c4 = ws.cell(row=row_idx, column=4, value=float(grp.monthly_fee))
+        c4.number_format = '#,##0'
+        c5 = ws.cell(row=row_idx, column=5, value=exp_amt)
+        c5.number_format = '#,##0'
+        c6 = ws.cell(row=row_idx, column=6, value=grp_cash)
+        c6.number_format = '#,##0'
+        c7 = ws.cell(row=row_idx, column=7, value=grp_card)
+        c7.number_format = '#,##0'
+        c8 = ws.cell(row=row_idx, column=8, value=grp_paid)
+        c8.number_format = '#,##0'
+        c8.font = Font(name="Segoe UI", bold=True, color="047857")
+        c9 = ws.cell(row=row_idx, column=9, value=grp_debt)
+        c9.number_format = '#,##0'
+        if grp_debt > 0:
+            c9.font = Font(name="Segoe UI", bold=True, color="DC2626")
+        c10 = ws.cell(row=row_idx, column=10, value=f"{grp_pct}%")
+        c10.alignment = Alignment(horizontal="center")
+
+        tot_sum_students += std_count
+        tot_sum_exp += exp_amt
+        tot_sum_cash += grp_cash
+        tot_sum_card += grp_card
+        tot_sum_paid += grp_paid
+        tot_sum_debt += grp_debt
+        row_idx += 1
+
+    # Table A Grand Total Row
+    ws.row_dimensions[row_idx].height = 24
+    ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=2)
+    tot_label = ws.cell(row=row_idx, column=1, value="JAMI KURSLAR BO'YICHA:")
+    tot_label.font = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
+    tot_label.fill = PatternFill(start_color="134E4A", end_color="134E4A", fill_type="solid")
+    tot_label.alignment = Alignment(horizontal="right", vertical="center")
+
+    ws.cell(row=row_idx, column=3, value=f"{tot_sum_students} nafar").alignment = Alignment(horizontal="center")
+    ws.cell(row=row_idx, column=3).font = Font(name="Segoe UI", bold=True, color="FFFFFF")
+    ws.cell(row=row_idx, column=3).fill = PatternFill(start_color="134E4A", end_color="134E4A", fill_type="solid")
+
+    ws.cell(row=row_idx, column=4, value="—").alignment = Alignment(horizontal="center")
+    ws.cell(row=row_idx, column=4).font = Font(name="Segoe UI", color="FFFFFF")
+    ws.cell(row=row_idx, column=4).fill = PatternFill(start_color="134E4A", end_color="134E4A", fill_type="solid")
+
+    for col_i, col_v in [(5, tot_sum_exp), (6, tot_sum_cash), (7, tot_sum_card), (8, tot_sum_paid), (9, tot_sum_debt)]:
+        c_tot = ws.cell(row=row_idx, column=col_i, value=col_v)
+        c_tot.number_format = '#,##0'
+        c_tot.font = Font(name="Segoe UI", bold=True, color="FFFFFF")
+        c_tot.fill = PatternFill(start_color="134E4A", end_color="134E4A", fill_type="solid")
+
+    tot_pct = round((tot_sum_paid / tot_sum_exp * 100), 1) if tot_sum_exp > 0 else 0
+    c_tot_pct = ws.cell(row=row_idx, column=10, value=f"{tot_pct}%")
+    c_tot_pct.alignment = Alignment(horizontal="center")
+    c_tot_pct.font = Font(name="Segoe UI", bold=True, color="FFFFFF")
+    c_tot_pct.fill = PatternFill(start_color="134E4A", end_color="134E4A", fill_type="solid")
+    row_idx += 2
+
+    # --- 2-BO'LIM: KURSLAR O'QUVCHILARI VA TO'LOVLAR RO'YXATI ---
+    ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=11)
+    sec2 = ws.cell(row=row_idx, column=1, value="2. QO'SHIMCHA KURSLAR O'QUVCHILARI VA TO'LOVLARI TAFSILOTI")
+    sec2.font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+    sec2.fill = PatternFill(start_color="1E3A8A", end_color="1E3A8A", fill_type="solid")
+    sec2.alignment = Alignment(horizontal="left", vertical="center")
+    ws.row_dimensions[row_idx].height = 24
+    row_idx += 1
+
+    headers_details = [
+        "№", "Bola F.I.SH", "Kurs (To'garak)", "Davr (Oy/Yil)", "Kurs Narxi (UZS)",
+        "Naqd To'lov (UZS)", "Karta / Bank (UZS)", "Jami To'langan (UZS)",
+        "Qarzdorlik (UZS)", "To'lov Holati", "Izoh / Kvitansiya"
+    ]
+    ws.row_dimensions[row_idx].height = 24
+    for c_num, h_text in enumerate(headers_details, 1):
+        cell = ws.cell(row=row_idx, column=c_num)
+        apply_header_style(cell, h_text, bg_color="1E40AF")
+    row_idx += 1
+
+    det_exp = 0.0
+    det_cash = 0.0
+    det_card = 0.0
+    det_paid = 0.0
+    det_debt = 0.0
+
+    for d_idx, inv in enumerate(invoices, 1):
+        m_payments = [
+            p for p in inv.payments.all()
+            if (not month or p.paid_at.month == int(month)) and (not year or p.paid_at.year == int(year))
+        ]
+        inv_cash = float(sum(p.amount for p in m_payments if p.payment_method == 'CASH'))
+        inv_card = float(sum(p.amount for p in m_payments if p.payment_method in ['CARD', 'BANK_TRANSFER', 'CLICK_PAYME', 'TERMINAL', 'MARTA', 'ANNUAL']))
+        inv_paid = inv_cash + inv_card
+        inv_debt = max(0.0, float(inv.total_amount) - inv_paid)
+
+        ws.row_dimensions[row_idx].height = 20
+        ws.cell(row=row_idx, column=1, value=d_idx).alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=2, value=inv.child.full_name)
+        ws.cell(row=row_idx, column=3, value=inv.child.group.name if inv.child.group else "-").alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=4, value=f"{inv.month:02d}/{inv.year}").alignment = Alignment(horizontal="center")
+
+        c5 = ws.cell(row=row_idx, column=5, value=float(inv.total_amount))
+        c5.number_format = '#,##0'
+        c6 = ws.cell(row=row_idx, column=6, value=inv_cash)
+        c6.number_format = '#,##0'
+        c7 = ws.cell(row=row_idx, column=7, value=inv_card)
+        c7.number_format = '#,##0'
+        c8 = ws.cell(row=row_idx, column=8, value=inv_paid)
+        c8.number_format = '#,##0'
+        c9 = ws.cell(row=row_idx, column=9, value=inv_debt)
+        c9.number_format = '#,##0'
+
+        debt_cell = ws.cell(row=row_idx, column=10)
+        debt_cell.alignment = Alignment(horizontal="center")
+        if inv.status == 'PAID' or inv_debt <= 0:
+            debt_cell.value = "To'liq To'langan"
+            debt_cell.fill = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid")
+            debt_cell.font = Font(name="Segoe UI", color="166534", bold=True)
+        elif inv_paid > 0:
+            debt_cell.value = f"Qisman ({inv_debt:,.0f} UZS qarz)"
+            debt_cell.fill = PatternFill(start_color="FEF9C3", end_color="FEF9C3", fill_type="solid")
+            debt_cell.font = Font(name="Segoe UI", color="854D0E", bold=True)
+        else:
+            debt_cell.value = f"Qarzdor ({inv_debt:,.0f} UZS)"
+            debt_cell.fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
+            debt_cell.font = Font(name="Segoe UI", color="991B1B", bold=True)
+
+        ws.cell(row=row_idx, column=11, value=inv.notes or "")
+
+        det_exp += float(inv.total_amount)
+        det_cash += inv_cash
+        det_card += inv_card
+        det_paid += inv_paid
+        det_debt += inv_debt
+        row_idx += 1
+
+    # Table B Grand Total Row
+    if len(invoices) > 0:
+        ws.row_dimensions[row_idx].height = 24
+        ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=4)
+        t_label = ws.cell(row=row_idx, column=1, value="JAMI TO'LOVLAR:")
+        t_label.font = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
+        t_label.fill = PatternFill(start_color="1E1B4B", end_color="1E1B4B", fill_type="solid")
+        t_label.alignment = Alignment(horizontal="right", vertical="center")
+
+        for col_i, col_v in [(5, det_exp), (6, det_cash), (7, det_card), (8, det_paid), (9, det_debt)]:
+            tc = ws.cell(row=row_idx, column=col_i, value=col_v)
+            tc.number_format = '#,##0'
+            tc.font = Font(name="Segoe UI", bold=True, color="FFFFFF")
+            tc.fill = PatternFill(start_color="1E1B4B", end_color="1E1B4B", fill_type="solid")
+
+        t_end = ws.cell(row=row_idx, column=10, value=f"Qarz: {det_debt:,.0f} UZS")
+        t_end.font = Font(name="Segoe UI", bold=True, color="FFFFFF")
+        t_end.fill = PatternFill(start_color="1E1B4B", end_color="1E1B4B", fill_type="solid")
+        t_end.alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=11).fill = PatternFill(start_color="1E1B4B", end_color="1E1B4B", fill_type="solid")
+
+    auto_fit_columns(ws, 11)
+
+
 def generate_finance_excel(month=None, year=None):
+    """
+    Asosiy bog'cha moliyaviy hisoboti (Excel):
+    - 1-sahifa: Asosiy bog'cha guruhlari (qo'shimcha kurslarsiz).
+    - 2-sahifa: Qo'shimcha kurslar (Taekvondo, Gimnastika, Mental arifmetika) alohida jamlanmasi va to'lovlari.
+    """
     wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Moliya va Qayta Hisoblash"
+    ws1 = wb.active
+    ws1.title = "Asosiy Bog'cha"
 
     settings = KindergartenSettings.get_settings()
-    apply_title_banner(ws, f"{settings.name} — Oylik To'lovlar va Qayta Hisoblash (Перерасчет)", 10, row=1)
+    apply_title_banner(ws1, f"{settings.name} — Asosiy Bog'cha To'lovlari va Qayta Hisoblash", 12, row=1)
 
     period_str = f"{month}/{year}" if month and year else "Barcha Davrlar"
-    ws.cell(row=2, column=1, value=f"Hisobot Davri: {period_str} | Kunlik ovqatlanish normasi: {settings.daily_meal_rate:,.0f} UZS")
-    ws.cell(row=2, column=1).font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
+    ws1.cell(row=2, column=1, value=f"Hisobot Davri: {period_str} | Kunlik ovqatlanish normasi: {settings.daily_meal_rate:,.0f} UZS | (Qo'shimcha to'garaklar ajratilgan)")
+    ws1.cell(row=2, column=1).font = Font(name="Segoe UI", size=9, italic=True, color="64748B")
 
     headers = [
         "№", "Bola F.I.SH", "Guruh", "Davr (Oy/Yil)", "Asosiy To'lov (UZS)", 
@@ -276,16 +509,20 @@ def generate_finance_excel(month=None, year=None):
         "Jami To'lanishi Kerak (UZS)", "Naqd To'lov (UZS)", "Karta / Bank To'lov (UZS)",
         "Jami To'langan (UZS)", "Qarzdorlik / Holat"
     ]
-    ws.row_dimensions[3].height = 26
+    ws1.row_dimensions[3].height = 26
     for col_num, header in enumerate(headers, 1):
-        cell = ws.cell(row=3, column=col_num)
+        cell = ws1.cell(row=3, column=col_num)
         apply_header_style(cell, header, "6B21A8")
 
-    invoices = MonthlyInvoice.objects.filter(child__is_archived=False).select_related('child', 'child__group').prefetch_related('payments').order_by('-year', '-month', 'child__first_name')
+    invoices_qs = MonthlyInvoice.objects.filter(child__is_archived=False).select_related('child', 'child__group').prefetch_related('payments').order_by('-year', '-month', 'child__first_name')
     if month:
-        invoices = invoices.filter(month=month)
+        invoices_qs = invoices_qs.filter(month=month)
     if year:
-        invoices = invoices.filter(year=year)
+        invoices_qs = invoices_qs.filter(year=year)
+
+    extra_q = get_extra_course_q('child__group__')
+    regular_invoices = invoices_qs.exclude(extra_q)
+    extra_invoices = invoices_qs.filter(extra_q)
 
     row_idx = 4
     total_base = 0
@@ -295,7 +532,7 @@ def generate_finance_excel(month=None, year=None):
     total_card = 0
     total_paid = 0
 
-    for idx, inv in enumerate(invoices, 1):
+    for idx, inv in enumerate(regular_invoices, 1):
         m_payments = [
             p for p in inv.payments.all()
             if (not month or p.paid_at.month == int(month)) and (not year or p.paid_at.year == int(year))
@@ -303,34 +540,34 @@ def generate_finance_excel(month=None, year=None):
         inv_cash = float(sum(p.amount for p in m_payments if p.payment_method == 'CASH'))
         inv_card = float(sum(p.amount for p in m_payments if p.payment_method in ['CARD', 'BANK_TRANSFER', 'CLICK_PAYME', 'TERMINAL', 'MARTA', 'ANNUAL']))
 
-        ws.row_dimensions[row_idx].height = 22
-        ws.cell(row=row_idx, column=1, value=idx).alignment = Alignment(horizontal="center")
-        ws.cell(row=row_idx, column=2, value=inv.child.full_name)
-        ws.cell(row=row_idx, column=3, value=inv.child.group.name if inv.child.group else "-")
-        ws.cell(row=row_idx, column=4, value=f"{inv.month:02d}/{inv.year}").alignment = Alignment(horizontal="center")
+        ws1.row_dimensions[row_idx].height = 22
+        ws1.cell(row=row_idx, column=1, value=idx).alignment = Alignment(horizontal="center")
+        ws1.cell(row=row_idx, column=2, value=inv.child.full_name)
+        ws1.cell(row=row_idx, column=3, value=inv.child.group.name if inv.child.group else "-")
+        ws1.cell(row=row_idx, column=4, value=f"{inv.month:02d}/{inv.year}").alignment = Alignment(horizontal="center")
         
-        c5 = ws.cell(row=row_idx, column=5, value=float(inv.base_fee))
+        c5 = ws1.cell(row=row_idx, column=5, value=float(inv.base_fee))
         c5.number_format = '#,##0'
         
-        c6 = ws.cell(row=row_idx, column=6, value=inv.excused_days_count)
+        c6 = ws1.cell(row=row_idx, column=6, value=inv.excused_days_count)
         c6.alignment = Alignment(horizontal="center")
         
-        c7 = ws.cell(row=row_idx, column=7, value=float(inv.recalculation_amount))
+        c7 = ws1.cell(row=row_idx, column=7, value=float(inv.recalculation_amount))
         c7.number_format = '#,##0'
         
-        c8 = ws.cell(row=row_idx, column=8, value=float(inv.total_amount))
+        c8 = ws1.cell(row=row_idx, column=8, value=float(inv.total_amount))
         c8.number_format = '#,##0'
         
-        c9 = ws.cell(row=row_idx, column=9, value=inv_cash)
+        c9 = ws1.cell(row=row_idx, column=9, value=inv_cash)
         c9.number_format = '#,##0'
 
-        c10 = ws.cell(row=row_idx, column=10, value=inv_card)
+        c10 = ws1.cell(row=row_idx, column=10, value=inv_card)
         c10.number_format = '#,##0'
 
-        c11 = ws.cell(row=row_idx, column=11, value=float(inv.paid_amount))
+        c11 = ws1.cell(row=row_idx, column=11, value=float(inv.paid_amount))
         c11.number_format = '#,##0'
 
-        debt_cell = ws.cell(row=row_idx, column=12)
+        debt_cell = ws1.cell(row=row_idx, column=12)
         debt_cell.alignment = Alignment(horizontal="center")
         if inv.child.is_mahalla:
             debt_cell.value = "Mahalla (To'lovdan ozod)"
@@ -357,30 +594,60 @@ def generate_finance_excel(month=None, year=None):
         total_paid += float(inv.paid_amount)
         row_idx += 1
 
-    # Total Row
-    ws.row_dimensions[row_idx].height = 26
-    ws.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=4)
-    tot_label = ws.cell(row=row_idx, column=1, value="JAMI YIG'INDI:")
+    # Total Row for Sheet 1
+    ws1.row_dimensions[row_idx].height = 26
+    ws1.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=4)
+    tot_label = ws1.cell(row=row_idx, column=1, value="JAMI YIG'INDI:")
     tot_label.font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
     tot_label.fill = PatternFill(start_color="1E1B4B", end_color="1E1B4B", fill_type="solid")
     tot_label.alignment = Alignment(horizontal="right", vertical="center")
 
     for c_idx, val in [(5, total_base), (7, total_recalc), (8, total_final), (9, total_cash), (10, total_card), (11, total_paid)]:
-        tc = ws.cell(row=row_idx, column=c_idx, value=val)
+        tc = ws1.cell(row=row_idx, column=c_idx, value=val)
         tc.number_format = '#,##0'
         tc.font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
         tc.fill = PatternFill(start_color="1E1B4B", end_color="1E1B4B", fill_type="solid")
 
-    tot_remain = ws.cell(row=row_idx, column=12, value=f"Qarz: {total_final - total_paid:,.0f} UZS")
+    tot_remain = ws1.cell(row=row_idx, column=12, value=f"Qarz: {total_final - total_paid:,.0f} UZS")
     tot_remain.font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
     tot_remain.fill = PatternFill(start_color="1E1B4B", end_color="1E1B4B", fill_type="solid")
     tot_remain.alignment = Alignment(horizontal="center")
 
-    auto_fit_columns(ws, len(headers))
+    auto_fit_columns(ws1, len(headers))
+
+    # 2-sahifa: Qo'shimcha kurslar
+    ws2 = wb.create_sheet(title="Qo'shimcha Kurslar")
+    build_extra_courses_sheet(ws2, extra_invoices, month, year, settings)
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     return buf
+
+
+def generate_extra_courses_excel(month=None, year=None):
+    """
+    Faqat qo'shimcha kurslar (Taekvondo, Gimnastika, Mental arifmetika) uchun alohida Excel hisoboti
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Qo'shimcha Kurslar"
+
+    settings = KindergartenSettings.get_settings()
+    extra_q = get_extra_course_q('child__group__')
+    invoices_qs = MonthlyInvoice.objects.filter(child__is_archived=False).filter(extra_q).select_related('child', 'child__group').prefetch_related('payments').order_by('child__group__name', 'child__first_name')
+    if month:
+        invoices_qs = invoices_qs.filter(month=month)
+    if year:
+        invoices_qs = invoices_qs.filter(year=year)
+
+    build_extra_courses_sheet(ws, invoices_qs, month, year, settings)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
 
 
 def generate_expenses_excel(date_from=None, date_to=None):

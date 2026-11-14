@@ -46,13 +46,14 @@ class ChildForm(forms.ModelForm):
 class GroupForm(forms.ModelForm):
     class Meta:
         model = Group
-        fields = ['name', 'age_category', 'room_number', 'capacity', 'monthly_fee', 'primary_teacher', 'assistant_teacher', 'description']
+        fields = ['name', 'age_category', 'room_number', 'capacity', 'monthly_fee', 'is_extra_course', 'primary_teacher', 'assistant_teacher', 'description']
         widgets = {
-            'name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Guruh nomi (Masalan: Yulduzcha)'}),
+            'name': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Guruh nomi (Masalan: Yulduzcha, Taekvondo)'}),
             'age_category': forms.Select(attrs={'class': 'glass-input'}),
             'room_number': forms.TextInput(attrs={'class': 'glass-input', 'placeholder': 'Xona raqami (Masalan: 104-xona)'}),
             'capacity': forms.NumberInput(attrs={'class': 'glass-input'}),
             'monthly_fee': forms.NumberInput(attrs={'class': 'glass-input'}),
+            'is_extra_course': forms.CheckboxInput(attrs={'class': 'glass-checkbox', 'style': 'width: 18px; height: 18px;'}),
             'primary_teacher': forms.Select(attrs={'class': 'glass-input'}),
             'assistant_teacher': forms.Select(attrs={'class': 'glass-input'}),
             'description': forms.Textarea(attrs={'class': 'glass-input', 'rows': 2, 'placeholder': 'Guruh haqida tavsif...'}),

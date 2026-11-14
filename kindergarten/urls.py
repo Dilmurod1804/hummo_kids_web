@@ -64,6 +64,7 @@ urlpatterns = [
     # Finance, Recalculations & Groups Finance
     path('finance/', views.finance_dashboard, name='finance_dashboard'),
     path('finance/groups/', views.groups_finance_view, name='groups_finance'),
+    path('finance/daily-history-api/', views.daily_history_api, name='daily_history_api'),
     path('finance/recalculate-api/', views.recalculate_invoices_api, name='recalculate_invoices_api'),
     path('finance/payment-api/', views.record_payment_api, name='record_payment_api'),
     path('finance/invoice/update-tariff/', views.update_invoice_tariff_api, name='update_invoice_tariff_api'),
@@ -88,6 +89,8 @@ urlpatterns = [
     path('export/staff-attendance-pdf/', views.export_staff_attendance_pdf, name='export_staff_attendance_pdf'),
     path('export/finance/', views.export_finance, name='export_finance'),
     path('export/finance-pdf/', views.export_finance_pdf, name='export_finance_pdf'),
+    path('export/extra-courses-excel/', views.export_extra_courses_excel, name='export_extra_courses_excel'),
+    path('export/extra-courses-pdf/', views.export_extra_courses_pdf, name='export_extra_courses_pdf'),
     path('export/expenses/', views.export_expenses, name='export_expenses'),
 
     # Real-time Chat

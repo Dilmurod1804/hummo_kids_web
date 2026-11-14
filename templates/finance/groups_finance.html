@@ -30,6 +30,18 @@
                 <i data-lucide="file-spreadsheet" style="width: 16px; height: 16px;"></i>
                 <span>Excel Yuklab Olish</span>
             </a>
+            <a href="{% url 'export_finance_pdf' %}?month={{ month }}&year={{ year }}" class="btn-glass" style="background: rgba(244, 63, 94, 0.15); border-color: rgba(244, 63, 94, 0.35); color: #fda4af;">
+                <i data-lucide="file-text" style="width: 16px; height: 16px;"></i>
+                <span>PDF Hisobot</span>
+            </a>
+            <a href="{% url 'export_extra_courses_excel' %}?month={{ month }}&year={{ year }}" class="btn-glass" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.35); color: #6ee7b7;" title="Taekvondo, Gimnastika, Mental arifmetika alohida Excel hisoboti">
+                <i data-lucide="award" style="width: 16px; height: 16px;"></i>
+                <span>Kurslar (Excel)</span>
+            </a>
+            <a href="{% url 'export_extra_courses_pdf' %}?month={{ month }}&year={{ year }}" class="btn-glass" style="background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.35); color: #fde68a;" title="Taekvondo, Gimnastika, Mental arifmetika alohida PDF hisoboti">
+                <i data-lucide="file-text" style="width: 16px; height: 16px;"></i>
+                <span>Kurslar (PDF)</span>
+            </a>
         </div>
     </div>
 

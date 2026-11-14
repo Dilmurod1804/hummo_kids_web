@@ -1,10 +1,21 @@
 import base64
 import json
 import logging
+import calendar
 from datetime import datetime, date, time, timedelta
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
+
+UZ_WEEKDAYS = {
+    0: "Dushanba",
+    1: "Seshanba",
+    2: "Chorshanba",
+    3: "Payshanba",
+    4: "Juma",
+    5: "Shanba",
+    6: "Yakshanba",
+}
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -42,9 +53,12 @@ from .face_utils import (
 from .excel_reports import (
     generate_children_excel, generate_attendance_excel,
     generate_staff_attendance_excel, generate_finance_excel,
-    generate_expenses_excel
+    generate_extra_courses_excel, generate_expenses_excel
 )
-from .pdf_reports import generate_finance_pdf, generate_staff_attendance_pdf
+from .pdf_reports import (
+    generate_finance_pdf, generate_extra_courses_pdf,
+    generate_staff_attendance_pdf
+)
 from .audit_utils import (
     log_audit, calculate_late_penalty, calculate_early_leave_penalty, sync_staff_monthly_salary
 )
@@ -2810,6 +2824,171 @@ def finance_dashboard(request):
         'chart_marta_json': groups_fin_data['chart_marta_json'],
     })
 
+@login_required
+@finance_access_required
+def daily_history_api(request):
+    """
+    Kunlik Moliya Tarixi (Daily History) API:
+    Payment (to'lovlar) va Expense (chiqimlar) ma'lumotlarini sanalar bo'yicha (kunma-kun)
+    guruhlab, har bir kun uchun jami tushum, jami chiqim, sof balans va o'sha kungi
+    chiqimlar ro'yxatini (nomi, summa, kategoriya, to'lov usuli, izoh, kiritgan xodim) qaytaradi.
+    """
+    today = timezone.localtime(timezone.now()).date()
+    days_param = request.GET.get('days')
+    month_param = request.GET.get('month')
+    year_param = request.GET.get('year')
+
+    if days_param and str(days_param).isdigit():
+        days_num = min(max(int(days_param), 1), 90)
+        start_date = today - timedelta(days=days_num - 1)
+        end_date = today
+        period_title = f"Oxirgi {days_num} kun ({start_date.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')})"
+    else:
+        try:
+            month = int(month_param) if month_param else today.month
+            year = int(year_param) if year_param else today.year
+        except (ValueError, TypeError):
+            month = today.month
+            year = today.year
+        
+        last_day_num = calendar.monthrange(year, month)[1]
+        start_date = date(year, month, 1)
+        end_date = date(year, month, last_day_num)
+        period_title = f"{month:02d}/{year}"
+
+    # Query payments in date range
+    payments_qs = Payment.objects.filter(
+        paid_at__date__gte=start_date,
+        paid_at__date__lte=end_date
+    ).select_related('invoice__child', 'temporary_child', 'recorded_by')
+
+    # Query expenses in date range
+    expenses_qs = Expense.objects.filter(
+        date__gte=start_date,
+        date__lte=end_date
+    ).select_related('created_by').order_by('-date', '-created_at')
+
+    # Group by date
+    days_data = {}
+    cur = end_date
+    while cur >= start_date:
+        days_data[cur] = {
+            'date': cur.strftime('%Y-%m-%d'),
+            'formatted_date': cur.strftime('%d.%m.%Y'),
+            'day_name': UZ_WEEKDAYS.get(cur.weekday(), ''),
+            'is_today': (cur == today),
+            'total_income': Decimal('0.00'),
+            'income_cash': Decimal('0.00'),
+            'income_card': Decimal('0.00'),
+            'payments_count': 0,
+            'total_expense': Decimal('0.00'),
+            'expense_cash': Decimal('0.00'),
+            'expense_card': Decimal('0.00'),
+            'net_balance': Decimal('0.00'),
+            'expenses': [],
+        }
+        cur -= timedelta(days=1)
+
+    # Process payments
+    for p in payments_qs:
+        p_date = timezone.localtime(p.paid_at).date() if timezone.is_aware(p.paid_at) else p.paid_at.date()
+        if p_date in days_data:
+            amt = p.amount or Decimal('0.00')
+            days_data[p_date]['total_income'] += amt
+            days_data[p_date]['payments_count'] += 1
+            if p.payment_method == 'CASH':
+                days_data[p_date]['income_cash'] += amt
+            else:
+                days_data[p_date]['income_card'] += amt
+
+    # Process expenses
+    for exp in expenses_qs:
+        e_date = exp.date
+        if e_date in days_data:
+            amt = exp.amount or Decimal('0.00')
+            days_data[e_date]['total_expense'] += amt
+            if exp.payment_method == 'CASH':
+                days_data[e_date]['expense_cash'] += amt
+            else:
+                days_data[e_date]['expense_card'] += amt
+
+            creator_name = exp.created_by.get_full_name() or exp.created_by.username if exp.created_by else "—"
+            days_data[e_date]['expenses'].append({
+                'id': exp.id,
+                'title': exp.title,
+                'category': exp.get_category_display(),
+                'category_code': exp.category,
+                'amount': float(amt),
+                'payment_method': exp.payment_method,
+                'payment_method_display': exp.get_payment_method_display(),
+                'receipt_number': exp.receipt_number or "",
+                'description': exp.description or "",
+                'created_by': creator_name,
+                'created_at_time': exp.created_at.strftime('%H:%M') if exp.created_at else "",
+            })
+
+    grand_income = Decimal('0.00')
+    grand_expense = Decimal('0.00')
+    grand_income_cash = Decimal('0.00')
+    grand_income_card = Decimal('0.00')
+    grand_expense_cash = Decimal('0.00')
+    grand_expense_card = Decimal('0.00')
+    active_days_count = 0
+
+    results = []
+    for d in sorted(days_data.keys(), reverse=True):
+        item = days_data[d]
+        item['net_balance'] = item['total_income'] - item['total_expense']
+        has_activity = (item['total_income'] > 0 or item['total_expense'] > 0 or item['is_today'])
+        if has_activity:
+            active_days_count += 1
+
+        grand_income += item['total_income']
+        grand_expense += item['total_expense']
+        grand_income_cash += item['income_cash']
+        grand_income_card += item['income_card']
+        grand_expense_cash += item['expense_cash']
+        grand_expense_card += item['expense_card']
+
+        results.append({
+            'date': item['date'],
+            'formatted_date': item['formatted_date'],
+            'day_name': item['day_name'],
+            'is_today': item['is_today'],
+            'has_activity': has_activity,
+            'total_income': float(item['total_income']),
+            'income_cash': float(item['income_cash']),
+            'income_card': float(item['income_card']),
+            'payments_count': item['payments_count'],
+            'total_expense': float(item['total_expense']),
+            'expense_cash': float(item['expense_cash']),
+            'expense_card': float(item['expense_card']),
+            'net_balance': float(item['net_balance']),
+            'expenses_count': len(item['expenses']),
+            'expenses': item['expenses'],
+        })
+
+    grand_net = grand_income - grand_expense
+
+    return JsonResponse({
+        'success': True,
+        'period_title': period_title,
+        'start_date': start_date.strftime('%Y-%m-%d'),
+        'end_date': end_date.strftime('%Y-%m-%d'),
+        'summary': {
+            'total_income': float(grand_income),
+            'total_expense': float(grand_expense),
+            'net_balance': float(grand_net),
+            'income_cash': float(grand_income_cash),
+            'income_card': float(grand_income_card),
+            'expense_cash': float(grand_expense_cash),
+            'expense_card': float(grand_expense_card),
+            'active_days_count': active_days_count,
+            'total_days_count': len(results),
+        },
+        'days': results
+    })
+
 @csrf_exempt
 @login_required
 @finance_access_required
@@ -3590,7 +3769,8 @@ def export_finance(request):
     year = request.GET.get('year', None)
     buf = generate_finance_excel(month, year)
     response = HttpResponse(buf, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    response['Content-Disposition'] = f'attachment; filename="Moliya_Qayta_Hisoblash_{timezone.now().strftime("%Y%m%d")}.xlsx"'
+    period = f"_{month}_{year}" if month and year else ""
+    response['Content-Disposition'] = f'attachment; filename="Moliya_Qayta_Hisoblash{period}_{timezone.now().strftime("%Y%m%d")}.xlsx"'
     return response
 
 @login_required
@@ -3602,6 +3782,28 @@ def export_finance_pdf(request):
     response = HttpResponse(buf, content_type='application/pdf')
     period = f"_{month}_{year}" if month and year else ""
     response['Content-Disposition'] = f'attachment; filename="Moliya_Hisoboti{period}_{timezone.now().strftime("%Y%m%d")}.pdf"'
+    return response
+
+@login_required
+@finance_access_required
+def export_extra_courses_excel(request):
+    month = request.GET.get('month', None)
+    year = request.GET.get('year', None)
+    buf = generate_extra_courses_excel(month, year)
+    response = HttpResponse(buf, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    period = f"_{month}_{year}" if month and year else ""
+    response['Content-Disposition'] = f'attachment; filename="Qoshimcha_Kurslar{period}_{timezone.now().strftime("%Y%m%d")}.xlsx"'
+    return response
+
+@login_required
+@finance_access_required
+def export_extra_courses_pdf(request):
+    month = request.GET.get('month', None)
+    year = request.GET.get('year', None)
+    buf = generate_extra_courses_pdf(month, year)
+    response = HttpResponse(buf, content_type='application/pdf')
+    period = f"_{month}_{year}" if month and year else ""
+    response['Content-Disposition'] = f'attachment; filename="Qoshimcha_Kurslar{period}_{timezone.now().strftime("%Y%m%d")}.pdf"'
     return response
 
 

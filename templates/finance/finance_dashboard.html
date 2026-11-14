@@ -45,8 +45,8 @@
 
 <!-- 1. Yangi Statistika Kartochkalari (Top Dashboard Widgets) -->
 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; margin-bottom: 24px;">
-    <!-- Kunlik Moliya (Bugun) -->
-    <div class="glass-card stat-interactive-card" onclick="openFinanceBreakdownModal('daily', 'ALL')" title="Kunlik tushum bo'yicha guruhlar kesimini ko'rish uchun bosing" style="padding: 20px; position: relative; overflow: hidden; border-left: 4px solid #a855f7; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;">
+    <!-- Kunlik Moliya (Bugun) & Kunlik Tarix -->
+    <div class="glass-card stat-interactive-card" onclick="openDailyHistoryModal()" title="Kunlik tushum va chiqimlar tarixini ochish uchun bosing" style="padding: 20px; position: relative; overflow: hidden; border-left: 4px solid #a855f7; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;">
         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
                 <p class="stat-label" style="display: flex; align-items: center; gap: 6px;">
@@ -63,11 +63,12 @@
             </div>
             <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
                 <div class="stat-icon-wrapper icon-purple" style="box-shadow: 0 0 15px rgba(168, 85, 247, 0.25);">
-                    <i data-lucide="sparkles" style="width: 22px; height: 22px;"></i>
+                    <i data-lucide="history" style="width: 22px; height: 22px;"></i>
                 </div>
-                <span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.35); font-size: 10px; padding: 2px 7px;">
-                    {{ daily_count }} ta to'lov
-                </span>
+                <button type="button" onclick="event.stopPropagation(); openDailyHistoryModal();" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.45); font-size: 10.5px; padding: 2px 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; border-radius: 6px;" title="Kunlik moliya tarixini ko'rish">
+                    <i data-lucide="calendar-days" style="width: 12px; height: 12px;"></i>
+                    <span>Kunlik Tarix &rarr;</span>
+                </button>
             </div>
         </div>
 
@@ -1333,6 +1334,114 @@
     </div>
 </div>
 
+<!-- ======================================================== -->
+<!-- KUNLIK MOLIYA TARIXI MODAL OYNASI (Daily History Modal) -->
+<!-- ======================================================== -->
+<div id="modalDailyHistory" class="glass-modal-backdrop" style="display: none; z-index: 9999;">
+    <div class="glass-modal" style="max-width: 880px; width: 95%; max-height: 88vh; display: flex; flex-direction: column; padding: 22px;">
+        <!-- Modal Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-shrink: 0; padding-bottom: 14px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #a855f7, #6366f1); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; box-shadow: 0 4px 14px rgba(168, 85, 247, 0.35);">
+                    <i data-lucide="history" style="width: 22px; height: 22px;"></i>
+                </div>
+                <div>
+                    <h3 style="font-family: 'Outfit', sans-serif; font-size: 19px; font-weight: 800; color: white; margin: 0; display: flex; align-items: center; gap: 8px;">
+                        <span>Kunlik Moliya Tarixi</span>
+                        <span id="dhPeriodBadge" class="badge" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); font-size: 11px; font-weight: 700; padding: 2px 8px;">
+                            {{ month }}/{{ year }}
+                        </span>
+                    </h3>
+                    <p style="font-size: 12px; color: var(--text-muted); margin: 3px 0 0 0;">
+                        Sanalar kesimida tushumlar, chiqimlar va har bir kungi xarajatlar ro'yxati
+                    </p>
+                </div>
+            </div>
+            <button type="button" onclick="closeDailyHistoryModal()" style="background: transparent; border: none; color: var(--text-dim); cursor: pointer; padding: 6px; border-radius: 8px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='transparent'">
+                <i data-lucide="x" style="width: 22px; height: 22px;"></i>
+            </button>
+        </div>
+
+        <!-- Filter Controls Bar -->
+        <div style="display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 14px; flex-shrink: 0;">
+            <!-- Tezkor tugmalar (Joriy oy, O'tgan oy, Oxirgi 30 kun) -->
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                <button type="button" id="btnDhCurrentMonth" onclick="selectDhPreset('CURRENT_MONTH')" class="btn-glass" style="padding: 6px 12px; font-size: 11.5px; border-radius: 6px; background: rgba(168, 85, 247, 0.2); border-color: #a855f7; color: white; font-weight: 700;">
+                    📅 Joriy oy
+                </button>
+                <button type="button" id="btnDhPrevMonth" onclick="selectDhPreset('PREV_MONTH')" class="btn-glass" style="padding: 6px 12px; font-size: 11.5px; border-radius: 6px;">
+                    ⏮️ O'tgan oy
+                </button>
+                <button type="button" id="btnDhLast30" onclick="selectDhPreset('LAST_30')" class="btn-glass" style="padding: 6px 12px; font-size: 11.5px; border-radius: 6px;">
+                    ⏱️ Oxirgi 30 kun
+                </button>
+                <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-dim); cursor: pointer; margin-left: 6px; user-select: none;">
+                    <input type="checkbox" id="dhOnlyActiveCheckbox" onchange="filterDailyHistoryList()" style="cursor: pointer; width: 14px; height: 14px;" checked>
+                    <span>Faqat harakatli kunlar</span>
+                </label>
+            </div>
+
+            <!-- Qidiruv maydoni -->
+            <div style="position: relative; min-width: 200px; flex: 1; max-width: 280px;">
+                <i data-lucide="search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; height: 14px; color: var(--text-dim);"></i>
+                <input type="text" id="dhSearchInput" oninput="filterDailyHistoryList()" class="glass-input" placeholder="Sana yoki chiqim nomi..." style="padding-left: 32px; padding-top: 5px; padding-bottom: 5px; font-size: 12px; width: 100%;">
+            </div>
+        </div>
+
+        <!-- Period Summary Cards -->
+        <div id="dhSummaryCards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 16px; flex-shrink: 0;">
+            <div style="background: rgba(52, 211, 153, 0.08); border: 1px solid rgba(52, 211, 153, 0.22); border-radius: 10px; padding: 10px 14px;">
+                <span style="color: var(--text-dim); font-size: 10.5px; display: block;">Jami Tushum:</span>
+                <strong id="dhSumIncome" style="color: #34d399; font-size: 16px; font-family: 'Outfit', sans-serif; display: block; margin-top: 2px;">0 UZS</strong>
+                <span id="dhSumIncomeSplit" style="color: var(--text-muted); font-size: 10px; display: block; margin-top: 2px;">Naqd: 0 | Karta: 0</span>
+            </div>
+            <div style="background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.22); border-radius: 10px; padding: 10px 14px;">
+                <span style="color: var(--text-dim); font-size: 10.5px; display: block;">Jami Chiqim:</span>
+                <strong id="dhSumExpense" style="color: #f43f5e; font-size: 16px; font-family: 'Outfit', sans-serif; display: block; margin-top: 2px;">0 UZS</strong>
+                <span id="dhSumExpenseSplit" style="color: var(--text-muted); font-size: 10px; display: block; margin-top: 2px;">Naqd: 0 | Karta: 0</span>
+            </div>
+            <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.22); border-radius: 10px; padding: 10px 14px;">
+                <span style="color: var(--text-dim); font-size: 10.5px; display: block;">Sof Balans:</span>
+                <strong id="dhSumNet" style="color: #c084fc; font-size: 16px; font-family: 'Outfit', sans-serif; display: block; margin-top: 2px;">0 UZS</strong>
+                <span id="dhSumNetDesc" style="color: var(--text-muted); font-size: 10px; display: block; margin-top: 2px;">Tushum - Chiqim</span>
+            </div>
+            <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 10px 14px;">
+                <span style="color: var(--text-dim); font-size: 10.5px; display: block;">Harakatli Kunlar:</span>
+                <strong id="dhSumDays" style="color: #e2e8f0; font-size: 16px; font-family: 'Outfit', sans-serif; display: block; margin-top: 2px;">0 kun</strong>
+                <span style="color: var(--text-muted); font-size: 10px; display: block; margin-top: 2px;">Kirim yoki chiqim bo'lgan</span>
+            </div>
+        </div>
+
+        <!-- Scrollable Days List Container -->
+        <div style="overflow-y: auto; flex: 1; padding-right: 4px;">
+            <!-- Loading Spinner -->
+            <div id="dhLoading" style="display: none; text-align: center; padding: 40px 20px; color: var(--text-dim);">
+                <div style="width: 32px; height: 32px; margin: 0 auto 12px; border: 3px solid rgba(168, 85, 247, 0.2); border-top-color: #a855f7; border-radius: 50%; animation: dhSpin 0.8s linear infinite;"></div>
+                <p style="font-size: 13px;">Kunlik moliya ma'lumotlari yuklanmoqda...</p>
+            </div>
+
+            <!-- Days Accordion/List -->
+            <div id="dhDaysContainer" style="display: flex; flex-direction: column; gap: 10px;"></div>
+
+            <!-- Empty State -->
+            <div id="dhEmptyState" style="display: none; text-align: center; padding: 40px 20px; color: var(--text-dim);">
+                <i data-lucide="inbox" style="width: 44px; height: 44px; margin-bottom: 12px; opacity: 0.35;"></i>
+                <p style="font-size: 14px; font-weight: 600; color: #cbd5e1;">Ushbu davr bo'yicha moliyaviy ma'lumot topilmadi</p>
+                <p style="font-size: 12px; color: var(--text-muted);">Boshqa oyni tanlab ko'ring yoki yuqoridagi filterlarni o'zgartiring.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+@keyframes dhSpin {
+    to { transform: rotate(360deg); }
+}
+.dh-day-card:hover {
+    border-color: rgba(168, 85, 247, 0.35) !important;
+}
+</style>
+
 {% endblock %}
 
 {% block extra_scripts %}
@@ -2013,5 +2122,306 @@ document.querySelectorAll('.stat-interactive-card').forEach(card => {
         this.style.boxShadow = '';
     });
 });
+
+// ==========================================
+// KUNLIK MOLIYA TARIXI (Daily History Logic)
+// ==========================================
+let currentDhData = null;
+let currentDhPreset = 'CURRENT_MONTH';
+const DH_CURRENT_MONTH = {{ month|default:11 }};
+const DH_CURRENT_YEAR = {{ year|default:2026 }};
+
+function openDailyHistoryModal(preset) {
+    preset = preset || 'CURRENT_MONTH';
+    const modal = document.getElementById('modalDailyHistory');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    selectDhPreset(preset);
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+}
+
+function closeDailyHistoryModal() {
+    const modal = document.getElementById('modalDailyHistory');
+    if (modal) modal.style.display = 'none';
+}
+
+// Modal backdrop click
+document.getElementById('modalDailyHistory')?.addEventListener('click', function(e) {
+    if (e.target === this) closeDailyHistoryModal();
+});
+
+function selectDhPreset(preset) {
+    currentDhPreset = preset;
+    const btnCur = document.getElementById('btnDhCurrentMonth');
+    const btnPrev = document.getElementById('btnDhPrevMonth');
+    const btnLast30 = document.getElementById('btnDhLast30');
+
+    // Reset styles
+    [btnCur, btnPrev, btnLast30].forEach(btn => {
+        if (!btn) return;
+        btn.style.background = 'rgba(255, 255, 255, 0.04)';
+        btn.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+        btn.style.color = 'var(--text-dim)';
+        btn.style.fontWeight = '500';
+    });
+
+    let url = "{% url 'daily_history_api' %}?";
+
+    if (preset === 'CURRENT_MONTH') {
+        if (btnCur) {
+            btnCur.style.background = 'rgba(168, 85, 247, 0.2)';
+            btnCur.style.borderColor = '#a855f7';
+            btnCur.style.color = 'white';
+            btnCur.style.fontWeight = '700';
+        }
+        url += `month=${DH_CURRENT_MONTH}&year=${DH_CURRENT_YEAR}`;
+    } else if (preset === 'PREV_MONTH') {
+        if (btnPrev) {
+            btnPrev.style.background = 'rgba(168, 85, 247, 0.2)';
+            btnPrev.style.borderColor = '#a855f7';
+            btnPrev.style.color = 'white';
+            btnPrev.style.fontWeight = '700';
+        }
+        let pm = DH_CURRENT_MONTH - 1;
+        let py = DH_CURRENT_YEAR;
+        if (pm < 1) { pm = 12; py -= 1; }
+        url += `month=${pm}&year=${py}`;
+    } else if (preset === 'LAST_30') {
+        if (btnLast30) {
+            btnLast30.style.background = 'rgba(168, 85, 247, 0.2)';
+            btnLast30.style.borderColor = '#a855f7';
+            btnLast30.style.color = 'white';
+            btnLast30.style.fontWeight = '700';
+        }
+        url += `days=30`;
+    }
+
+    fetchDailyHistory(url);
+}
+
+async function fetchDailyHistory(url) {
+    const loadingEl = document.getElementById('dhLoading');
+    const daysContainer = document.getElementById('dhDaysContainer');
+    const emptyState = document.getElementById('dhEmptyState');
+
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (daysContainer) daysContainer.innerHTML = '';
+    if (emptyState) emptyState.style.display = 'none';
+
+    try {
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (loadingEl) loadingEl.style.display = 'none';
+
+        if (!res.ok || !data.success) {
+            alert("Ma'lumotlarni yuklashda xatolik yuz berdi: " + (data.message || res.statusText));
+            return;
+        }
+
+        currentDhData = data;
+        renderDailyHistory(data);
+    } catch (err) {
+        if (loadingEl) loadingEl.style.display = 'none';
+        console.error("Daily history fetch error:", err);
+        alert("Aloqa xatosi: " + err.message);
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function renderDailyHistory(data) {
+    const badgeEl = document.getElementById('dhPeriodBadge');
+    if (badgeEl) badgeEl.textContent = data.period_title || '';
+
+    // Summary cards
+    const sum = data.summary || {};
+    const sumIncomeEl = document.getElementById('dhSumIncome');
+    const sumIncomeSplitEl = document.getElementById('dhSumIncomeSplit');
+    const sumExpenseEl = document.getElementById('dhSumExpense');
+    const sumExpenseSplitEl = document.getElementById('dhSumExpenseSplit');
+    const sumNetEl = document.getElementById('dhSumNet');
+    const sumDaysEl = document.getElementById('dhSumDays');
+
+    if (sumIncomeEl) sumIncomeEl.textContent = '+' + (sum.total_income || 0).toLocaleString() + ' UZS';
+    if (sumIncomeSplitEl) sumIncomeSplitEl.textContent = `Naqd: ${(sum.income_cash || 0).toLocaleString()} | Karta: ${(sum.income_card || 0).toLocaleString()}`;
+    if (sumExpenseEl) sumExpenseEl.textContent = '-' + (sum.total_expense || 0).toLocaleString() + ' UZS';
+    if (sumExpenseSplitEl) sumExpenseSplitEl.textContent = `Naqd: ${(sum.expense_cash || 0).toLocaleString()} | Karta: ${(sum.expense_card || 0).toLocaleString()}`;
+
+    if (sumNetEl) {
+        const net = sum.net_balance || 0;
+        sumNetEl.textContent = (net >= 0 ? '+' : '') + net.toLocaleString() + ' UZS';
+        sumNetEl.style.color = net >= 0 ? '#34d399' : '#f43f5e';
+    }
+
+    if (sumDaysEl) sumDaysEl.textContent = (sum.active_days_count || 0) + ' kun';
+
+    filterDailyHistoryList();
+}
+
+function filterDailyHistoryList() {
+    if (!currentDhData || !currentDhData.days) return;
+
+    const daysContainer = document.getElementById('dhDaysContainer');
+    const emptyState = document.getElementById('dhEmptyState');
+    const searchVal = (document.getElementById('dhSearchInput')?.value || '').trim().toLowerCase();
+    const onlyActive = document.getElementById('dhOnlyActiveCheckbox')?.checked;
+
+    daysContainer.innerHTML = '';
+
+    let visibleCount = 0;
+
+    currentDhData.days.forEach(d => {
+        // Filter by activity
+        if (onlyActive && !d.has_activity) return;
+
+        // Filter by search
+        if (searchVal) {
+            const dateMatch = d.formatted_date.toLowerCase().includes(searchVal) || (d.day_name || '').toLowerCase().includes(searchVal);
+            const expMatch = d.expenses.some(exp => 
+                (exp.title || '').toLowerCase().includes(searchVal) ||
+                (exp.category || '').toLowerCase().includes(searchVal) ||
+                (exp.description || '').toLowerCase().includes(searchVal) ||
+                (exp.created_by || '').toLowerCase().includes(searchVal)
+            );
+            if (!dateMatch && !expMatch) return;
+        }
+
+        visibleCount++;
+
+        const netColor = d.net_balance >= 0 ? '#34d399' : '#f43f5e';
+        const netSign = d.net_balance > 0 ? '+' : '';
+        const todayBadge = d.is_today ? '<span class="badge" style="background: rgba(168, 85, 247, 0.25); color: #e9d5ff; border: 1px solid rgba(168, 85, 247, 0.5); font-size: 10px; padding: 1px 6px;">BUGUN</span>' : '';
+
+        let expBtn = '';
+        if (d.expenses_count > 0) {
+            expBtn = `
+                <button type="button" onclick="toggleDayExpenses('${d.date}')" class="btn-glass" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; background: rgba(244, 63, 94, 0.12); border-color: rgba(244, 63, 94, 0.3); color: #fda4af; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <span>Chiqimlar (${d.expenses_count})</span>
+                    <i id="dhExpArrow_${d.date}" data-lucide="chevron-down" style="width: 13px; height: 13px; transition: transform 0.2s;"></i>
+                </button>
+            `;
+        } else {
+            expBtn = `<span style="font-size: 11px; color: var(--text-dim); padding: 4px 6px;">Chiqim yo'q</span>`;
+        }
+
+        let expensesHtml = '';
+        if (d.expenses_count > 0) {
+            expensesHtml = `
+                <div id="dhExpDetails_${d.date}" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(255, 255, 255, 0.1);">
+                    <div style="background: rgba(0, 0, 0, 0.25); border-radius: 8px; padding: 10px 12px; border: 1px solid rgba(244, 63, 94, 0.2);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span style="font-size: 11px; font-weight: 700; color: #fda4af; display: flex; align-items: center; gap: 6px;">
+                                <i data-lucide="receipt" style="width: 14px; height: 14px;"></i>
+                                <span>Ushbu kunda qilingan chiqimlar (${d.expenses.length} ta):</span>
+                            </span>
+                            <span style="font-size: 11px; color: #fda4af; font-weight: 700;">
+                                Jami: -${d.total_expense.toLocaleString()} UZS
+                            </span>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            ${d.expenses.map(exp => `
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding: 8px 10px; background: rgba(255, 255, 255, 0.03); border-radius: 6px; font-size: 12px; border-left: 3px solid #f43f5e;">
+                                    <div style="flex: 1;">
+                                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                            <strong style="color: white;">${escapeHtml(exp.title)}</strong>
+                                            <span class="badge" style="background: rgba(244, 63, 94, 0.15); color: #fda4af; font-size: 10px; padding: 1px 6px;">${escapeHtml(exp.category)}</span>
+                                            <span class="badge" style="background: rgba(255, 255, 255, 0.06); color: #cbd5e1; font-size: 10px; padding: 1px 6px;">${exp.payment_method === 'CASH' ? '💵 Naqd' : '💳 Karta'}</span>
+                                            ${exp.receipt_number ? `<span style="font-size: 10px; color: var(--text-dim);">Chek: #${escapeHtml(exp.receipt_number)}</span>` : ''}
+                                        </div>
+                                        ${exp.description ? `<p style="font-size: 11px; color: var(--text-muted); margin: 3px 0 0 0;">${escapeHtml(exp.description)}</p>` : ''}
+                                    </div>
+                                    <div style="text-align: right; flex-shrink: 0;">
+                                        <strong style="color: #f43f5e; font-size: 13px;">-${exp.amount.toLocaleString()} UZS</strong>
+                                        <span style="font-size: 10px; color: var(--text-dim); display: block;">${escapeHtml(exp.created_by)} ${exp.created_at_time ? `(${exp.created_at_time})` : ''}</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        const cardHtml = `
+            <div class="glass-card dh-day-card" style="padding: 12px 16px; border-radius: 10px; background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(255, 255, 255, 0.08); transition: border-color 0.2s;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <!-- Sana qismi -->
+                    <div style="display: flex; align-items: center; gap: 10px; min-width: 170px;">
+                        <div style="width: 36px; height: 36px; border-radius: 8px; background: ${d.is_today ? 'rgba(168, 85, 247, 0.2)' : 'rgba(255, 255, 255, 0.05)'}; border: 1px solid ${d.is_today ? '#a855f7' : 'rgba(255, 255, 255, 0.1)'}; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                            <span style="font-size: 13px; font-weight: 800; color: ${d.is_today ? '#c084fc' : '#e2e8f0'}; line-height: 1;">${d.date.split('-')[2]}</span>
+                            <span style="font-size: 9px; color: var(--text-dim); text-transform: uppercase;">${(d.day_name || '').slice(0, 3)}</span>
+                        </div>
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <strong style="color: #f8fafc; font-size: 13px;">${d.formatted_date}</strong>
+                                ${todayBadge}
+                            </div>
+                            <span style="font-size: 11px; color: var(--text-muted);">${d.day_name}</span>
+                        </div>
+                    </div>
+
+                    <!-- Tushum va Chiqim -->
+                    <div style="display: flex; align-items: center; gap: 18px; flex-wrap: wrap;">
+                        <div style="text-align: right; min-width: 110px;">
+                            <span style="font-size: 10px; color: var(--text-dim); display: block;">Tushum:</span>
+                            <strong style="color: ${d.total_income > 0 ? '#34d399' : 'var(--text-dim)'}; font-size: 13px;">+${d.total_income.toLocaleString()} UZS</strong>
+                            <span style="font-size: 9.5px; color: var(--text-muted); display: block;">${d.payments_count} ta to'lov (Naqd: ${d.income_cash.toLocaleString()})</span>
+                        </div>
+                        <div style="text-align: right; min-width: 110px;">
+                            <span style="font-size: 10px; color: var(--text-dim); display: block;">Chiqim:</span>
+                            <strong style="color: ${d.total_expense > 0 ? '#f43f5e' : 'var(--text-dim)'}; font-size: 13px;">-${d.total_expense.toLocaleString()} UZS</strong>
+                            <span style="font-size: 9.5px; color: var(--text-muted); display: block;">Naqd: ${d.expense_cash.toLocaleString()} | Karta: ${d.expense_card.toLocaleString()}</span>
+                        </div>
+                    </div>
+
+                    <!-- Sof Balans va Detallar tugmasi -->
+                    <div style="display: flex; align-items: center; gap: 14px; min-width: 180px; justify-content: flex-end;">
+                        <div style="text-align: right;">
+                            <span style="font-size: 10px; color: var(--text-dim); display: block;">Sof Balans:</span>
+                            <strong style="color: ${netColor}; font-size: 14px; font-weight: 800; font-family: 'Outfit', sans-serif;">${netSign}${d.net_balance.toLocaleString()} UZS</strong>
+                        </div>
+                        ${expBtn}
+                    </div>
+                </div>
+
+                ${expensesHtml}
+            </div>
+        `;
+
+        daysContainer.insertAdjacentHTML('beforeend', cardHtml);
+    });
+
+    if (visibleCount === 0) {
+        if (emptyState) emptyState.style.display = 'block';
+    } else {
+        if (emptyState) emptyState.style.display = 'none';
+    }
+
+    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+}
+
+function toggleDayExpenses(dateStr) {
+    const detailsEl = document.getElementById('dhExpDetails_' + dateStr);
+    const arrowEl = document.getElementById('dhExpArrow_' + dateStr);
+    if (!detailsEl) return;
+
+    if (detailsEl.style.display === 'none' || detailsEl.style.display === '') {
+        detailsEl.style.display = 'block';
+        if (arrowEl) arrowEl.style.transform = 'rotate(180deg)';
+    } else {
+        detailsEl.style.display = 'none';
+        if (arrowEl) arrowEl.style.transform = 'rotate(0deg)';
+    }
+}
+
 </script>
 {% endblock %}

@@ -1,7 +1,28 @@
 from django.db import models
+from django.db.models import Q
 from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
 from decimal import Decimal
+
+EXTRA_COURSE_KEYWORDS = [
+    'taekvondo', 'taekwondo', 'tekvando',
+    'gimnastika', 'gymnast',
+    'mental', 'mental arifmetika',
+]
+
+def get_extra_course_q(prefix=''):
+    """
+    Q obyekti orqali qo'shimcha kurslarni (Taekvondo, Gimnastika, Mental arifmetika)
+    nomi yoki is_extra_course bayrog'i bo'yicha filter qilish.
+    prefix: masalan 'child__group__' yoki 'group__' yoki ''
+    """
+    field_flag = f"{prefix}is_extra_course"
+    field_name = f"{prefix}name__icontains"
+    q = Q(**{field_flag: True})
+    for kw in EXTRA_COURSE_KEYWORDS:
+        q |= Q(**{field_name: kw})
+    return q
+
 
 class User(AbstractUser):
     ROLE_CHOICES = (
@@ -331,10 +352,30 @@ class Group(models.Model):
     room_number = models.CharField(max_length=20, blank=True, null=True)
     capacity = models.PositiveIntegerField(default=25)
     monthly_fee = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('2500000.00'))
+    is_extra_course = models.BooleanField(
+        default=False,
+        verbose_name="Qo'shimcha to'garak / kurs (Taekvondo, Gimnastika va h.k.)",
+        help_text="Belgilansa, ushbu guruh asosiy bog'cha hisobotlaridan ajratiladi va alohida kurslar hisobotida ko'rsatiladi."
+    )
     primary_teacher = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='primary_groups')
     assistant_teacher = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assistant_groups')
     description = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def is_course(self):
+        """Ushbu guruh qo'shimcha to'garak/kurs (Taekvondo, Gimnastika, Mental arifmetika) ekanligini tekshirish"""
+        if self.is_extra_course:
+            return True
+        name_lower = (self.name or '').lower()
+        return any(k in name_lower for k in EXTRA_COURSE_KEYWORDS)
+
+    def save(self, *args, **kwargs):
+        if not self.is_extra_course:
+            name_lower = (self.name or '').lower()
+            if any(k in name_lower for k in EXTRA_COURSE_KEYWORDS):
+                self.is_extra_course = True
+        super().save(*args, **kwargs)
 
     @property
     def children_count(self):
